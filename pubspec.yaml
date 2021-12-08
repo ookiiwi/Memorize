@@ -88,3 +88,20 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+
+  #fonts:
+  #  - family: FiraSans
+  #    fonts:
+  #      - asset: fonts/FiraSans-Regular.otf
+  #      - asset: fonts/FiraSans-Bold.otf
+  #        style: bold
+
+  fonts:
+    - family: FiraSans
+      fonts:
+        - asset: fonts/FiraSans-Regular.otf
+        - asset: fonts/FiraSans-Bold.otf
+          weight: 700
+    - family: AlexBrush
+      fonts:
+        - asset: fonts/AlexBrush-Regular.ttf
