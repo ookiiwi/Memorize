@@ -1,41 +1,72 @@
+import 'dart:collection';
 import 'dart:math';
 
 import 'package:tuple/tuple.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 class ACategory {
   ACategory(this.name);
-  //ACategory.copy(ACategory category)
-  //    : name = category.name,
-  //      _table = Map.from(category._table);
 
   String name;
-  final Map<String, dynamic> _table = {};
-  Map get table => _table;
+  final Set<int> _table = {};
 
-  //TODO: check parent != '' on serialization
-
-  void addChild(String name, bool isCat) {
-    _table[name] = isCat;
+  bool contains(int id) {
+    return _table.contains(id);
   }
 
-  void addChildFrom(String name, dynamic values) {
-    _table[name] = values;
+  bool add(int id) {
+    return _table.add(id);
   }
 
-  dynamic removeChild(String name) {
-    return _table.remove(name);
+  bool rm(int id) {
+    return _table.remove(id);
+  }
+
+  void _sanityCheck() {
+    _table.removeAll(UserData.checkIds(_table));
+  }
+
+  Set getTable() {
+    _sanityCheck();
+    return Set.from(_table);
   }
 }
 
 class AList {
   AList(this.name);
-  AList.copy(AList list)
+  AList.from(AList list)
       : name = list.name,
-        content = Map.from(list.content);
+        _content = List.from(list._content);
 
   String name;
-  Map<String, String> content = {};
+  List<Tuple2<String, String>> _content = [];
+
+  bool contains(Tuple2<String, String>? element) {
+    return _content.contains(element);
+  }
+
+  bool containsAll(List elements) {
+    for (var e in elements) {
+      if (!_content.contains(e)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void add(Tuple2<String, String> item) {
+    _content.add(item);
+  }
+
+  void addAll(List<Tuple2<String, String>> items) {
+    _content.addAll(items);
+  }
+
+  Tuple2 rm(int index) {
+    return _content.removeAt(index);
+  }
 }
 
 class AQuiz {
@@ -68,7 +99,7 @@ class AQuiz {
 
     for (var name in selection) {
       //TODO: check if name exist in register
-      List list = Data.get(name)
+      List list = UserData.get(name)
           ?.content
           .entries
           .map(((entry) => [entry.key, entry.value]))
@@ -93,61 +124,52 @@ class AQuiz {
   }
 }
 
-class Data {
-  static final Map<String, dynamic> _data = {};
+//class Data {
+//  Data(this.id, this.item);
+//  int id;
+//  dynamic item;
+//}
 
-  static void _checkInitialization() {
-    if (!_data.containsKey('root')) {
-      _data["root"] = ACategory("root");
-    }
+class UserData {
+  static final SplayTreeMap<int, dynamic> _idTable = SplayTreeMap();
+  static int _currId = 0;
+
+  static void _init() {
+    //TODO: set id counter
+    _currId = _idTable.lastKey() ?? 0;
   }
 
-  static dynamic get(String name) {
-    _checkInitialization();
-    return _data[name];
+  static Set checkIds(Set ids) {
+    //Return a set of invalid ids
+
+    return ids.difference(Set.from(_idTable.keys));
   }
 
-  static void add(dynamic obj, String dest) {
-    _checkInitialization();
-    _data[obj.name] = obj; //TODO: transform to unique key
-    _data[dest]?.addChild(obj.name, obj is ACategory);
+  static int add(dynamic item) {
+    _idTable[++_currId] = item;
+    return _currId;
   }
 
-  static dynamic remove(String parent, String name) {
-    var data = _data[name];
-
-    if (data != Null && data is ACategory) {
-      String prev = name;
-      for (MapEntry e in data.table.entries) {
-        if (e.value is ACategory) {
-          Data.remove(prev, e.key);
-          prev = e.key;
-        }
-        _data.remove(e.key);
-      }
-    }
-
-    _data[parent]?.removeChild(name);
-    return _data.remove(name);
+  static dynamic rm(int id) {
+    return _idTable.remove(id);
   }
 
-  static bool move(String src, String dest, String name) {
-    //TODO: check if src and dest are categories
-    var srcRef = _data[src]?.removeChild(name);
-    _data[dest]?.addChildFrom(name, srcRef);
-    return false;
+  static dynamic get(int id) {
+    return _idTable[id];
   }
+}
 
-  static List<String> searchElt(String elt) {
-    List<String> lists = [];
+class AppData {
+  //static Color bar = const Color(0xFFF3F3F3);
+  //static Color container = const Color(0xFFEBEAEA);
+  //static Color red = const Color(0xFFB01919);
 
-    for (var e in _data.values) {
-      if (e is AList) {
-        if (e.content.containsKey(elt) || e.content.containsValue(elt)) {
-          lists.add(e.name);
-        }
-      }
-    }
-    return lists;
-  }
+  static Map<String, Color> colors = {
+    "bar": const Color(0xFFF3F3F3),
+    "container": const Color(0xFFEBEAEA),
+    "hintText": const Color(0xFF464646),
+    "buttonSelected": const Color(0xFFB01919),
+    "buttonIdle": const Color(0xFFBDBDBD),
+    "border": const Color(0xFFBFBFBF)
+  };
 }
