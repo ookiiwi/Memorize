@@ -124,37 +124,85 @@ class AQuiz {
   }
 }
 
-//class Data {
-//  Data(this.id, this.item);
-//  int id;
-//  dynamic item;
-//}
+class ListExplorerInfo {
+  static int rootId = 0;
+  static int currentDir = rootId;
+}
+
+enum DataType { category, list, quiz }
 
 class UserData {
   static final SplayTreeMap<int, dynamic> _idTable = SplayTreeMap();
-  static int _currId = 0;
+  static int _idPtr = -2;
+  static final int _idTypeShift = 63 - DataType.values.last.index;
 
-  static void _init() {
-    //TODO: set id counter
-    _currId = _idTable.lastKey() ?? 0;
+  static int genId(DataType dt) {
+    // Generate an id on 64 bits
+    // The 'DataType.last.index' last bits are for the type
+
+    isInit();
+    int ret = ++_idPtr;
+    if (ret > pow(2, _idTypeShift)) {
+      throw Exception("Id must be 62 bits");
+    }
+
+    return (dt.index << _idTypeShift) | ret;
+  }
+
+  static DataType getTypeFromId(int id) {
+    return DataType.values.firstWhere((e) => e.index == id >> _idTypeShift);
+  }
+
+  static void init() {
+    //TODO: init _idTable
+    _idPtr = _idTable.lastKey() ?? -1;
+
+    if (_idTable.isEmpty) {
+      add(ACategory('root'));
+    } else if (_idTable[0].runtimeType != ACategory) {
+      throw Exception("The first id must be attributed to a category");
+    }
+  }
+
+  static void isInit() {
+    if (_idPtr < -1) {
+      throw Exception("UserData must be initiated");
+    }
   }
 
   static Set checkIds(Set ids) {
     //Return a set of invalid ids
-
+    isInit();
     return ids.difference(Set.from(_idTable.keys));
   }
 
-  static int add(dynamic item) {
-    _idTable[++_currId] = item;
-    return _currId;
+  static int add(dynamic item, {int? pid}) {
+    isInit();
+
+    DataType type = item.runtimeType == ACategory
+        ? DataType.category
+        : (item.runtimeType == AList ? DataType.list : DataType.quiz);
+
+    int id = genId(type);
+    _idTable[id] = item;
+
+    // ignore if root
+    if (id != ListExplorerInfo.rootId) {
+      ACategory parent = get(pid ?? ListExplorerInfo.currentDir);
+      parent.add(id);
+    }
+
+    return id;
   }
 
   static dynamic rm(int id) {
+    isInit();
+    //TODO: remove id form parent
     return _idTable.remove(id);
   }
 
   static dynamic get(int id) {
+    isInit();
     return _idTable[id];
   }
 }
@@ -172,4 +220,8 @@ class AppData {
     "buttonIdle": const Color(0xFFBDBDBD),
     "border": const Color(0xFFBFBFBF)
   };
+}
+
+loadInitialData() {
+  UserData.init();
 }
