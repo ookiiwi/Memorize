@@ -142,8 +142,9 @@ class UserData {
 
     isInit();
     int ret = ++_idPtr;
+
     if (ret > pow(2, _idTypeShift)) {
-      throw Exception("Id must be 62 bits");
+      throw Exception("Id must be 62 bits -- $ret");
     }
 
     return (dt.index << _idTypeShift) | ret;
@@ -154,7 +155,12 @@ class UserData {
   }
 
   static void init() {
+    if (_idPtr >= -1) {
+      return;
+    }
+
     //TODO: init _idTable
+
     _idPtr = _idTable.lastKey() ?? -1;
 
     if (_idTable.isEmpty) {
