@@ -140,11 +140,11 @@ class UserData {
     // Generate an id on 64 bits
     // The 'DataType.last.index' last bits are for the type
 
-    isInit();
+    _isInit();
     int ret = ++_idPtr;
 
     if (ret > pow(2, _idTypeShift)) {
-      throw Exception("Id must be 62 bits -- $ret");
+      throw Exception("Id must be $_idTypeShift bits -- $ret");
     }
 
     return (dt.index << _idTypeShift) | ret;
@@ -170,7 +170,7 @@ class UserData {
     }
   }
 
-  static void isInit() {
+  static void _isInit() {
     if (_idPtr < -1) {
       throw Exception("UserData must be initiated");
     }
@@ -178,12 +178,12 @@ class UserData {
 
   static Set checkIds(Set ids) {
     //Return a set of invalid ids
-    isInit();
+    _isInit();
     return ids.difference(Set.from(_idTable.keys));
   }
 
   static int add(dynamic item, {int? pid}) {
-    isInit();
+    _isInit();
 
     DataType type = item.runtimeType == ACategory
         ? DataType.category
@@ -202,13 +202,20 @@ class UserData {
   }
 
   static dynamic rm(int id) {
-    isInit();
-    //TODO: remove id form parent
+    _isInit();
+
+    //id should be removed from parent table by parent on sanity check
     return _idTable.remove(id);
   }
 
+  static void rmAll(List<int> ids) {
+    for (int id in ids) {
+      rm(id);
+    }
+  }
+
   static dynamic get(int id) {
-    isInit();
+    _isInit();
     return _idTable[id];
   }
 }
