@@ -2,6 +2,8 @@ import 'package:memorize/data.dart';
 import 'package:tuple/tuple.dart';
 
 void main() {
+  UserData.init();
+
   // add items
   AList myList = AList("myList");
 
