@@ -1,8 +1,7 @@
-import 'dart:ui';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
+import 'package:memorize/widget.dart';
 
 class Tab {
   Tab({required Icon icon, required Widget child, bool isMain = false})
@@ -29,7 +28,12 @@ List<Tab> tabs = [
   //    children: const [Center(child: Text("community"))])),
 
   //list
-  Tab(icon: const Icon(Icons.list), child: const ListTab()),
+  Tab(
+      icon: const Icon(Icons.list),
+      child: ListTab(
+        wdId: () => ListExplorerInfo.currentDir,
+        cd: (id) => ListExplorerInfo.currentDir = id,
+      )),
 
   Tab(
       icon: const Icon(Icons.quiz),
@@ -66,6 +70,7 @@ class _CommunityTab extends State<CommunityTab> {
       //const Padding(
       //  padding: EdgeInsets.symmetric(horizontal: 80.0, vertical: 20.0),
       child: TextField(
+        textAlignVertical: TextAlignVertical.bottom,
         decoration: InputDecoration(
           prefixIcon: const Icon(
             Icons.search,
@@ -73,9 +78,9 @@ class _CommunityTab extends State<CommunityTab> {
           ),
           hintText: "Search ...",
           hintStyle: TextStyle(
-              color: AppData.colors["hintText"],
-              fontSize: 20.0,
-              fontWeight: FontWeight.bold),
+            color: AppData.colors["hintText"],
+            fontSize: 20.0,
+          ),
           filled: true,
           //fillColor: Color(0xFFF3F3F3),
           fillColor: AppData.colors["container"],
@@ -102,9 +107,19 @@ class _CommunityTab extends State<CommunityTab> {
             _buildSearchBar(),
             //Top lists
             ScrollableCategory(
-                label: const Text(
-                  "Top lists",
-                  style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold),
+                label: RichText(
+                  text: TextSpan(
+                      text: "Top ",
+                      style: const TextStyle(
+                          fontSize: 20.0,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black),
+                      children: [
+                        TextSpan(
+                            text: 'lists',
+                            style: TextStyle(
+                                color: AppData.colors["buttonSelected"])),
+                      ]),
                 ),
                 height:
                     MediaQuery.of(context).size.width * _scrollableCatHeight,
@@ -117,10 +132,19 @@ class _CommunityTab extends State<CommunityTab> {
             Container(
                 margin: const EdgeInsets.only(top: 40.0),
                 child: ScrollableCategory(
-                    label: const Text(
-                      "Recent lists",
-                      style: TextStyle(
-                          fontSize: 20.0, fontWeight: FontWeight.bold),
+                    label: RichText(
+                      text: TextSpan(
+                          text: "Recent ",
+                          style: const TextStyle(
+                              fontSize: 20.0,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black),
+                          children: [
+                            TextSpan(
+                                text: 'lists',
+                                style: TextStyle(
+                                    color: AppData.colors["buttonSelected"])),
+                          ]),
                     ),
                     height: MediaQuery.of(context).size.width *
                         _scrollableCatHeight,
@@ -131,10 +155,19 @@ class _CommunityTab extends State<CommunityTab> {
             Container(
                 margin: const EdgeInsets.only(top: 40.0),
                 child: ScrollableCategory(
-                    label: const Text(
-                      "Place holder",
-                      style: TextStyle(
-                          fontSize: 20.0, fontWeight: FontWeight.bold),
+                    label: RichText(
+                      text: TextSpan(
+                          text: "Place ",
+                          style: const TextStyle(
+                              fontSize: 20.0,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black),
+                          children: [
+                            TextSpan(
+                                text: 'holder',
+                                style: TextStyle(
+                                    color: AppData.colors["buttonSelected"])),
+                          ]),
                     ),
                     height: MediaQuery.of(context).size.width *
                         _scrollableCatHeight,
@@ -159,7 +192,7 @@ class ScrollableCategory extends StatefulWidget {
     required this.itemBuilder,
   }) : super(key: key);
 
-  final Text? label;
+  final RichText? label;
   final int? itemCount;
   final double height;
   final void Function(int) onTap;
@@ -223,22 +256,141 @@ class _ScrollableCategory extends State<ScrollableCategory> {
 }
 
 class ListTab extends StatefulWidget {
-  const ListTab({Key? key}) : super(key: key);
+  const ListTab({required this.wdId, required this.cd, Key? key})
+      : super(key: key);
+
+  final int Function() wdId;
+  final void Function(int) cd;
+
   @override
   State<ListTab> createState() => _ListTab();
 }
 
 class _ListTab extends State<ListTab> {
+  bool _addMenu = false;
+  bool _selectable = false;
+  List<int> _selection = [];
+
+  Widget _buildCard(int id) {
+    var item = UserData.get(id);
+    return Selectable(
+        tag: id,
+        tagsSelected: _selection,
+        selectable: _selectable,
+        clear: !_selectable,
+        child: GestureDetector(
+            onTap: () {
+              if (UserData.getTypeFromId(id) == DataType.category) {
+                setState(() => widget.cd(id));
+              }
+            },
+            onLongPress: () => setState(() {
+                  _selectable = true;
+                }),
+            child: Card(
+                margin: const EdgeInsets.all(10.0),
+                color: (UserData.getTypeFromId(id) == DataType.category
+                    ? Colors.grey
+                    : Colors.amber),
+                child: Center(
+                  child: Text(item != null ? item.name : ''),
+                ))));
+  }
+
+  Widget _buildAddBtns() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        _addItemBtn(
+          onPressed: () => setState(() {
+            UserData.add(AList("myList"), pid: widget.wdId());
+          }),
+          child: const Icon(Icons.list),
+        ),
+        _addItemBtn(
+            onPressed: () => setState(() {
+                  UserData.add(ACategory("myList"), pid: widget.wdId());
+                }),
+            child: const Icon(Icons.category)),
+        _addItemBtn(child: const Icon(Icons.cancel_sharp))
+      ],
+    );
+  }
+
+  Widget _buildSelectionBtns() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        FloatingActionButton(
+            onPressed: () => setState(() {
+                  UserData.rmAll(_selection);
+                  _selectable = false;
+                  _selection.clear();
+                }),
+            child: const Icon(Icons.delete)),
+        FloatingActionButton(
+            onPressed: () => setState(() {
+                  _selectable = false;
+                  _selection = [];
+                }),
+            child: const Icon(Icons.cancel_sharp))
+      ],
+    );
+  }
+
+  ACategory getDir(int id) {
+    ACategory? dir = UserData.get(id);
+    if (dir == null) {
+      throw Exception("The current directory can't be null");
+    }
+    return dir;
+  }
+
+  FloatingActionButton _addItemBtn(
+      {void Function()? onPressed, Widget? child}) {
+    return FloatingActionButton(
+        child: child,
+        onPressed: () => setState(() {
+              _addMenu = false;
+              if (onPressed != null) {
+                onPressed();
+              }
+            }));
+  }
+
   @override
   Widget build(BuildContext ctx) {
+    List dirTable = List.from(getDir(widget.wdId()).getTable());
     return Scaffold(
-      body: Column(
-        children: [],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        child: const Icon(Icons.add),
-      ),
+      body: Padding(
+          padding: const EdgeInsets.only(top: 20.0),
+          child: Column(
+            children: [
+              Expanded(
+                  child: GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 150,
+                        childAspectRatio: 1,
+                        crossAxisSpacing: 1,
+                        mainAxisSpacing: 1,
+                      ),
+                      itemCount: dirTable.length,
+                      itemBuilder: (BuildContext ctx, int i) {
+                        return _buildCard(dirTable[i]);
+                      }))
+            ],
+          )),
+      floatingActionButton: _addMenu
+          ? _buildAddBtns()
+          : (_selectable
+              ? _buildSelectionBtns()
+              : FloatingActionButton(
+                  onPressed: () => setState(() {
+                    _addMenu = true;
+                  }),
+                  child: const Icon(Icons.add),
+                )),
     );
   }
 }
