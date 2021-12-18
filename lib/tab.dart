@@ -31,7 +31,7 @@ List<Tab> tabs = [
   Tab(
       icon: const Icon(Icons.list),
       child: ListTab(
-        wdId: () => ListExplorerInfo.currentDir,
+        getWdId: () => ListExplorerInfo.currentDir,
         cd: (id) => ListExplorerInfo.currentDir = id,
       )),
 
@@ -256,10 +256,10 @@ class _ScrollableCategory extends State<ScrollableCategory> {
 }
 
 class ListTab extends StatefulWidget {
-  const ListTab({required this.wdId, required this.cd, Key? key})
+  const ListTab({required this.getWdId, required this.cd, Key? key})
       : super(key: key);
 
-  final int Function() wdId;
+  final int Function() getWdId;
   final void Function(int) cd;
 
   @override
@@ -269,32 +269,13 @@ class ListTab extends StatefulWidget {
 class _ListTab extends State<ListTab> {
   bool _addMenu = false;
   bool _selectable = false;
+  bool _enableSelect = true;
   List<int> _selection = [];
 
-  Widget _buildCard(int id) {
-    var item = UserData.get(id);
-    return Selectable(
-        tag: id,
-        tagsSelected: _selection,
-        selectable: _selectable,
-        clear: !_selectable,
-        child: GestureDetector(
-            onTap: () {
-              if (UserData.getTypeFromId(id) == DataType.category) {
-                setState(() => widget.cd(id));
-              }
-            },
-            onLongPress: () => setState(() {
-                  _selectable = true;
-                }),
-            child: Card(
-                margin: const EdgeInsets.all(10.0),
-                color: (UserData.getTypeFromId(id) == DataType.category
-                    ? Colors.grey
-                    : Colors.amber),
-                child: Center(
-                  child: Text(item != null ? item.name : ''),
-                ))));
+  bool _enableSelection() {
+    bool ret = _enableSelect;
+    _enableSelect = true;
+    return ret;
   }
 
   Widget _buildAddBtns() {
@@ -303,13 +284,13 @@ class _ListTab extends State<ListTab> {
       children: [
         _addItemBtn(
           onPressed: () => setState(() {
-            UserData.add(AList("myList"), pid: widget.wdId());
+            UserData.add(AList("myList"), pid: widget.getWdId());
           }),
           child: const Icon(Icons.list),
         ),
         _addItemBtn(
             onPressed: () => setState(() {
-                  UserData.add(ACategory("myList"), pid: widget.wdId());
+                  UserData.add(ACategory("myList"), pid: widget.getWdId());
                 }),
             child: const Icon(Icons.category)),
         _addItemBtn(child: const Icon(Icons.cancel_sharp))
@@ -318,32 +299,31 @@ class _ListTab extends State<ListTab> {
   }
 
   Widget _buildSelectionBtns() {
+    print('selection buttons');
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         FloatingActionButton(
-            onPressed: () => setState(() {
-                  UserData.rmAll(_selection);
-                  _selectable = false;
-                  _selection.clear();
-                }),
+            onPressed: () {
+              setState(() {
+                UserData.rmAll(_selection);
+                _selectable = false;
+                _selection.clear();
+              });
+            },
             child: const Icon(Icons.delete)),
         FloatingActionButton(
-            onPressed: () => setState(() {
-                  _selectable = false;
-                  _selection = [];
-                }),
+            onPressed: () {
+              setState(() {
+                _selectable = false;
+                _selection = [];
+                _enableSelect = false;
+              });
+            },
             child: const Icon(Icons.cancel_sharp))
       ],
     );
-  }
-
-  ACategory getDir(int id) {
-    ACategory? dir = UserData.get(id);
-    if (dir == null) {
-      throw Exception("The current directory can't be null");
-    }
-    return dir;
   }
 
   FloatingActionButton _addItemBtn(
@@ -360,27 +340,16 @@ class _ListTab extends State<ListTab> {
 
   @override
   Widget build(BuildContext ctx) {
-    List dirTable = List.from(getDir(widget.wdId()).getTable());
-    return Scaffold(
-      body: Padding(
-          padding: const EdgeInsets.only(top: 20.0),
-          child: Column(
-            children: [
-              Expanded(
-                  child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 150,
-                        childAspectRatio: 1,
-                        crossAxisSpacing: 1,
-                        mainAxisSpacing: 1,
-                      ),
-                      itemCount: dirTable.length,
-                      itemBuilder: (BuildContext ctx, int i) {
-                        return _buildCard(dirTable[i]);
-                      }))
-            ],
-          )),
+    return FileExplorer(
+      cd: widget.cd,
+      getWdId: widget.getWdId,
+      enableSelection: _enableSelection,
+      onSelection: () => setState(() {
+        _selectable = true;
+      }),
+      onSelected: (id, value) {
+        value ? _selection.add(id) : _selection.remove(id);
+      },
       floatingActionButton: _addMenu
           ? _buildAddBtns()
           : (_selectable
