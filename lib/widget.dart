@@ -68,16 +68,19 @@ class _Selectable extends State<Selectable> {
 }
 
 class FileExplorer extends StatefulWidget {
-  const FileExplorer(
-      {required this.cd,
+  FileExplorer(
+      {FileExplorerData? data,
+      required this.cd,
       required this.getWdId,
       this.floatingActionButton,
       this.onSelection,
       this.onSelected,
       this.enableSelection,
       Key? key})
-      : super(key: key);
+      : data = data ?? FileExplorerData(),
+        super(key: key);
 
+  final FileExplorerData data;
   final int Function() getWdId;
   final void Function(int) cd;
   final Widget? floatingActionButton;
@@ -90,8 +93,35 @@ class FileExplorer extends StatefulWidget {
 }
 
 class _FileExplorer extends State<FileExplorer> {
-  final List<int> _selection = [];
   bool _selectable = false;
+  final PageController _navController = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.data.navHistory.isEmpty) {
+      widget.data.navHistory.add(widget.getWdId());
+    }
+  }
+
+  void cd(int id) {
+    widget.cd(id);
+
+    if (!widget.data.navHistory.contains(id)) {
+      int parent = UserData.get(id)!.parent;
+
+      //remove ids from parent+1 to end
+      widget.data.navHistory.removeRange(
+          widget.data.navHistory.indexOf(parent) + 1,
+          widget.data.navHistory.length);
+
+      widget.data.navHistory.add(id);
+    }
+
+    _navController.nextPage(
+        duration: const Duration(milliseconds: 250), curve: Curves.linear);
+  }
 
   bool _enableSelection() =>
       widget.enableSelection != null ? widget.enableSelection!() : true;
@@ -104,14 +134,17 @@ class _FileExplorer extends State<FileExplorer> {
     var item = UserData.get(id);
     return Selectable(
         tag: id,
-        onSelected: (id, value) =>
-            widget.onSelected != null ? widget.onSelected!(id, value) : () {},
+        onSelected: (id, value) {
+          if (widget.onSelected != null) {
+            widget.onSelected!(id, value);
+          }
+        },
         selectable: _selectable,
         clear: true,
         child: GestureDetector(
             onTap: () {
               if (UserData.getTypeFromId(id) == DataType.category) {
-                setState(() => widget.cd(id));
+                setState(() => cd(id));
               }
             },
             onLongPress: () => setState(() {
@@ -132,28 +165,36 @@ class _FileExplorer extends State<FileExplorer> {
 
   @override
   Widget build(BuildContext ctx) {
-    List<int> idsTable = List.from(UserData.get(widget.getWdId()).getTable());
-
     return Scaffold(
-      body: Padding(
-          padding: const EdgeInsets.only(top: 20.0),
-          child: Column(
-            children: [
-              Expanded(
-                  child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 150,
-                        childAspectRatio: 1,
-                        crossAxisSpacing: 1,
-                        mainAxisSpacing: 1,
-                      ),
-                      itemCount: idsTable.length,
-                      itemBuilder: (BuildContext ctx, int i) {
-                        return _buildItem(idsTable[i]);
-                      }))
-            ],
-          )),
+      body: PageView.builder(
+          onPageChanged: (value) =>
+              widget.cd(widget.data.navHistory[value]), //refresh current dir
+          controller: _navController,
+          itemCount: widget.data.navHistory.length,
+          itemBuilder: (ctx, page) {
+            List<int> idsTable = List.from(
+                UserData.get(widget.data.navHistory[page]).getTable());
+
+            return Padding(
+                padding: const EdgeInsets.only(top: 20.0),
+                child: Column(
+                  children: [
+                    Expanded(
+                        child: GridView.builder(
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 150,
+                              childAspectRatio: 1,
+                              crossAxisSpacing: 1,
+                              mainAxisSpacing: 1,
+                            ),
+                            itemCount: idsTable.length,
+                            itemBuilder: (BuildContext ctx, int i) {
+                              return _buildItem(idsTable[i]);
+                            }))
+                  ],
+                ));
+          }),
       floatingActionButton: widget.floatingActionButton,
     );
   }
