@@ -94,7 +94,9 @@ class FileExplorer extends StatefulWidget {
 
 class _FileExplorer extends State<FileExplorer> {
   bool _selectable = false;
-  final PageController _navController = PageController();
+  PageController _navController = PageController();
+  final ScrollController _scrollController = ScrollController();
+  final Duration _animateToDuration = const Duration(milliseconds: 250);
 
   @override
   void initState() {
@@ -103,6 +105,8 @@ class _FileExplorer extends State<FileExplorer> {
     if (widget.data.navHistory.isEmpty) {
       widget.data.navHistory.add(widget.getWdId());
     }
+
+    _navController = PageController(initialPage: widget.getWdId());
   }
 
   void cd(int id) {
@@ -166,35 +170,65 @@ class _FileExplorer extends State<FileExplorer> {
   @override
   Widget build(BuildContext ctx) {
     return Scaffold(
-      body: PageView.builder(
-          onPageChanged: (value) =>
-              widget.cd(widget.data.navHistory[value]), //refresh current dir
-          controller: _navController,
-          itemCount: widget.data.navHistory.length,
-          itemBuilder: (ctx, page) {
-            List<int> idsTable = List.from(
-                UserData.get(widget.data.navHistory[page]).getTable());
+      body: Column(children: [
+        SizedBox(
+            height: 40,
+            child: ListView.builder(
+                controller: _scrollController,
+                scrollDirection: Axis.horizontal,
+                itemCount: widget.data.navHistory.length,
+                itemBuilder: (ctx, i) {
+                  int id = widget.data.navHistory[i];
+                  ACategory cat = UserData.get(id);
 
-            return Padding(
-                padding: const EdgeInsets.only(top: 20.0),
-                child: Column(
-                  children: [
-                    Expanded(
-                        child: GridView.builder(
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 150,
-                              childAspectRatio: 1,
-                              crossAxisSpacing: 1,
-                              mainAxisSpacing: 1,
-                            ),
-                            itemCount: idsTable.length,
-                            itemBuilder: (BuildContext ctx, int i) {
-                              return _buildItem(idsTable[i]);
-                            }))
-                  ],
-                ));
-          }),
+                  return GestureDetector(
+                      onTap: () {
+                        int dir = i > (_navController.page ?? 0) ? 1 : -1;
+
+                        _scrollController.animateTo(i * 100.0 * dir,
+                            duration: _animateToDuration, curve: Curves.linear);
+
+                        _navController.animateToPage(i,
+                            duration: _animateToDuration, curve: Curves.linear);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                        color:
+                            id == widget.getWdId() ? Colors.blue : Colors.white,
+                        child: Center(child: Text(cat.name)),
+                      ));
+                })),
+        Expanded(
+            child: PageView.builder(
+                onPageChanged: (value) => setState(() {
+                      //refresh current dir
+                      widget.cd(widget.data.navHistory[value]);
+                    }),
+                controller: _navController,
+                itemCount: widget.data.navHistory.length,
+                itemBuilder: (ctx, page) {
+                  List<int> idsTable = List.from(
+                      UserData.get(widget.data.navHistory[page]).getTable());
+
+                  return Column(
+                    children: [
+                      Expanded(
+                          child: GridView.builder(
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 150,
+                                childAspectRatio: 1,
+                                crossAxisSpacing: 1,
+                                mainAxisSpacing: 1,
+                              ),
+                              itemCount: idsTable.length,
+                              itemBuilder: (BuildContext ctx, int i) {
+                                return _buildItem(idsTable[i]);
+                              }))
+                    ],
+                  );
+                }))
+      ]),
       floatingActionButton: widget.floatingActionButton,
     );
   }
