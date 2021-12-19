@@ -170,7 +170,7 @@ class UserData {
 
     if (_idTable.isEmpty) {
       add(ACategory(null, 'root'));
-    } else if (_idTable[0].runtimeType != ACategory) {
+    } else if (_idTable[0] is! ACategory) {
       throw Exception("The first id must be attributed to a category");
     }
   }
@@ -187,12 +187,12 @@ class UserData {
     return ids.difference(Set.from(_idTable.keys));
   }
 
-  static int add(AFile item, {int? pid}) {
+  static int add(AFile item) {
     _isInit();
 
-    DataType type = item.runtimeType == ACategory
+    DataType type = item is ACategory
         ? DataType.category
-        : (item.runtimeType == AList ? DataType.list : DataType.quiz);
+        : (item is AList ? DataType.list : DataType.quiz);
 
     int id = genId(type);
     _idTable[id] = item;
