@@ -5,10 +5,16 @@ import 'package:tuple/tuple.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-class ACategory {
-  ACategory(this.name);
+abstract class AFile {
+  AFile(this.parent, this.name);
 
+  dynamic parent;
   String name;
+}
+
+class ACategory extends AFile {
+  ACategory(dynamic parent, String name) : super(parent, name);
+
   final Set<int> _table = {};
 
   bool contains(int id) {
@@ -33,13 +39,12 @@ class ACategory {
   }
 }
 
-class AList {
-  AList(this.name);
+class AList extends AFile {
+  AList(dynamic parent, String name) : super(parent, name);
   AList.from(AList list)
-      : name = list.name,
-        _content = List.from(list._content);
+      : _content = List.from(list._content),
+        super(list.parent, list.name);
 
-  String name;
   List<Tuple2<String, String>> _content = [];
 
   bool contains(Tuple2<String, String>? element) {
@@ -69,13 +74,12 @@ class AList {
   }
 }
 
-class AQuiz {
-  AQuiz(this.name, this.lists);
+class AQuiz extends AFile {
+  AQuiz(dynamic parent, String name, this.lists) : super(parent, name);
   AQuiz.copy(AQuiz quiz)
-      : name = quiz.name,
-        lists = List.from(quiz.lists);
+      : lists = List.from(quiz.lists),
+        super(quiz.parent, quiz.name);
 
-  String name;
   List<String> lists;
   static final Map<String, dynamic> _options = {};
 
@@ -132,9 +136,10 @@ class ListExplorerInfo {
 enum DataType { category, list, quiz }
 
 class UserData {
-  static final SplayTreeMap<int, dynamic> _idTable = SplayTreeMap();
+  static final SplayTreeMap<int, AFile> _idTable = SplayTreeMap();
   static int _idPtr = -2;
   static final int _idTypeShift = 63 - DataType.values.last.index;
+  static final FileExplorerData fileExplorerData = FileExplorerData();
 
   static int genId(DataType dt) {
     // Generate an id on 64 bits
@@ -164,7 +169,7 @@ class UserData {
     _idPtr = _idTable.lastKey() ?? -1;
 
     if (_idTable.isEmpty) {
-      add(ACategory('root'));
+      add(ACategory(null, 'root'));
     } else if (_idTable[0].runtimeType != ACategory) {
       throw Exception("The first id must be attributed to a category");
     }
@@ -182,7 +187,7 @@ class UserData {
     return ids.difference(Set.from(_idTable.keys));
   }
 
-  static int add(dynamic item, {int? pid}) {
+  static int add(AFile item, {int? pid}) {
     _isInit();
 
     DataType type = item.runtimeType == ACategory
@@ -193,8 +198,8 @@ class UserData {
     _idTable[id] = item;
 
     // ignore if root
-    if (id != ListExplorerInfo.rootId) {
-      ACategory parent = get(pid ?? ListExplorerInfo.currentDir);
+    if (item.parent != null) {
+      ACategory parent = get(item.parent);
       parent.add(id);
     }
 
@@ -233,6 +238,12 @@ class AppData {
     "buttonIdle": const Color(0xFFBDBDBD),
     "border": const Color(0xFFBFBFBF)
   };
+}
+
+class FileExplorerData {
+  FileExplorerData() : navHistory = [];
+
+  List<int> navHistory;
 }
 
 loadInitialData() {
