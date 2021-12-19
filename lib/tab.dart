@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/widget.dart';
 
-class Tab {
-  Tab({required Icon icon, required Widget child, bool isMain = false})
+class ATab {
+  ATab({required Icon icon, required Widget child, bool isMain = false})
       : _icon = icon,
         tabIcon = isMain ? const Icon(Icons.home) : icon,
         tab = child,
@@ -15,39 +15,6 @@ class Tab {
   Widget tab;
   bool bMain;
 }
-
-List<Tab> tabs = [
-  //community
-  Tab(
-      icon: const Icon(Icons.family_restroom),
-      isMain: true,
-      child: const CommunityTab()),
-  //Column(
-  //    mainAxisAlignment: MainAxisAlignment.center,
-  //    crossAxisAlignment: CrossAxisAlignment.center,
-  //    children: const [Center(child: Text("community"))])),
-
-  //list
-  Tab(
-      icon: const Icon(Icons.list),
-      child: ListTab(
-        getWdId: () => ListExplorerInfo.currentDir,
-        cd: (id) => ListExplorerInfo.currentDir = id,
-      )),
-
-  Tab(
-      icon: const Icon(Icons.quiz),
-      child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: const [Center(child: Text("quizz"))])), //quizz
-  Tab(
-      icon: const Icon(Icons.settings),
-      child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: const [Center(child: Text("settings"))])), //settings
-];
 
 class CommunityTab extends StatefulWidget {
   const CommunityTab({Key? key}) : super(key: key);
@@ -270,7 +237,7 @@ class _ListTab extends State<ListTab> {
   bool _addMenu = false;
   bool _selectable = false;
   bool _enableSelect = true;
-  List<int> _selection = [];
+  final List<int> _selection = [];
 
   bool _enableSelection() {
     bool ret = _enableSelect;
@@ -284,13 +251,13 @@ class _ListTab extends State<ListTab> {
       children: [
         _addItemBtn(
           onPressed: () => setState(() {
-            UserData.add(AList("myList"), pid: widget.getWdId());
+            UserData.add(AList(widget.getWdId(), "myList"));
           }),
           child: const Icon(Icons.list),
         ),
         _addItemBtn(
             onPressed: () => setState(() {
-                  UserData.add(ACategory("myList"), pid: widget.getWdId());
+                  UserData.add(ACategory(widget.getWdId(), "myCat"));
                 }),
             child: const Icon(Icons.category)),
         _addItemBtn(child: const Icon(Icons.cancel_sharp))
@@ -299,8 +266,6 @@ class _ListTab extends State<ListTab> {
   }
 
   Widget _buildSelectionBtns() {
-    print('selection buttons');
-
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
@@ -310,6 +275,7 @@ class _ListTab extends State<ListTab> {
                 UserData.rmAll(_selection);
                 _selectable = false;
                 _selection.clear();
+                _enableSelect = false;
               });
             },
             child: const Icon(Icons.delete)),
@@ -317,7 +283,7 @@ class _ListTab extends State<ListTab> {
             onPressed: () {
               setState(() {
                 _selectable = false;
-                _selection = [];
+                _selection.clear();
                 _enableSelect = false;
               });
             },
@@ -341,6 +307,7 @@ class _ListTab extends State<ListTab> {
   @override
   Widget build(BuildContext ctx) {
     return FileExplorer(
+      data: UserData.fileExplorerData,
       cd: widget.cd,
       getWdId: widget.getWdId,
       enableSelection: _enableSelection,
