@@ -47,12 +47,7 @@ class _MyHomePageState extends State<MyHomePage> {
           child: const CommunityTab()),
 
       //list
-      ATab(
-          icon: const Icon(Icons.list),
-          child: ListTab(
-            getWdId: () => ListExplorerInfo.currentDir,
-            cd: (id) => setState(() => ListExplorerInfo.currentDir = id),
-          )),
+      ATab(icon: const Icon(Icons.list), child: ListTab()),
 
       ATab(
           icon: const Icon(Icons.quiz),

@@ -223,11 +223,7 @@ class _ScrollableCategory extends State<ScrollableCategory> {
 }
 
 class ListTab extends StatefulWidget {
-  const ListTab({required this.getWdId, required this.cd, Key? key})
-      : super(key: key);
-
-  final int Function() getWdId;
-  final void Function(int) cd;
+  const ListTab({Key? key}) : super(key: key);
 
   @override
   State<ListTab> createState() => _ListTab();
@@ -251,13 +247,14 @@ class _ListTab extends State<ListTab> {
       children: [
         _addItemBtn(
           onPressed: () => setState(() {
-            UserData.add(AList(widget.getWdId(), "myList"));
+            UserData.listData.add(AList(UserData.listData.wd, "myList"));
           }),
           child: const Icon(Icons.list),
         ),
         _addItemBtn(
             onPressed: () => setState(() {
-                  UserData.add(ACategory(widget.getWdId(), "myCat"));
+                  UserData.listData
+                      .add(ACategory(UserData.listData.wd, "myCat"));
                 }),
             child: const Icon(Icons.category)),
         _addItemBtn(child: const Icon(Icons.cancel_sharp))
@@ -272,7 +269,7 @@ class _ListTab extends State<ListTab> {
         FloatingActionButton(
             onPressed: () {
               setState(() {
-                UserData.rmAll(_selection);
+                UserData.listData.rmAll(_selection);
                 _selectable = false;
                 _selection.clear();
                 _enableSelect = false;
@@ -307,9 +304,7 @@ class _ListTab extends State<ListTab> {
   @override
   Widget build(BuildContext ctx) {
     return FileExplorer(
-      data: UserData.fileExplorerData,
-      cd: widget.cd,
-      getWdId: widget.getWdId,
+      data: UserData.listData,
       enableSelection: _enableSelection,
       onSelection: () => setState(() {
         _selectable = true;

@@ -70,8 +70,6 @@ class _Selectable extends State<Selectable> {
 class FileExplorer extends StatefulWidget {
   FileExplorer(
       {FileExplorerData? data,
-      required this.cd,
-      required this.getWdId,
       this.floatingActionButton,
       this.onSelection,
       this.onSelected,
@@ -81,8 +79,6 @@ class FileExplorer extends StatefulWidget {
         super(key: key);
 
   final FileExplorerData data;
-  final int Function() getWdId;
-  final void Function(int) cd;
   final Widget? floatingActionButton;
   final void Function()? onSelection;
   final void Function(int tag, bool value)? onSelected;
@@ -103,17 +99,17 @@ class _FileExplorer extends State<FileExplorer> {
     super.initState();
 
     if (widget.data.navHistory.isEmpty) {
-      widget.data.navHistory.add(widget.getWdId());
+      widget.data.navHistory.add(widget.data.wd);
     }
 
-    _navController = PageController(initialPage: widget.getWdId());
+    _navController = PageController(initialPage: widget.data.wd);
   }
 
   void cd(int id) {
-    widget.cd(id);
+    widget.data.cd(id);
 
     if (!widget.data.navHistory.contains(id)) {
-      int parent = UserData.get(id)!.parent;
+      int parent = widget.data.get(id)!.parent;
 
       //remove ids from parent+1 to end
       widget.data.navHistory.removeRange(
@@ -135,7 +131,7 @@ class _FileExplorer extends State<FileExplorer> {
       _selectable = false;
     }
 
-    var item = UserData.get(id);
+    var item = widget.data.get(id);
     return Selectable(
         tag: id,
         onSelected: (id, value) {
@@ -147,7 +143,7 @@ class _FileExplorer extends State<FileExplorer> {
         clear: true,
         child: GestureDetector(
             onTap: () {
-              if (UserData.getTypeFromId(id) == DataType.category) {
+              if (widget.data.getTypeFromId(id) == DataType.category) {
                 setState(() => cd(id));
               }
             },
@@ -159,7 +155,7 @@ class _FileExplorer extends State<FileExplorer> {
                 }),
             child: Card(
                 margin: const EdgeInsets.all(10.0),
-                color: (UserData.getTypeFromId(id) == DataType.category
+                color: (widget.data.getTypeFromId(id) == DataType.category
                     ? Colors.grey
                     : Colors.amber),
                 child: Center(
@@ -179,7 +175,7 @@ class _FileExplorer extends State<FileExplorer> {
                 itemCount: widget.data.navHistory.length,
                 itemBuilder: (ctx, i) {
                   int id = widget.data.navHistory[i];
-                  ACategory cat = UserData.get(id);
+                  ACategory cat = widget.data.get(id);
 
                   return GestureDetector(
                       onTap: () {
@@ -194,7 +190,7 @@ class _FileExplorer extends State<FileExplorer> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10.0),
                         color:
-                            id == widget.getWdId() ? Colors.blue : Colors.white,
+                            id == widget.data.wd ? Colors.blue : Colors.white,
                         child: Center(child: Text(cat.name)),
                       ));
                 })),
@@ -202,13 +198,13 @@ class _FileExplorer extends State<FileExplorer> {
             child: PageView.builder(
                 onPageChanged: (value) => setState(() {
                       //refresh current dir
-                      widget.cd(widget.data.navHistory[value]);
+                      widget.data.cd(widget.data.navHistory[value]);
                     }),
                 controller: _navController,
                 itemCount: widget.data.navHistory.length,
                 itemBuilder: (ctx, page) {
                   List<int> idsTable = List.from(
-                      UserData.get(widget.data.navHistory[page]).getTable());
+                      widget.data.get(widget.data.navHistory[page]).getTable());
 
                   return Column(
                     children: [
