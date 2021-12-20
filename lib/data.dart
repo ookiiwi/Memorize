@@ -153,6 +153,10 @@ class FileExplorerData {
     _wd = id;
   }
 
+  void clearHistory({int start = 0}) {
+    navHistory.removeRange(start, navHistory.length);
+  }
+
   int genId(DataType dt) {
     // Generate an id on 64 bits
     // The 'DataType.last.index' last bits are for the type
@@ -194,8 +198,21 @@ class FileExplorerData {
   }
 
   dynamic rm(int id) {
-    //id should be removed from parent table by parent on sanity check
-    return _idTable.remove(id);
+    if (id == 0) {
+      throw Exception("Root category must not be removed");
+    }
+
+    AFile? ret = _idTable.remove(id);
+
+    // remove id from parent
+    if (ret != null) {
+      ACategory parent = get(ret.parent);
+      parent.rm(id);
+
+      clearHistory(start: navHistory.indexOf(ret.parent) + 1);
+    }
+
+    return ret;
   }
 
   void rmAll(List<int> ids) {
