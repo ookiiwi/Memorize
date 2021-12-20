@@ -2,10 +2,15 @@ import 'package:memorize/data.dart';
 import 'package:tuple/tuple.dart';
 
 void main() {
-  UserData.init();
-
   // add items
-  AList myList = AList("myList");
+  ACategory myCat = ACategory(UserData.listData.wd, "myCat");
+
+  // add a list to UserData && get data from UserData
+  int myCatId = UserData.listData.add(myCat);
+  assert(UserData.listData.get(myCatId) != null,
+      "A category must be added to UserData");
+
+  AList myList = AList(myCatId, "myList");
 
   myList.add(const Tuple2("chat", "cat"));
   assert(myList.contains(const Tuple2("chat", "cat")));
@@ -31,15 +36,11 @@ void main() {
       "Orignal list and copied list must be distinct");
 
   // add a list to UserData && get data from UserData
-  int myListId = UserData.add(myList);
-  assert(UserData.get(myListId) != null, "A list must be added to UserData");
-
-  // add item to a cat
-  ACategory myCat = ACategory("myCat");
-  assert(myCat.add(myListId), "Item must be added to the category");
+  int myListId = UserData.listData.add(myList);
 
   // remove data from UserData
-  assert(UserData.rm(myListId) != null, "Data must be removed from UserData");
+  assert(UserData.listData.rm(myListId) != null,
+      "Data must be removed from UserData");
 
   // get category content && sanity check
   myCat.getTable();

@@ -73,6 +73,6 @@ void main() {
     await tester.tap(find.text('myCat'));
     await tester.pump();
 
-    expect(find.text('myCat'), findsNothing);
+    expect(find, findsOneWidget);
   });
 }
