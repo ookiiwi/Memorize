@@ -112,9 +112,8 @@ class _FileExplorer extends State<FileExplorer> {
       int parent = widget.data.get(id)!.parent;
 
       //remove ids from parent+1 to end
-      widget.data.navHistory.removeRange(
-          widget.data.navHistory.indexOf(parent) + 1,
-          widget.data.navHistory.length);
+      widget.data
+          .clearHistory(start: widget.data.navHistory.indexOf(parent) + 1);
 
       widget.data.navHistory.add(id);
     }
