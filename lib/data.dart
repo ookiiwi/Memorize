@@ -30,7 +30,7 @@ class ACategory extends AFile {
   }
 
   void _sanityCheck() {
-    _table.removeAll(UserData.checkIds(_table));
+    //_table.removeAll(UserData.checkIds(_table));
   }
 
   Set getTable() {
@@ -101,6 +101,7 @@ class AQuiz extends AFile {
     List keys = [];
     List values = [];
 
+    /*
     for (var name in selection) {
       //TODO: check if name exist in register
       List list = UserData.get(name)
@@ -124,28 +125,38 @@ class AQuiz extends AFile {
       }
     }
 
+    */
     return Tuple2<List, List>(keys, values);
   }
 }
 
-class ListExplorerInfo {
-  static int rootId = 0;
-  static int currentDir = rootId;
-}
-
 enum DataType { category, list, quiz }
 
-class UserData {
-  static final SplayTreeMap<int, AFile> _idTable = SplayTreeMap();
-  static int _idPtr = -2;
-  static final int _idTypeShift = 63 - DataType.values.last.index;
-  static final FileExplorerData fileExplorerData = FileExplorerData();
+class FileExplorerData {
+  FileExplorerData()
+      : _idTable = SplayTreeMap(),
+        _idPtr = -1,
+        _idTypeShift = 63 - DataType.values.last.index,
+        navHistory = [],
+        _wd = 0 {
+    add(ACategory(null, 'root'));
+  }
 
-  static int genId(DataType dt) {
+  final SplayTreeMap<int, AFile> _idTable;
+  int _idPtr;
+  final int _idTypeShift;
+  final List<int> navHistory;
+  int _wd;
+  int get wd => _wd;
+
+  void cd(int id) {
+    _wd = id;
+  }
+
+  int genId(DataType dt) {
     // Generate an id on 64 bits
     // The 'DataType.last.index' last bits are for the type
 
-    _isInit();
     int ret = ++_idPtr;
 
     if (ret > pow(2, _idTypeShift)) {
@@ -155,41 +166,17 @@ class UserData {
     return (dt.index << _idTypeShift) | ret;
   }
 
-  static DataType getTypeFromId(int id) {
+  DataType getTypeFromId(int id) {
     return DataType.values.firstWhere((e) => e.index == id >> _idTypeShift);
   }
 
-  static void init() {
-    if (_idPtr >= -1) {
-      return;
-    }
-
-    //TODO: init _idTable
-
-    _idPtr = _idTable.lastKey() ?? -1;
-
-    if (_idTable.isEmpty) {
-      add(ACategory(null, 'root'));
-    } else if (_idTable[0] is! ACategory) {
-      throw Exception("The first id must be attributed to a category");
-    }
-  }
-
-  static void _isInit() {
-    if (_idPtr < -1) {
-      throw Exception("UserData must be initiated");
-    }
-  }
-
-  static Set checkIds(Set ids) {
+  Set checkIds(Set ids) {
     //Return a set of invalid ids
-    _isInit();
+
     return ids.difference(Set.from(_idTable.keys));
   }
 
-  static int add(AFile item) {
-    _isInit();
-
+  int add(AFile item) {
     DataType type = item is ACategory
         ? DataType.category
         : (item is AList ? DataType.list : DataType.quiz);
@@ -206,30 +193,28 @@ class UserData {
     return id;
   }
 
-  static dynamic rm(int id) {
-    _isInit();
-
+  dynamic rm(int id) {
     //id should be removed from parent table by parent on sanity check
     return _idTable.remove(id);
   }
 
-  static void rmAll(List<int> ids) {
+  void rmAll(List<int> ids) {
     for (int id in ids) {
       rm(id);
     }
   }
 
-  static dynamic get(int id) {
-    _isInit();
+  dynamic get(int id) {
     return _idTable[id];
   }
 }
 
-class AppData {
-  //static Color bar = const Color(0xFFF3F3F3);
-  //static Color container = const Color(0xFFEBEAEA);
-  //static Color red = const Color(0xFFB01919);
+class UserData {
+  static final FileExplorerData listData = FileExplorerData();
+  static final FileExplorerData quizData = FileExplorerData();
+}
 
+class AppData {
   static Map<String, Color> colors = {
     "bar": const Color(0xFFF3F3F3),
     "container": const Color(0xFFEBEAEA),
@@ -240,12 +225,6 @@ class AppData {
   };
 }
 
-class FileExplorerData {
-  FileExplorerData() : navHistory = [];
-
-  List<int> navHistory;
-}
-
 loadInitialData() {
-  UserData.init();
+  //TODO: load user data
 }
