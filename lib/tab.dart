@@ -230,98 +230,58 @@ class ListTab extends StatefulWidget {
 }
 
 class _ListTab extends State<ListTab> {
-  bool _addMenu = false;
-  bool _selectable = false;
-  bool _enableSelect = true;
-  final List<int> _selection = [];
-
-  bool _enableSelection() {
-    bool ret = _enableSelect;
-    _enableSelect = true;
-    return ret;
-  }
-
-  Widget _buildAddBtns() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        _addItemBtn(
-          onPressed: () => setState(() {
-            UserData.listData.add(AList(UserData.listData.wd, "myList"));
-          }),
-          child: const Icon(Icons.list),
-        ),
-        _addItemBtn(
-            onPressed: () => setState(() {
-                  UserData.listData
-                      .add(ACategory(UserData.listData.wd, "myCat"));
-                }),
-            child: const Icon(Icons.category)),
-        _addItemBtn(child: const Icon(Icons.cancel_sharp))
-      ],
-    );
-  }
-
-  Widget _buildSelectionBtns() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        FloatingActionButton(
-            onPressed: () {
-              setState(() {
-                UserData.listData.rmAll(_selection);
-                _selectable = false;
-                _selection.clear();
-                _enableSelect = false;
-              });
-            },
-            child: const Icon(Icons.delete)),
-        FloatingActionButton(
-            onPressed: () {
-              setState(() {
-                _selectable = false;
-                _selection.clear();
-                _enableSelect = false;
-              });
-            },
-            child: const Icon(Icons.cancel_sharp))
-      ],
-    );
-  }
-
-  FloatingActionButton _addItemBtn(
-      {void Function()? onPressed, Widget? child}) {
-    return FloatingActionButton(
-        child: child,
-        onPressed: () => setState(() {
-              _addMenu = false;
-              if (onPressed != null) {
-                onPressed();
-              }
-            }));
-  }
+  bool _enableMenus = true;
 
   @override
   Widget build(BuildContext ctx) {
-    return FileExplorer(
+    return SimpleFileExplorer(
       data: UserData.listData,
-      enableSelection: _enableSelection,
-      onSelection: () => setState(() {
-        _selectable = true;
-      }),
-      onSelected: (id, value) {
-        value ? _selection.add(id) : _selection.remove(id);
+      enableMenus: () {
+        bool ret = _enableMenus;
+        _enableMenus = true;
+        return ret;
       },
-      floatingActionButton: _addMenu
-          ? _buildAddBtns()
-          : (_selectable
-              ? _buildSelectionBtns()
-              : FloatingActionButton(
-                  onPressed: () => setState(() {
-                    _addMenu = true;
-                  }),
-                  child: const Icon(Icons.add),
-                )),
+      addBtns: [
+        FloatingActionButton(
+          onPressed: () => setState(() {
+            UserData.listData.add(AList(UserData.listData.wd, "myList"));
+            _enableMenus = false;
+          }),
+          child: const Icon(Icons.list),
+        )
+      ],
+    );
+  }
+}
+
+class QuizTab extends StatefulWidget {
+  const QuizTab({Key? key}) : super(key: key);
+
+  @override
+  State<QuizTab> createState() => _QuizTab();
+}
+
+class _QuizTab extends State<QuizTab> {
+  bool _enableMenus = true;
+
+  @override
+  Widget build(BuildContext ctx) {
+    return SimpleFileExplorer(
+      data: UserData.quizData,
+      enableMenus: () {
+        bool ret = _enableMenus;
+        _enableMenus = true;
+        return ret;
+      },
+      addBtns: [
+        FloatingActionButton(
+          onPressed: () => setState(() {
+            //UserData.quizData.add(AQuiz(UserData.listData.wd, "myQuiz"));
+            _enableMenus = false;
+          }),
+          child: const Icon(Icons.quiz),
+        )
+      ],
     );
   }
 }
