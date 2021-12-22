@@ -70,7 +70,7 @@ class _Selectable extends State<Selectable> {
 class FileExplorer extends StatefulWidget {
   FileExplorer(
       {FileExplorerData? data,
-      this.floatingActionButton,
+      this.children,
       this.onSelection,
       this.onSelected,
       this.enableSelection,
@@ -79,7 +79,7 @@ class FileExplorer extends StatefulWidget {
         super(key: key);
 
   final FileExplorerData data;
-  final Widget? floatingActionButton;
+  final List<Widget>? children;
   final void Function()? onSelection;
   final void Function(int tag, bool value)? onSelected;
   final bool Function()? enableSelection;
@@ -219,12 +219,132 @@ class _FileExplorer extends State<FileExplorer> {
                               itemCount: idsTable.length,
                               itemBuilder: (BuildContext ctx, int i) {
                                 return _buildItem(idsTable[i]);
-                              }))
+                              })),
+                      Expanded(
+                          child: Stack(
+                        children: widget.children ?? const <Widget>[],
+                      )),
                     ],
                   );
                 }))
       ]),
-      floatingActionButton: widget.floatingActionButton,
+    );
+  }
+}
+
+enum SimpleFileExplorerBtnMenu { add, selection }
+
+// let user customize basic stuff like add buttons and deletion buttons
+class SimpleFileExplorer extends StatefulWidget {
+  const SimpleFileExplorer(
+      {Key? key,
+      required this.data,
+      this.addBtns,
+      this.selectionBtns,
+      this.enableMenus})
+      : super(key: key);
+
+  final FileExplorerData data;
+  final List<Widget>? addBtns;
+  final List<Widget>? selectionBtns;
+  final bool Function()? enableMenus;
+
+  @override
+  State<SimpleFileExplorer> createState() => _SimpleFileExplorer();
+}
+
+class _SimpleFileExplorer extends State<SimpleFileExplorer> {
+  bool _canSelect = true;
+  final List<int> _selection = [];
+  final Map<SimpleFileExplorerBtnMenu, List<Widget>> _menus = {};
+  SimpleFileExplorerBtnMenu? _currentMenu;
+
+  @override
+  void initState() {
+    super.initState();
+
+    List<Widget> addBtns = [
+      FloatingActionButton(
+          onPressed: () => setState(() {
+                widget.data.add(ACategory(UserData.listData.wd, "myCat"));
+                _closeBtnMenus();
+              }),
+          child: const Icon(Icons.category)),
+    ];
+
+    List<Widget> selectionBtns = [
+      FloatingActionButton(
+          onPressed: () {
+            setState(() {
+              widget.data.rmAll(_selection);
+              _closeBtnMenus();
+            });
+          },
+          child: const Icon(Icons.delete)),
+    ];
+
+    addBtns.addAll(widget.addBtns ?? []);
+    selectionBtns.addAll(widget.selectionBtns ?? []);
+
+    _menus[SimpleFileExplorerBtnMenu.add] = addBtns;
+    _menus[SimpleFileExplorerBtnMenu.selection] = selectionBtns;
+  }
+
+  void _closeBtnMenus() {
+    _currentMenu = null;
+    _canSelect = false;
+  }
+
+  Widget _buildBtnMenu() {
+    List<Widget> menu = [];
+
+    if (widget.enableMenus != null && !widget.enableMenus!()) {
+      _closeBtnMenus();
+    }
+
+    if (_currentMenu != null) {
+      menu.addAll(_menus[_currentMenu] ?? []);
+
+      // add cancel btn
+      menu.add(FloatingActionButton(
+        onPressed: () => setState(() {
+          _closeBtnMenus();
+        }),
+        child: const Icon(Icons.cancel),
+      ));
+    } else {
+      menu.add(FloatingActionButton(
+        onPressed: () => setState(() {
+          //_isAdding = true;
+          _closeBtnMenus();
+          _currentMenu = SimpleFileExplorerBtnMenu.add;
+        }),
+        child: const Icon(Icons.add),
+      ));
+    }
+
+    return Column(
+      children: menu,
+    );
+  }
+
+  @override
+  Widget build(BuildContext ctx) {
+    return FileExplorer(
+      data: widget.data,
+      onSelection: () =>
+          setState(() => _currentMenu = SimpleFileExplorerBtnMenu.selection),
+      onSelected: (tag, value) => setState(() {
+        value ? _selection.add(tag) : _selection.remove(tag);
+      }),
+      enableSelection: () {
+        bool ret = _canSelect;
+        _canSelect = true;
+        return ret;
+      },
+      children: [
+        Positioned(right: 10, bottom: 10, child: _buildBtnMenu()),
+      ],
     );
   }
 }
