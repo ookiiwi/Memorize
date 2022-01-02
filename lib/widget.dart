@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
+import 'package:tuple/tuple.dart';
 
 class Selectable extends StatefulWidget {
   const Selectable({
@@ -68,21 +69,22 @@ class _Selectable extends State<Selectable> {
 }
 
 class FileExplorer extends StatefulWidget {
-  FileExplorer(
-      {FileExplorerData? data,
+  const FileExplorer(
+      {required this.data,
       this.children,
       this.onSelection,
       this.onSelected,
       this.enableSelection,
+      this.refresh,
       Key? key})
-      : data = data ?? FileExplorerData(),
-        super(key: key);
+      : super(key: key);
 
   final FileExplorerData data;
   final List<Widget>? children;
   final void Function()? onSelection;
   final void Function(int tag, bool value)? onSelected;
   final bool Function()? enableSelection;
+  final bool Function()? refresh;
 
   @override
   State<FileExplorer> createState() => _FileExplorer();
@@ -93,6 +95,8 @@ class _FileExplorer extends State<FileExplorer> {
   PageController _navController = PageController();
   final ScrollController _scrollController = ScrollController();
   final Duration _animateToDuration = const Duration(milliseconds: 250);
+  final Map<int, List<int>> _idTables = {};
+  final int _maxItemsLoaded = 3;
 
   @override
   void initState() {
@@ -103,13 +107,27 @@ class _FileExplorer extends State<FileExplorer> {
     }
 
     _navController = PageController(initialPage: widget.data.wd);
+    _refreshIds(refreshState: true); // init idTables
   }
 
-  void cd(int id) {
-    widget.data.cd(id);
+  @override
+  void didUpdateWidget(FileExplorer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refresh != null && widget.refresh!()) {
+      _refreshIds(refreshState: true);
+    }
+  }
+
+  Future<void> cd(int id, {int? dir}) async {
+    if (!(await widget.data.cd(id))) {
+      print('Fail to change directory');
+      return;
+    }
 
     if (!widget.data.navHistory.contains(id)) {
-      int parent = widget.data.get(id)!.parent;
+      int parent = widget.data.getParent(id) ?? -2;
+
+      assert(parent >= 0);
 
       //remove ids from parent+1 to end
       widget.data
@@ -118,8 +136,30 @@ class _FileExplorer extends State<FileExplorer> {
       widget.data.navHistory.add(id);
     }
 
-    _navController.nextPage(
-        duration: const Duration(milliseconds: 250), curve: Curves.linear);
+    // need nav history updated
+    await _refreshIds();
+
+    var cdAnim =
+        (dir ?? 0) >= 0 ? _navController.nextPage : _navController.previousPage;
+
+    if (dir != null) {
+      cdAnim(duration: const Duration(milliseconds: 250), curve: Curves.linear);
+    }
+
+    setState(() {});
+  }
+
+  Tuple2<int, int> _computeItemsToBeLoaded(int wd) {
+    int n = widget.data.navHistory.indexOf(wd);
+    int k = (_maxItemsLoaded / 2).floor();
+
+    //here we search the intersection of [n-k .. n+k] and [start .. end]
+    int start = n - k > 0 ? n - k : 0;
+    int end = n + k < widget.data.navHistory.length
+        ? n + k + 1
+        : widget.data.navHistory.length;
+
+    return Tuple2(start, end);
   }
 
   bool _enableSelection() =>
@@ -130,7 +170,7 @@ class _FileExplorer extends State<FileExplorer> {
       _selectable = false;
     }
 
-    var item = widget.data.get(id);
+    String? itemName = widget.data.getName(id);
     return Selectable(
         tag: id,
         onSelected: (id, value) {
@@ -142,8 +182,8 @@ class _FileExplorer extends State<FileExplorer> {
         clear: true,
         child: GestureDetector(
             onTap: () {
-              if (widget.data.getTypeFromId(id) == DataType.category) {
-                setState(() => cd(id));
+              if (FileExplorerData.getTypeFromId(id) == DataType.category) {
+                cd(id, dir: 1);
               }
             },
             onLongPress: () => setState(() {
@@ -154,12 +194,41 @@ class _FileExplorer extends State<FileExplorer> {
                 }),
             child: Card(
                 margin: const EdgeInsets.all(10.0),
-                color: (widget.data.getTypeFromId(id) == DataType.category
+                color: (FileExplorerData.getTypeFromId(id) == DataType.category
                     ? Colors.grey
                     : Colors.amber),
                 child: Center(
-                  child: Text(item != null ? item.name : ''),
+                  child: Text(itemName ?? ''),
                 ))));
+  }
+
+  _refreshIds({bool refreshState = false}) async {
+    var tmp = _computeItemsToBeLoaded(widget.data.wd);
+    int _loadingIndex = tmp.item1;
+    int _itemsLoaded = tmp.item2;
+
+    List<int> tmp1 = widget.data.navHistory.getRange(0, _loadingIndex).toList();
+    List<int> tmp2 = widget.data.navHistory
+        .getRange(_itemsLoaded, widget.data.navHistory.length)
+        .toList();
+
+    widget.data.unloadItems(tmp1 + tmp2);
+
+    Map<int, List<int>> tmpTable = {};
+
+    for (int i = _loadingIndex; i < _itemsLoaded; i++) {
+      ACategory tmp = await widget.data.get(widget.data.navHistory[i]);
+      tmpTable[i] = List.from(tmp.getTable());
+    }
+
+    _idTables.clear();
+    _idTables.addAll(tmpTable);
+
+    assert(
+        _idTables.containsKey(widget.data.navHistory.indexOf(widget.data.wd)),
+        "Working directory must be in an id table");
+
+    if (refreshState) setState(() {});
   }
 
   @override
@@ -174,7 +243,7 @@ class _FileExplorer extends State<FileExplorer> {
                 itemCount: widget.data.navHistory.length,
                 itemBuilder: (ctx, i) {
                   int id = widget.data.navHistory[i];
-                  ACategory cat = widget.data.get(id);
+                  String? catName = widget.data.getName(id);
 
                   return GestureDetector(
                       onTap: () {
@@ -190,43 +259,45 @@ class _FileExplorer extends State<FileExplorer> {
                         padding: const EdgeInsets.symmetric(horizontal: 10.0),
                         color:
                             id == widget.data.wd ? Colors.blue : Colors.white,
-                        child: Center(child: Text(cat.name)),
+                        child: Center(child: Text(catName ?? '')),
                       ));
                 })),
         Expanded(
-            child: PageView.builder(
-                onPageChanged: (value) => setState(() {
-                      //refresh current dir
-                      widget.data.cd(widget.data.navHistory[value]);
-                    }),
-                controller: _navController,
-                itemCount: widget.data.navHistory.length,
-                itemBuilder: (ctx, page) {
-                  List<int> idsTable = List.from(
-                      widget.data.get(widget.data.navHistory[page]).getTable());
+            child: _idTables.isEmpty
+                ? const Text("Loading")
+                : PageView.builder(
+                    onPageChanged: (value) {
+                      cd(widget.data.navHistory[value]);
+                    },
+                    controller: _navController,
+                    itemCount: widget.data.navHistory.length,
+                    itemBuilder: (ctx, page) {
+                      // order ids <
+                      _idTables[page]!.sort((int a, int b) => a.compareTo(b));
 
-                  return Column(
-                    children: [
-                      Expanded(
-                          child: GridView.builder(
-                              gridDelegate:
-                                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 150,
-                                childAspectRatio: 1,
-                                crossAxisSpacing: 1,
-                                mainAxisSpacing: 1,
-                              ),
-                              itemCount: idsTable.length,
-                              itemBuilder: (BuildContext ctx, int i) {
-                                return _buildItem(idsTable[i]);
-                              })),
-                      Expanded(
-                          child: Stack(
-                        children: widget.children ?? const <Widget>[],
-                      )),
-                    ],
-                  );
-                }))
+                      return Column(
+                        mainAxisSize: MainAxisSize.max,
+                        children: [
+                          Expanded(
+                              child: GridView.builder(
+                                  gridDelegate:
+                                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 150,
+                                    childAspectRatio: 1,
+                                    crossAxisSpacing: 1,
+                                    mainAxisSpacing: 1,
+                                  ),
+                                  itemCount: _idTables[page]!.length,
+                                  itemBuilder: (BuildContext ctx, int i) {
+                                    return _buildItem(_idTables[page]![i]);
+                                  })),
+                          Expanded(
+                              child: Stack(
+                            children: widget.children ?? const <Widget>[],
+                          )),
+                        ],
+                      );
+                    }))
       ]),
     );
   }
@@ -241,13 +312,15 @@ class SimpleFileExplorer extends StatefulWidget {
       required this.data,
       this.addBtns,
       this.selectionBtns,
-      this.enableMenus})
+      this.enableMenus,
+      this.refresh})
       : super(key: key);
 
   final FileExplorerData data;
   final List<Widget>? addBtns;
   final List<Widget>? selectionBtns;
   final bool Function()? enableMenus;
+  final bool Function()? refresh;
 
   @override
   State<SimpleFileExplorer> createState() => _SimpleFileExplorer();
@@ -258,6 +331,7 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
   final List<int> _selection = [];
   final Map<SimpleFileExplorerBtnMenu, List<Widget>> _menus = {};
   SimpleFileExplorerBtnMenu? _currentMenu;
+  bool _refresh = false;
 
   @override
   void initState() {
@@ -265,10 +339,13 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
 
     List<Widget> addBtns = [
       FloatingActionButton(
-          onPressed: () => setState(() {
-                widget.data.add(ACategory(UserData.listData.wd, "myCat"));
-                _closeBtnMenus();
-              }),
+          onPressed: () {
+            setState(() {
+              widget.data.add(ACategory(UserData.listData.wd, "myCat"));
+              _refresh = true;
+              _closeBtnMenus();
+            });
+          },
           child: const Icon(Icons.category)),
     ];
 
@@ -276,7 +353,8 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
       FloatingActionButton(
           onPressed: () {
             setState(() {
-              widget.data.rmAll(_selection);
+              widget.data.deleteAll(_selection);
+              _refresh = true;
               _closeBtnMenus();
             });
           },
@@ -332,6 +410,11 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
   Widget build(BuildContext ctx) {
     return FileExplorer(
       data: widget.data,
+      refresh: () {
+        bool tmp = _refresh;
+        _refresh = false;
+        return tmp || (widget.refresh != null ? widget.refresh!() : false);
+      },
       onSelection: () =>
           setState(() => _currentMenu = SimpleFileExplorerBtnMenu.selection),
       onSelected: (tag, value) => setState(() {
@@ -344,6 +427,13 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
       },
       children: [
         Positioned(right: 10, bottom: 10, child: _buildBtnMenu()),
+        Positioned(
+            left: 10,
+            bottom: 10,
+            child: FloatingActionButton(
+              onPressed: () => setState(() => widget.data.clearCache()),
+              child: const Icon(Icons.clear_all),
+            ))
       ],
     );
   }
