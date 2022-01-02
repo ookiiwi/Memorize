@@ -231,11 +231,17 @@ class ListTab extends StatefulWidget {
 
 class _ListTab extends State<ListTab> {
   bool _enableMenus = true;
+  bool _refresh = false;
 
   @override
   Widget build(BuildContext ctx) {
     return SimpleFileExplorer(
       data: UserData.listData,
+      refresh: () {
+        bool ret = _refresh;
+        _refresh = false;
+        return ret;
+      },
       enableMenus: () {
         bool ret = _enableMenus;
         _enableMenus = true;
@@ -246,6 +252,7 @@ class _ListTab extends State<ListTab> {
           onPressed: () => setState(() {
             UserData.listData.add(AList(UserData.listData.wd, "myList"));
             _enableMenus = false;
+            _refresh = true;
           }),
           child: const Icon(Icons.list),
         )
