@@ -369,22 +369,22 @@ class FileExplorerData {
       throw Exception("Root category must not be removed");
     }
 
-    if (getTypeFromId(id) == DataType.category) {
-      ACategory? cat = await get(id);
-
-      if (cat != null) {
-        Set table = cat.getTable();
-        for (var e in table) {
-          await delete(e);
-        }
-      }
-    }
-
     Tuple2<int, String>? ret = _itemsHeaders.remove(id);
 
     // remove id from parent
     if (ret != null) {
-      _idTable.remove(id);
+      var tmp = _idTable.remove(id);
+
+      if (getTypeFromId(id) == DataType.category) {
+        ACategory? cat = tmp as ACategory? ?? await get(id);
+
+        if (cat != null) {
+          Set table = cat.getTable();
+          for (var e in table) {
+            await delete(e);
+          }
+        }
+      }
 
       ACategory parent = await get(ret.item1);
       parent.delete(id);
