@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
 import 'package:tuple/tuple.dart';
@@ -75,7 +76,6 @@ class FileExplorer extends StatefulWidget {
       this.onSelection,
       this.onSelected,
       this.enableSelection,
-      this.refresh,
       Key? key})
       : super(key: key);
 
@@ -84,7 +84,6 @@ class FileExplorer extends StatefulWidget {
   final void Function()? onSelection;
   final void Function(int tag, bool value)? onSelected;
   final bool Function()? enableSelection;
-  final bool Function()? refresh;
 
   @override
   State<FileExplorer> createState() => _FileExplorer();
@@ -107,15 +106,21 @@ class _FileExplorer extends State<FileExplorer> {
     }
 
     _navController = PageController(initialPage: widget.data.wd);
-    _refreshIds(refreshState: true); // init idTables
+    _refreshIfTablesUpdated(); // init idTables
   }
 
   @override
   void didUpdateWidget(FileExplorer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.refresh != null && widget.refresh!()) {
-      _refreshIds(refreshState: true);
-    }
+    _refreshIfTablesUpdated();
+  }
+
+  void _refreshIfTablesUpdated() {
+    _updateIdTables().then((value) => value ? setState(() {}) : () {});
+  }
+
+  void _ascSort(List<int> ls) {
+    ls.sort((int a, int b) => a.compareTo(b));
   }
 
   Future<void> cd(int id, {int? dir}) async {
@@ -137,7 +142,7 @@ class _FileExplorer extends State<FileExplorer> {
     }
 
     // need nav history updated
-    await _refreshIds();
+    await _updateIdTables();
 
     var cdAnim =
         (dir ?? 0) >= 0 ? _navController.nextPage : _navController.previousPage;
@@ -145,8 +150,6 @@ class _FileExplorer extends State<FileExplorer> {
     if (dir != null) {
       cdAnim(duration: const Duration(milliseconds: 250), curve: Curves.linear);
     }
-
-    setState(() {});
   }
 
   Tuple2<int, int> _computeItemsToBeLoaded(int wd) {
@@ -183,7 +186,7 @@ class _FileExplorer extends State<FileExplorer> {
         child: GestureDetector(
             onTap: () {
               if (FileExplorerData.getTypeFromId(id) == DataType.category) {
-                cd(id, dir: 1);
+                cd(id, dir: 1).then((value) => setState(() {}));
               }
             },
             onLongPress: () => setState(() {
@@ -202,33 +205,40 @@ class _FileExplorer extends State<FileExplorer> {
                 ))));
   }
 
-  _refreshIds({bool refreshState = false}) async {
+  Future<bool> _updateIdTables() async {
     var tmp = _computeItemsToBeLoaded(widget.data.wd);
-    int _loadingIndex = tmp.item1;
-    int _itemsLoaded = tmp.item2;
+    int loadingIndex = tmp.item1;
+    int itemsLoaded = tmp.item2;
+    int wdId = widget.data.navHistory.indexOf(widget.data.wd);
 
-    List<int> tmp1 = widget.data.navHistory.getRange(0, _loadingIndex).toList();
+    List<int> tmp1 = widget.data.navHistory.getRange(0, loadingIndex).toList();
     List<int> tmp2 = widget.data.navHistory
-        .getRange(_itemsLoaded, widget.data.navHistory.length)
+        .getRange(itemsLoaded, widget.data.navHistory.length)
         .toList();
 
     widget.data.unloadItems(tmp1 + tmp2);
 
-    Map<int, List<int>> tmpTable = {};
+    Map<int, List<int>> tables = {};
 
-    for (int i = _loadingIndex; i < _itemsLoaded; i++) {
+    for (int i = loadingIndex; i < itemsLoaded; i++) {
       ACategory tmp = await widget.data.get(widget.data.navHistory[i]);
-      tmpTable[i] = List.from(tmp.getTable());
+      tables[i] = List.from(tmp.getTable());
+      _ascSort(tables[i] ?? []);
     }
 
-    _idTables.clear();
-    _idTables.addAll(tmpTable);
-
     assert(
-        _idTables.containsKey(widget.data.navHistory.indexOf(widget.data.wd)),
-        "Working directory must be in an id table");
+        tables.containsKey(wdId), "Working directory must be in an id table");
 
-    if (refreshState) setState(() {});
+    bool updateTables = _idTables.containsKey(wdId)
+        ? !listEquals(_idTables[wdId], tables[wdId])
+        : true;
+
+    if (updateTables) {
+      _idTables.clear();
+      _idTables.addAll(tables);
+    }
+
+    return updateTables;
   }
 
   @override
@@ -264,17 +274,15 @@ class _FileExplorer extends State<FileExplorer> {
                 })),
         Expanded(
             child: _idTables.isEmpty
-                ? const Text("Loading")
+                ? const CircularProgressIndicator()
                 : PageView.builder(
                     onPageChanged: (value) {
-                      cd(widget.data.navHistory[value]);
+                      cd(widget.data.navHistory[value])
+                          .then((value) => setState(() {}));
                     },
                     controller: _navController,
                     itemCount: widget.data.navHistory.length,
                     itemBuilder: (ctx, page) {
-                      // order ids <
-                      _idTables[page]!.sort((int a, int b) => a.compareTo(b));
-
                       return Column(
                         mainAxisSize: MainAxisSize.max,
                         children: [
@@ -331,7 +339,6 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
   final List<int> _selection = [];
   final Map<SimpleFileExplorerBtnMenu, List<Widget>> _menus = {};
   SimpleFileExplorerBtnMenu? _currentMenu;
-  bool _refresh = false;
 
   @override
   void initState() {
@@ -342,7 +349,6 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
           onPressed: () {
             setState(() {
               widget.data.add(ACategory(UserData.listData.wd, "myCat"));
-              _refresh = true;
               _closeBtnMenus();
             });
           },
@@ -354,7 +360,6 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
           onPressed: () {
             setState(() {
               widget.data.deleteAll(_selection);
-              _refresh = true;
               _closeBtnMenus();
             });
           },
@@ -410,11 +415,6 @@ class _SimpleFileExplorer extends State<SimpleFileExplorer> {
   Widget build(BuildContext ctx) {
     return FileExplorer(
       data: widget.data,
-      refresh: () {
-        bool tmp = _refresh;
-        _refresh = false;
-        return tmp || (widget.refresh != null ? widget.refresh!() : false);
-      },
       onSelection: () =>
           setState(() => _currentMenu = SimpleFileExplorerBtnMenu.selection),
       onSelected: (tag, value) => setState(() {
