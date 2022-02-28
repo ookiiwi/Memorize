@@ -16,107 +16,106 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         fontFamily: 'FiraSans',
-        //fontFamily: 'AlexBrush',
       ),
-      home: const MyHomePage(title: 'Memorize'),
+      home: const SplashScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
-
-  final String title;
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<SplashScreen> createState() => _SplashScreen();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _currentTab = 0;
-
-  List<ATab> tabs = [];
-
+class _SplashScreen extends State<SplashScreen> {
   @override
   void initState() {
-    tabs = [
-      //community
-      ATab(
-          icon: const Icon(Icons.family_restroom),
-          isMain: true,
-          child: const CommunityTab()),
-
-      //list
-      ATab(icon: const Icon(Icons.list), child: ListTab()),
-
-      ATab(
-          icon: const Icon(Icons.quiz),
-          child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: const [Center(child: Text("quizz"))])), //quizz
-      ATab(
-          icon: const Icon(Icons.settings),
-          child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: const [Center(child: Text("settings"))])), //settings
-    ];
+    super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-        future: loadInitialData(),
+        future: DataLoader.load(),
         builder: (BuildContext ctx, AsyncSnapshot snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return const Text("Loading");
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+                body: Center(child: CircularProgressIndicator()));
           } else {
-            return Scaffold(
-              appBar: AppBar(
-                title: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(),
-                      Center(
-                          child: Text(
-                        widget.title,
-                        style: const TextStyle(color: Colors.black),
-                      )),
-                      GestureDetector(
-                        onTap: () {
-                          print('clicked');
-                        },
-                        child: const Icon(Icons.ring_volume),
-                      )
-                    ]),
-                backgroundColor: AppData.colors["bar"],
-              ),
-              body: tabs[_currentTab].tab,
-              bottomNavigationBar: _buildBottomBar(),
-            );
+            return const MainPage(title: 'Memorize');
           }
         });
   }
+}
+
+class MainPage extends StatefulWidget {
+  const MainPage({Key? key, required this.title}) : super(key: key);
+
+  final String title;
+
+  @override
+  State<MainPage> createState() => _MainPage();
+}
+
+class _MainPage extends State<MainPage> {
+  int _currentTab = 0;
+
+  List<ATab> tabs = [
+    ATab(icon: const Icon(Icons.list), child: const ListExplorer()),
+    ATab(icon: const Icon(Icons.settings), child: Container())
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(),
+              Center(
+                  child: Text(
+                widget.title,
+                style: const TextStyle(color: Colors.black),
+              )),
+              GestureDetector(
+                onTap: () {
+                  print('clicked');
+                },
+                child: const Icon(Icons.ring_volume),
+              )
+            ]),
+        backgroundColor: AppData.colors["bar"],
+      ),
+      body: tabs[_currentTab].tab,
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
 
   List<BottomNavigationBarItem> _buildBottomNavBarItems() {
-    List<BottomNavigationBarItem> l = [];
+    List<BottomNavigationBarItem> ret = [];
     for (ATab t in tabs) {
-      l.add(BottomNavigationBarItem(
+      ret.add(BottomNavigationBarItem(
         icon: t.tabIcon,
         label: '',
       ));
     }
 
-    return l;
+    return ret;
   }
 
   Widget _buildBottomBar() {
     return Theme(
         data: ThemeData(backgroundColor: Colors.black87),
         child: BottomNavigationBar(
-          //backgroundColor: Colors.black87,
           currentIndex: _currentTab,
           onTap: (value) => setState(() => _currentTab = value),
           items: _buildBottomNavBarItems(),
