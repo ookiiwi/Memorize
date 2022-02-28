@@ -48,3 +48,7 @@ app.*.map.json
 #Platform related
 /web
 /windows
+
+#font related
+*.otf
+*.ttf
