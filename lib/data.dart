@@ -266,6 +266,13 @@ class ATab {
   bool Function()? onWillPop;
 }
 
-Future<void> loadInitialData() async {
-  await FileExplorer.init();
+class DataLoader {
+  static bool _isDataLoaded = false;
+
+  static load({bool force = false}) async {
+    if (_isDataLoaded && !force) return;
+    await FileExplorer.init();
+    _isDataLoaded = true;
+    await Future.delayed(const Duration(seconds: 2));
+  }
 }
