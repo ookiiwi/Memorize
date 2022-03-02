@@ -58,12 +58,14 @@ class FileExplorer {
   static const int _loadedDirOffsetFromCurrent = 1;
   static const _loadedListsQueueSize = 10;
   static bool _isInit = false;
+  static late String _rootPath;
 
   static init() async {
     if (_isInit) return;
     _isInit = true;
     var dir = await getApplicationDocumentsDirectory();
-    createDirectory('${dir.path}/fe/root/', cd: true);
+    _rootPath = '${dir.path}/fe/root/';
+    createDirectory(_rootPath, cd: true);
   }
 
   static String get current => Directory.current.path;
@@ -114,13 +116,14 @@ class FileExplorer {
   }
 
   static bool _cdDir(Directory dir) {
-    String path = dir.absolute.path;
+    String path = dir.path;
 
-    if (dir.existsSync()) {
-      if (!_isDirLoaded(path)) _loadedDir.add(dir);
-    } else {
+    if (!dir.existsSync() ||
+        (Directory.current.path.endsWith('/root') &&
+            !path.contains(Directory.current.path))) {
       return false;
     }
+    if (!_isDirLoaded(path)) _loadedDir.add(dir);
 
     //may need to use absolute path
     Directory.current = path;
@@ -273,6 +276,6 @@ class DataLoader {
     if (_isDataLoaded && !force) return;
     await FileExplorer.init();
     _isDataLoaded = true;
-    await Future.delayed(const Duration(seconds: 2));
+    //await Future.delayed(const Duration(seconds: 2));
   }
 }
