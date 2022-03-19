@@ -6,6 +6,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:nanoid/nanoid.dart';
 
+class Reminder {
+  const Reminder(this.minFreq, this.maxFreq, this.freqFactor);
+
+  final int minFreq;
+  final int maxFreq;
+  final int freqFactor;
+
+  int computeFreq(int freq, bool doDecrease) {
+    return (freq + (doDecrease ? -freqFactor : freqFactor))
+        .clamp(minFreq, maxFreq);
+  }
+}
+
 class AList {
   AList(this.name)
       : _entries = [],
@@ -23,24 +36,26 @@ class AList {
     genId();
   }
 
-  AList._(List<Map> entries, Set<String> tags, String path)
+  AList._(List<Map> entries, Set<String> tags, String path, AListStats stats)
       : _entries = List.from(entries),
         _tags = Set.from(tags),
-        _stats = AListStats() {
+        _stats = stats {
     _readPath(path);
   }
 
   factory AList.fromJson(String id, String name, String rawData, String path) {
-    print(rawData);
     Map data = jsonDecode(rawData);
-    AList list =
-        AList._(List.from(data['entries']), Set.from(data['tags']), path);
+    AList list = AList._(List.from(data['entries']), Set.from(data['tags']),
+        path, AListStats.fromJson(data["listStats"]));
 
     return list;
   }
 
-  Map<String, dynamic> toJson() =>
-      {"entries": _entries, "tags": _tags.toList()};
+  Map<String, dynamic> toJson() => {
+        "entries": _entries,
+        "tags": _tags.toList(),
+        "listStats": _stats.toJson()
+      };
 
   String _id = '';
   String name = '';
@@ -48,6 +63,10 @@ class AList {
   final Set<String> _tags;
   final AListStats _stats;
   String _dirPath = '';
+  String addon = "JpnAddon";
+  final Reminder _reminder = const Reminder(0, 4, 1);
+
+  AListStats get stats => _stats;
 
   String get uniqueName => "$_id?$name";
 
@@ -81,12 +100,65 @@ class AList {
   void genId() {
     _id = nanoid(10);
   }
+
+  void newStats(QuizStats stats) => _stats.add(stats);
+  void addStat(String word, bool isGood) {
+    Map entry = _entries.firstWhere(
+      (e) => e["word"] == word,
+      orElse: () => {},
+    );
+
+    assert(entry.isNotEmpty);
+
+    //TODO: adjust freq
+
+    if (!entry.containsKey("freq")) entry["freq"] = _reminder.maxFreq;
+
+    entry["freq"] = _reminder.computeFreq(entry["freq"], isGood);
+
+    _stats.lastScore += isGood ? 1 : 0;
+  }
+}
+
+class QuizStats {
+  QuizStats(this.time, this.mode, {this.score = 0});
+  factory QuizStats.fromJson(Map<String, dynamic> data) {
+    print(data);
+    return QuizStats(
+        DateTime.fromMillisecondsSinceEpoch(int.parse(data['data'][1])),
+        data['data'][0],
+        score: int.parse(data['data'][2]));
+  }
+
+  final DateTime time;
+  final String mode;
+  int score;
+
+  Map<String, dynamic> toJson() => {
+        'data': [mode, time.millisecondsSinceEpoch.toString(), score.toString()]
+      };
 }
 
 class AListStats {
   AListStats();
 
-  Map<String, dynamic> toJson() => {"": ""};
+  factory AListStats.fromJson(Map<String, dynamic> data) {
+    AListStats stats = AListStats();
+    stats._stats.addAll(
+        (data['stats'] as List).map((e) => QuizStats.fromJson(e)).toList());
+    return stats;
+  }
+
+  Map<String, dynamic> toJson() =>
+      {"stats": _stats.map((e) => e.toJson()).toList()};
+
+  final List<QuizStats> _stats = [];
+
+  List<QuizStats> get stats => _stats;
+
+  void add(QuizStats stats) => _stats.add(stats);
+  int get lastScore => _stats.last.score;
+  set lastScore(int n) => _stats.last.score = n.clamp(0, n.abs());
 }
 
 List<String> stripPath(String path) {
@@ -215,7 +287,7 @@ abstract class FileExplorer {
   }
 
   //load a list
-  static AList? getList(String path) {
+  static AList? getList(String path, {void Function()? ifNoList}) {
     int i = _loadedListsQueue.indexWhere((e) => e.path == path);
     AList? list = i >= 0 ? _loadedListsQueue[i] : null;
 
@@ -230,7 +302,18 @@ abstract class FileExplorer {
       }
     }
 
+    if (ifNoList != null && list == null) {
+      ifNoList();
+    }
+
     return list;
+  }
+
+  static void _updateList(AList list) {
+    int i = _loadedListsQueue.indexWhere((e) => e.path == list.path);
+    if (i >= 0) {
+      _loadedListsQueue[i] = list;
+    }
   }
 
   String? _loadRawListFromDisk(String path);
@@ -238,8 +321,26 @@ abstract class FileExplorer {
   static bool _isListLoaded(String path) =>
       _loadedListsQueue.any((e) => e.path == path);
 
-  void _writeList(String path);
-  static void writeList(String path) => _fe._writeList(path);
+  void _writeList(AList list);
+  static void writeListFromPath(String path) {
+    if (!FileExplorer._isListLoaded(path)) {
+      throw Exception('List not loaded, can\'t write it');
+    }
+
+    AList? list = getList(path);
+    if (list != null) {
+      writeList(list);
+    }
+  }
+
+  static void writeList(AList list) {
+    if (!FileExplorer._isListLoaded(list.path)) {
+      throw Exception('List not loaded, can\'t write it');
+    }
+    _updateList(list);
+
+    _fe._writeList(list);
+  }
 
   void _createList(AList list, {String dirPath = ''});
   static void createList(AList list, {String dirPath = ''}) =>
@@ -279,18 +380,18 @@ class AppData {
 class ATab {
   ATab(
       {required this.icon,
-      required Widget child,
+      required this.tab,
       bool isMain = false,
       this.onWillPop})
       : tabIcon = isMain ? const Icon(Icons.home) : icon,
-        tab = child,
         bMain = isMain;
 
   final Icon icon;
   Icon tabIcon;
-  Widget tab;
-  bool bMain;
-  bool Function()? onWillPop;
+  //final Widget Function(void Function(Widget widget) setNotchButton) builder;
+  final Widget tab;
+  final bool bMain;
+  final bool Function()? onWillPop;
 }
 
 class MobileFileExplorer extends FileExplorer {
@@ -413,17 +514,16 @@ class MobileFileExplorer extends FileExplorer {
   }
 
   @override
-  void _writeList(String path) {
-    if (!FileExplorer._isListLoaded(path)) return;
-
-    File file = File(path);
+  void _writeList(AList list) {
+    File file = File(list.path);
     if (!file.existsSync()) {
       file.createSync();
     }
-    assert(FileExplorer._isListLoaded(path));
+
     //we suppose the list is already load
-    AList list =
-        FileExplorer._loadedListsQueue.firstWhere((e) => e.path == path);
+    //AList list =
+    //    FileExplorer._loadedListsQueue.firstWhere((e) => e.path == list);
+    print('write: ${list.name} ${list.stats.stats.length}');
     file.writeAsStringSync(jsonEncode(list.toJson()));
   }
 
@@ -528,8 +628,8 @@ class WebFileExplorer extends FileExplorer {
   void _createList(AList list, {String dirPath = ''}) {}
 
   @override
-  void _writeList(String path) {
-    if (FileExplorer._isListLoaded(path)) return;
+  void _writeList(AList list) {
+    if (FileExplorer._isListLoaded(list.path)) return;
   }
 
   bool _canRenameList(AList list, String newName, {bool rename = true}) {
