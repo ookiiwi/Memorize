@@ -11,7 +11,7 @@ import 'package:workmanager/workmanager.dart';
 
 void callbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) {
-    ReminderNotification._callbackDispatcher();
+    ReminderNotification._callbackDispatcher(taskName, inputData);
 
     return Future.value(true);
   });
@@ -41,17 +41,27 @@ class ReminderNotification {
   );
 
   static List<Reminder> _reminders = [];
-  static void addReminder(Reminder reminder) async {
+  static void add(Reminder reminder) async {
+    if (update(reminder)) return;
+
     _reminders.add(reminder);
     computeReminder(reminder);
   }
 
+  static bool update(Reminder reminder) {
+    int i = _reminders.indexWhere((e) => e.path == reminder.path);
+    if (i >= 0) _reminders[i] = reminder;
+
+    return i >= 0;
+  }
+
   static bool _isInit = false;
 
-  static void _callbackDispatcher() {
+  static void _callbackDispatcher(
+      String task, Map<String, dynamic>? inputData) async {
     print('compute');
     for (Reminder reminder in _reminders) {
-      //computeReminder(reminder);
+      computeReminder(reminder);
     }
   }
 
@@ -66,13 +76,17 @@ class ReminderNotification {
       ));
     });
 
-    await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
-    await Workmanager().registerPeriodicTask('Reminder', 'computeReminders',
-        initialDelay: const Duration(seconds: 10),
-        frequency: const Duration(seconds: 10)
-        //frequency: Duration(seconds: DateTime.now().second)
-        //
-        );
+    DateTime now = DateTime.now();
+    DateTime midnight = DateTime(now.year, now.month, now.day + 1);
+    int duration = 900; //midnight.difference(now).inSeconds;
+
+    print(duration);
+
+    Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+    Workmanager().cancelAll();
+    Workmanager().registerPeriodicTask('Reminder', 'computeReminders',
+        initialDelay: Duration(seconds: duration),
+        frequency: const Duration(days: 1));
 
     tz.initializeTimeZones();
     String timezone = await FlutterNativeTimezone.getLocalTimezone();
@@ -82,9 +96,8 @@ class ReminderNotification {
   }
 
   static void computeReminder(Reminder reminder) async {
-    //int n = daysBetween(reminder.start, DateTime.now());
     int n = daysBetween(reminder.start, DateTime.now());
-    double a = 10000; //reminder.freqFactor;
+    double a = reminder.freqFactor; //10000;
     double mini = (a * n - (pi / 2)) / (2 * pi);
     double maxi = (a * n + a - (pi / 2)) / (2 * pi);
     int time = (24 - 8) * 3600;
