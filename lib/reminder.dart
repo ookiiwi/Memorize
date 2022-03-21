@@ -95,12 +95,16 @@ class ReminderNotification {
     print(tz.local);
   }
 
-  static void computeReminder(Reminder reminder) async {
+  static void computeReminder(Reminder reminder, {bool fromNow = true}) async {
     int n = daysBetween(reminder.start, DateTime.now());
     double a = reminder.freqFactor; //10000;
     double mini = (a * n - (pi / 2)) / (2 * pi);
     double maxi = (a * n + a - (pi / 2)) / (2 * pi);
-    int time = (24 - 8) * 3600;
+    DateTime now = DateTime.now();
+    DateTime minTime =
+        fromNow ? now : DateTime(now.year, now.month, now.day, 8);
+    DateTime maxTime = DateTime(now.year, now.month, now.day, 23, 10);
+    int time = maxTime.difference(minTime).inSeconds;
 
     print('now: ${DateTime.now()}');
 
@@ -116,11 +120,11 @@ class ReminderNotification {
 
     int stop = 0;
 
-    for (int i = 0; i < maxi - mini; ++i) {
+    for (int i = 1; i <= maxi - mini; ++i) {
       int reminderTime = (time / (maxi - mini) * i).toInt();
-      int hour = (reminderTime / 3600).floor() + 8;
-      int minute = (reminderTime % 3600 / 60).floor();
-      int second = (reminderTime % 3600 % 60);
+      int hour = (reminderTime / 3600).floor() + minTime.hour % 60;
+      int minute = (reminderTime % 3600 / 60).floor() + minTime.minute % 60;
+      int second = (reminderTime % 3600 % 60) + minTime.second % 60;
 
       tz.TZDateTime date = tz.TZDateTime.now(tz.local);
       //tz.TZDateTime date = tz.TZDateTime.from(DateTime.now(), tz.local);
