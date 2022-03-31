@@ -172,3 +172,60 @@ class ConfirmationButton extends StatelessWidget {
         ));
   }
 }
+
+class ExpandedWidget extends StatefulWidget {
+  const ExpandedWidget(
+      {Key? key, required this.child, required this.isExpanded})
+      : super(key: key);
+
+  final Widget child;
+  final bool isExpanded;
+  @override
+  State<ExpandedWidget> createState() => _ExpandedWidget();
+}
+
+class _ExpandedWidget extends State<ExpandedWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _expandedController;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandedController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _animation = CurvedAnimation(
+        parent: _expandedController, curve: Curves.fastOutSlowIn);
+
+    _expandCheck();
+  }
+
+  @override
+  void didUpdateWidget(ExpandedWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _expandCheck();
+  }
+
+  @override
+  void dispose() {
+    _expandedController.dispose();
+    super.dispose();
+  }
+
+  void _expandCheck() {
+    //print(_expandedController.status.toString());
+
+    widget.isExpanded
+        ? _expandedController.forward()
+        : _expandedController.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizeTransition(
+      sizeFactor: _animation,
+      axisAlignment: 1.0,
+      child: widget.child,
+    );
+  }
+}
