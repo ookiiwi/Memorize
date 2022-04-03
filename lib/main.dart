@@ -1,13 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/tab.dart';
+import 'package:memorize/web/login.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({Key? key, this.listToGoTo}) : super(key: key);
+
+  final String? listToGoTo;
 
   @override
   Widget build(BuildContext context) {
@@ -17,13 +21,17 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         fontFamily: 'FiraSans',
       ),
-      home: const SplashScreen(),
+      home: SplashScreen(
+          builder: (context) =>
+              MainPage(title: 'Memorize', listPath: listToGoTo)),
     );
   }
 }
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({Key? key, required this.builder}) : super(key: key);
+
+  final WidgetBuilder builder;
 
   @override
   State<SplashScreen> createState() => _SplashScreen();
@@ -44,32 +52,66 @@ class _SplashScreen extends State<SplashScreen> {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
           } else {
-            return const MainPage(title: 'Memorize');
+            return widget.builder(context); //const MainPage(title: 'Memorize');
           }
         });
   }
 }
 
 class MainPage extends StatefulWidget {
-  const MainPage({Key? key, required this.title}) : super(key: key);
+  const MainPage({Key? key, required this.title, this.listPath})
+      : super(key: key);
 
   final String title;
+  final String? listPath;
+
+  static _MainPage? of(BuildContext context) =>
+      context.findAncestorStateOfType<_MainPage>();
 
   @override
   State<MainPage> createState() => _MainPage();
 }
 
 class _MainPage extends State<MainPage> {
-  int _currentTab = 0;
+  int _currTabIndex = 0;
+  late void Function(Widget widget) test;
 
-  List<ATab> tabs = [
-    ATab(icon: const Icon(Icons.list), child: const ListExplorer()),
-    ATab(icon: const Icon(Icons.settings), child: Container())
-  ];
+  List<AppBarItem> tabs = [];
+  late Widget _currTab;
 
   @override
   void initState() {
     super.initState();
+
+    if (tabs.isEmpty) {
+      tabs = [
+        kIsWeb
+            ? AppBarItem(
+                icon: const Icon(Icons.web), tab: () => const LoginPage())
+            : AppBarItem(
+                icon: const Icon(Icons.list),
+                tab: () => ListExplorer(
+                      listPath: widget.listPath,
+                    )),
+        AppBarItem(
+            icon: const Icon(Icons.settings),
+            tab: () => ListExplorer(
+                  listPath: widget.listPath,
+                )),
+      ];
+    }
+
+    _currTab = tabs.first.tab() as Widget;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
@@ -95,14 +137,14 @@ class _MainPage extends State<MainPage> {
             ]),
         backgroundColor: AppData.colors["bar"],
       ),
-      body: tabs[_currentTab].tab,
+      body: _currTab,
       bottomNavigationBar: _buildBottomBar(),
     );
   }
 
   List<BottomNavigationBarItem> _buildBottomNavBarItems() {
     List<BottomNavigationBarItem> ret = [];
-    for (ATab t in tabs) {
+    for (AppBarItem t in tabs) {
       ret.add(BottomNavigationBarItem(
         icon: t.tabIcon,
         label: '',
@@ -115,12 +157,24 @@ class _MainPage extends State<MainPage> {
   Widget _buildBottomBar() {
     return Theme(
         data: ThemeData(backgroundColor: Colors.black87),
-        child: BottomNavigationBar(
-          currentIndex: _currentTab,
-          onTap: (value) => setState(() => _currentTab = value),
-          items: _buildBottomNavBarItems(),
-          selectedItemColor: AppData.colors["buttonSelected"],
-          unselectedItemColor: AppData.colors["buttonIdle"],
-        ));
+        child: BottomAppBar(
+            shape: const CircularNotchedRectangle(),
+            clipBehavior: Clip.antiAlias,
+            child: BottomNavigationBar(
+              currentIndex: _currTabIndex,
+              onTap: (value) {
+                if (_currTabIndex != value) {
+                  setState(() {
+                    _currTabIndex = value;
+                    _currTab = tabs[value].tab() as Widget;
+                  });
+                } else {
+                  (_currTab as ATab).reload();
+                }
+              },
+              items: _buildBottomNavBarItems(),
+              selectedItemColor: AppData.colors["buttonSelected"],
+              unselectedItemColor: AppData.colors["buttonIdle"],
+            )));
   }
 }
