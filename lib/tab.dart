@@ -79,9 +79,7 @@ class TabNavigator extends StatelessWidget {
 }
 
 class ListExplorer extends StatefulWidget with ATab {
-  ListExplorer({Key? key, required this.setNotchButton, this.listPath})
-      : super(key: key);
-  final void Function(Widget widget) setNotchButton;
+  ListExplorer({Key? key, this.listPath}) : super(key: key);
   final String? listPath;
   late final void Function() _reload;
 
@@ -156,7 +154,7 @@ class _ListExplorer extends State<ListExplorer>
       _navHistory.history.forEach(
         (r) {
           if (r.settings.name == listPage) {
-            _popFromAddBtn();
+            if (_openBtnMenu) _popFromAddBtn();
             RouteController.pop(_navCtx);
             return;
           }
@@ -303,7 +301,7 @@ class _ListExplorer extends State<ListExplorer>
     return TabNavigator(
         observers: [_navHistory],
         onWillPop: () async {
-          _popFromAddBtn();
+          if (_openBtnMenu) _popFromAddBtn();
           bool routeCanPop = (await RouteController.canPop()) &&
               !(await RouteController.pop(_navCtx));
           if (!routeCanPop) {
