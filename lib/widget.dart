@@ -175,11 +175,15 @@ class ConfirmationButton extends StatelessWidget {
 
 class ExpandedWidget extends StatefulWidget {
   const ExpandedWidget(
-      {Key? key, required this.child, required this.isExpanded})
+      {Key? key,
+      required this.child,
+      required this.isExpanded,
+      required this.duration})
       : super(key: key);
 
   final Widget child;
   final bool isExpanded;
+  final Duration duration;
   @override
   State<ExpandedWidget> createState() => _ExpandedWidget();
 }
@@ -192,8 +196,8 @@ class _ExpandedWidget extends State<ExpandedWidget>
   @override
   void initState() {
     super.initState();
-    _expandedController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500));
+    _expandedController =
+        AnimationController(vsync: this, duration: widget.duration);
     _animation = CurvedAnimation(
         parent: _expandedController, curve: Curves.fastOutSlowIn);
 
