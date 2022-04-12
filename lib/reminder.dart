@@ -40,6 +40,16 @@ class ReminderNotification {
     android: initializationSettingsAndroid,
   );
 
+  static const AndroidNotificationDetails androidPlatformChannelSpecifics =
+      AndroidNotificationDetails('your channel id', 'your channel name',
+          channelDescription: 'your channel description',
+          importance: Importance.max,
+          priority: Priority.high,
+          ticker: 'ticker');
+
+  static const NotificationDetails platformChannelSpecifics =
+      NotificationDetails(android: androidPlatformChannelSpecifics);
+
   static List<Reminder> _reminders = [];
   static void add(Reminder reminder) async {
     if (update(reminder)) return;
@@ -59,7 +69,10 @@ class ReminderNotification {
 
   static void _callbackDispatcher(
       String task, Map<String, dynamic>? inputData) async {
-    print('compute');
+    //TODO: Uncomment for release
+    //tz.TZDateTime time = tz.TZDateTime.now(tz.local);
+    //assert(time.hour + time.minute >= 0 && time.hour + time.minute <= 15);
+
     for (Reminder reminder in _reminders) {
       computeReminder(reminder);
     }
@@ -70,17 +83,15 @@ class ReminderNotification {
     _isInit = true;
     await flutterLocalNotificationsPlugin.initialize(initializationSettings,
         onSelectNotification: (value) {
-      print('tap $value');
       runApp(MyApp(
-        listToGoTo: value,
+        listToOpen: value,
       ));
     });
 
     DateTime now = DateTime.now();
     DateTime midnight = DateTime(now.year, now.month, now.day + 1);
+    //TODO: uncomment for release
     int duration = 900; //midnight.difference(now).inSeconds;
-
-    print(duration);
 
     Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
     Workmanager().cancelAll();
@@ -90,58 +101,48 @@ class ReminderNotification {
 
     tz.initializeTimeZones();
     String timezone = await FlutterNativeTimezone.getLocalTimezone();
-    print(timezone);
     tz.setLocalLocation(tz.getLocation(timezone));
-    print(tz.local);
+
+    flutterLocalNotificationsPlugin.cancelAll();
+
+    print('init reminder');
+  }
+
+  static int _computeNotifInterval(int daysFromStart, double factor) {
+    int n = daysFromStart;
+    double a = factor; //10000;
+    double mini = (a * n - (pi / 2)) / (2 * pi);
+    double maxi = (a * n + a - (pi / 2)) / (2 * pi);
+    return (maxi - mini).toInt();
   }
 
   static void computeReminder(Reminder reminder, {bool fromNow = true}) async {
     int n = daysBetween(reminder.start, DateTime.now());
-    double a = reminder.freqFactor; //10000;
-    double mini = (a * n - (pi / 2)) / (2 * pi);
-    double maxi = (a * n + a - (pi / 2)) / (2 * pi);
     DateTime now = DateTime.now();
     DateTime minTime =
         fromNow ? now : DateTime(now.year, now.month, now.day, 8);
     DateTime maxTime = DateTime(now.year, now.month, now.day, 23, 10);
     int time = maxTime.difference(minTime).inSeconds;
+    int maxNotif = _computeNotifInterval(n, reminder.freqFactor);
 
-    print('now: ${DateTime.now()}');
+    //int stop = 0;
 
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails('your channel id', 'your channel name',
-            channelDescription: 'your channel description',
-            importance: Importance.max,
-            priority: Priority.high,
-            ticker: 'ticker');
-
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
-
-    int stop = 0;
-
-    for (int i = 1; i <= maxi - mini; ++i) {
-      int reminderTime = (time / (maxi - mini) * i).toInt();
+    for (int i = 1; i <= maxNotif; ++i) {
+      int reminderTime = (time / maxNotif * i).toInt();
       int hour = (reminderTime / 3600).floor() + minTime.hour % 60;
       int minute = (reminderTime % 3600 / 60).floor() + minTime.minute % 60;
       int second = (reminderTime % 3600 % 60) + minTime.second % 60;
 
       tz.TZDateTime date = tz.TZDateTime.now(tz.local);
-      //tz.TZDateTime date = tz.TZDateTime.from(DateTime.now(), tz.local);
       tz.TZDateTime schedule = tz.TZDateTime(
           tz.local, date.year, date.month, date.day, hour, minute, second);
 
       if (date.millisecondsSinceEpoch > schedule.millisecondsSinceEpoch) {
         continue;
       }
-      if (stop > 1) return;
-      print(
-          '$date $schedule ${date.millisecondsSinceEpoch > schedule.millisecondsSinceEpoch}');
-
-      print(
-          'i=$i time: $schedule for n=$n, a=$a, min=$mini, max=$maxi, range=${maxi - mini}\n');
-
-      stop += 1;
+      //if (stop > 1) return;
+//
+      //stop += 1;
 
       await flutterLocalNotificationsPlugin.zonedSchedule(i, 'scheduled title',
           'scheduled body', schedule, platformChannelSpecifics,
@@ -159,21 +160,14 @@ class ReminderNotification {
       if (e.payload != null) return e;
     }).toList();
 
-    print(
-        'notif before rm: ${pendingNotificationRequests.map((e) => e.id).toList()}');
-
     int id = data.firstWhere((e) {
-      print('${e.id}');
       return e.payload! == path;
     }, orElse: () => const PendingNotificationRequest(-1, '', '', '')).id;
     if (id >= 0) {
-      print('rm $id');
       await flutterLocalNotificationsPlugin.cancel(id);
     }
 
     pendingNotificationRequests =
         await flutterLocalNotificationsPlugin.pendingNotificationRequests();
-    print(
-        'notif after rm: ${pendingNotificationRequests.map((e) => e.id).toList()}');
   }
 }
