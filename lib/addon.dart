@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:memorize/ad_state.dart';
 import 'package:memorize/widget.dart';
+import 'package:provider/provider.dart';
 import 'package:swipe_cards/swipe_cards.dart';
 import 'package:memorize/stats.dart';
 import 'package:memorize/tab.dart';
@@ -123,11 +126,10 @@ class JpnAddon extends Addon {
   @override
   Widget buildListEntryPreview(Map entry) {
     bool kanji = entry["tag"] == 'kanji';
-    print(entry['kwargs'].runtimeType);
-    print(entry['kwargs']);
 
     return Container(
-        margin: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -199,13 +201,21 @@ class _JpnEntryPage extends State<JpnEntryPage> {
 
   late final List<bool> _isExpanded;
   late final Map entry;
+  late final RouteController _routeController;
 
   @override
   void initState() {
     super.initState();
     entry = widget.entry;
 
+    _routeController = RouteController(canPop: () async => true);
     _isExpanded = entry['tag'] == 'kanji' ? [true, true] : [true];
+  }
+
+  @override
+  void dispose() {
+    _routeController.dispose();
+    super.dispose();
   }
 
   List<Widget> _buildSenses(List senses) {
@@ -308,6 +318,7 @@ class _JpnEntryPage extends State<JpnEntryPage> {
           _buildSectionHeader(context, 'Meanings',
               onTap: () => setState(() => _isExpanded[0] = !_isExpanded[0])),
           ExpandedWidget(
+              duration: const Duration(milliseconds: 500),
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -325,6 +336,7 @@ class _JpnEntryPage extends State<JpnEntryPage> {
           _buildSectionHeader(context, 'Readings',
               onTap: () => setState(() => _isExpanded[1] = !_isExpanded[1])),
           ExpandedWidget(
+              duration: const Duration(milliseconds: 500),
               child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 10),
                   child: Column(
@@ -369,6 +381,7 @@ class _JpnEntryPage extends State<JpnEntryPage> {
             _buildSectionHeader(context, 'Meanings',
                 onTap: () => setState(() => _isExpanded[0] = !_isExpanded[0])),
             ExpandedWidget(
+                duration: const Duration(milliseconds: 500),
                 child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 10),
                     child: Column(
@@ -392,11 +405,96 @@ class _JpnEntryPage extends State<JpnEntryPage> {
   }
 }
 
+class ListInstance {
+  ListInstance(AList list)
+      : _list = list,
+        _entries = list.entries {
+    _initInterstitialAd();
+  }
+
+  int _curr = 0;
+  late final AList _list;
+  late final List<Map> _entries;
+  InterstitialAd? _interstitialAd;
+  int get length => _entries.length;
+  AListStats get stats => _list.stats;
+  bool _adShown = false;
+
+  void _initInterstitialAd() {
+    InterstitialAd.load(
+        adUnitId: "ca-app-pub-3940256099942544/1033173712",
+        request: const AdRequest(),
+        adLoadCallback:
+            InterstitialAdLoadCallback(onAdLoaded: (InterstitialAd ad) {
+          _interstitialAd = ad;
+        }, onAdFailedToLoad: (LoadAdError error) {
+          print("InterstitialAd failed to load $error");
+        }));
+  }
+
+  void _showInterstitialAd() {
+    if (_interstitialAd == null) {
+      print('Warning: attempt to show interstitial before loaded.');
+      return;
+    }
+    print('ad');
+    _adShown = true;
+
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (InterstitialAd ad) =>
+          print('%ad onAdShowedFullScreenContent.'),
+      onAdDismissedFullScreenContent: (InterstitialAd ad) {
+        print('$ad onAdDismissedFullScreenContent.');
+        ad.dispose();
+      },
+      onAdFailedToShowFullScreenContent: (InterstitialAd ad, AdError error) {
+        print('$ad onAdFailedToShowFullScreenContent: $error');
+        ad.dispose();
+      },
+      onAdImpression: (InterstitialAd ad) => print('$ad impression occurred.'),
+    );
+
+    _interstitialAd!.show();
+    _interstitialAd = null;
+  }
+
+  void resetPointer() => _curr = 0;
+
+  bool _shouldShowAd(int i) {
+    if (i >= _entries.length) return true;
+    return false;
+  }
+
+  Map? getNext({bool circular = false}) {
+    if (_curr >= _entries.length) {
+      //_showInterstitialAd();
+      if (circular) {
+        resetPointer();
+      } else {
+        return null;
+      }
+    }
+
+    return _entries[_curr++];
+  }
+
+  Map get(int i) {
+    //if (_shouldShowAd(i)) _showInterstitialAd();
+    return _entries[i];
+  }
+
+  void newStats(QuizStats stats) => _list.newStats(stats);
+  void addStat(String word, bool isGood) => _list.addStat(word, isGood);
+  void writeToDisk() {
+    FileExplorer.writeList(_list);
+  }
+}
+
 class DefaultMode extends StatefulWidget {
   const DefaultMode({Key? key, required this.list, required this.builder})
       : super(key: key);
 
-  final AList list;
+  final ListInstance list;
   final Widget Function(BuildContext context, Map entry, bool isAnswer) builder;
 
   @override
@@ -404,65 +502,82 @@ class DefaultMode extends StatefulWidget {
 }
 
 class _DefaultMode extends State<DefaultMode> {
-  late final List<Map> entries;
+  late final ListInstance list;
   PageController pageController = PageController(keepPage: false);
-  final RouteController routeController =
-      RouteController(canPop: () async => true);
+  late final RouteController routeController;
 
-  bool _showAnswer = false;
   bool _showBtn = true;
   late int _pages;
+  InterstitialAd? _interstitialAd;
 
   @override
   void initState() {
     super.initState();
-    entries = widget.list.entries;
-    _pages = entries.length + 2;
 
-    pageController.addListener(() {
-      double page = pageController.page ?? 0;
+    routeController = RouteController(canPop: () async => true);
 
-      if (page.floor() > entries.length) {
-        setState(() {});
-      }
-      _showAnswer = page.floor() >= entries.length ? true : false;
-    });
+    list = widget.list;
+    _pages = list.length + 1;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final AdState? adState = Provider.of<AdState>(context);
+
+    if (_interstitialAd == null && adState != null) {
+      adState.initialization.then((status) => setState(() {
+            _initInterstitialAd(adState);
+          }));
+    }
   }
 
   @override
   void dispose() {
-    super.dispose();
     pageController.dispose();
     routeController.dispose();
+    super.dispose();
+  }
+
+  void _initInterstitialAd(AdState adState) {
+    InterstitialAd.load(
+        adUnitId: adState.interstitialId,
+        request: const AdRequest(),
+        adLoadCallback:
+            InterstitialAdLoadCallback(onAdLoaded: (InterstitialAd ad) {
+          _interstitialAd = ad;
+        }, onAdFailedToLoad: (LoadAdError error) {
+          print("InterstitialAd failed to load $error");
+        }));
+  }
+
+  void _showInterstitialAd() {
+    if (_interstitialAd == null) {
+      print('Warning: attempt to show interstitial before loaded.');
+      return;
+    }
+
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (InterstitialAd ad) =>
+          print('%ad onAdShowedFullScreenContent.'),
+      onAdDismissedFullScreenContent: (InterstitialAd ad) {
+        print('$ad onAdDismissedFullScreenContent.');
+        ad.dispose();
+        setState(() {});
+      },
+      onAdFailedToShowFullScreenContent: (InterstitialAd ad, AdError error) {
+        print('$ad onAdFailedToShowFullScreenContent: $error');
+        ad.dispose();
+      },
+      onAdImpression: (InterstitialAd ad) => print('$ad impression occurred.'),
+    );
+
+    _interstitialAd!.show();
+    _interstitialAd = null;
   }
 
   Widget _buildAnswerSwipeCards(BuildContext context) {
-    return SwipeCards(
-      matchEngine: MatchEngine(
-          swipeItems: entries
-              .map((e) => SwipeItem(likeAction: () {
-                    print('like');
-                    widget.list.addStat(e["word"], true);
-                  }, nopeAction: () {
-                    print('nope');
-                    widget.list.addStat(e["word"], false);
-                  }))
-              .toList()),
-      onStackFinished: () {
-        FileExplorer.writeList(widget.list);
-        print('stats: ${widget.list.stats.stats.length}');
-        Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => StatsPage(
-                points: widget.list.stats.stats
-                    .map((e) => [e.time, e.score])
-                    .toList())));
-      },
-      upSwipeAllowed: false,
-      fillSpace: false,
-      itemBuilder: (context, i) => _buildCard(
-          context, entries[i]), //widget.builder(context, entries[i], true),
-      itemChanged: (item, i) {},
-    );
+    return Swipe(child: _buildCard(context, list.get(0)));
   }
 
   Widget _buildCard(BuildContext context, Map entry) {
@@ -470,7 +585,7 @@ class _DefaultMode extends State<DefaultMode> {
         child: SizedBox(
             height: MediaQuery.of(context).size.height * 0.5,
             width: MediaQuery.of(context).size.width * 0.9,
-            child: Center(child: widget.builder(context, entry, _showAnswer))));
+            child: Center(child: widget.builder(context, entry, !_showBtn))));
   }
 
   @override
@@ -478,29 +593,25 @@ class _DefaultMode extends State<DefaultMode> {
     return Stack(
       children: [
         PageView.builder(
-            physics: _showAnswer
-                ? const NeverScrollableScrollPhysics()
-                : const AlwaysScrollableScrollPhysics(),
+            physics: _showBtn
+                ? const AlwaysScrollableScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
             onPageChanged: (value) {
-              if (value >= entries.length && !_showAnswer) {
+              if (value >= list.length && _showBtn) {
+                _showInterstitialAd();
                 setState(() {
-                  widget.list.newStats(QuizStats(DateTime.now(), 'Default'));
                   _showBtn = false;
+                  widget.list.newStats(QuizStats(DateTime.now(), 'Default'));
                 });
               }
             },
             controller: pageController,
             itemCount: _pages,
             itemBuilder: (context, i) {
-              if (i == entries.length) {
-                return const Center(
-                  child: Text('Ad'),
-                );
-              }
-              if (_showAnswer) {
+              if (!_showBtn) {
                 return SizedBox(child: _buildAnswerSwipeCards(context));
               }
-              return _buildCard(context, entries[i % entries.length]);
+              return _buildCard(context, list.getNext(circular: true) ?? {});
             }),
         if (_showBtn)
           Container(
@@ -517,9 +628,9 @@ class _DefaultMode extends State<DefaultMode> {
                                 duration: const Duration(milliseconds: 450),
                                 curve: Curves.linear);
                           },
-                          child: Icon(_showAnswer
-                              ? Icons.cancel
-                              : Icons.arrow_left_rounded))),
+                          child: Icon(_showBtn
+                              ? Icons.arrow_left_rounded
+                              : Icons.cancel))),
                   Container(
                       margin: const EdgeInsets.all(10),
                       child: FloatingActionButton(
@@ -528,9 +639,9 @@ class _DefaultMode extends State<DefaultMode> {
                                 duration: const Duration(milliseconds: 450),
                                 curve: Curves.linear);
                           },
-                          child: Icon(_showAnswer
-                              ? Icons.check
-                              : Icons.arrow_right_rounded))),
+                          child: Icon(_showBtn
+                              ? Icons.arrow_right_rounded
+                              : Icons.check))),
                 ],
               ))
       ],
