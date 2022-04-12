@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/tab.dart';
 import 'package:memorize/addon.dart';
 
 class QuizLauncher extends StatefulWidget {
-  const QuizLauncher(
-      {Key? key,
-      required this.entries,
-      required this.addonName,
-      this.children = const []})
+  const QuizLauncher({Key? key, required this.list, this.children = const []})
       : super(key: key);
 
-  final List<Map> entries;
-  final String addonName;
+  final AList list;
   final List<Widget> children;
 
   @override
@@ -26,10 +23,11 @@ class _QuizLauncher extends State<QuizLauncher> {
   @override
   void initState() {
     super.initState();
+
     _routeController = RouteController(canPop: () async => true);
 
-    assert(addons.containsKey(widget.addonName));
-    _addon = addons[widget.addonName]!;
+    assert(addons.containsKey(widget.list.addon));
+    _addon = addons[widget.list.addon]!;
   }
 
   @override
@@ -106,7 +104,12 @@ class _QuizLauncher extends State<QuizLauncher> {
               onPressed: () {
                 Navigator.of(context)
                     .push(MaterialPageRoute(builder: ((context) {
-                  return _addon.buildQuizPage(widget.entries);
+                  return DefaultMode(
+                    list: ListInstance(widget.list),
+                    builder: (context, entry, isAnswer) {
+                      return _addon.buildQuizEntry(entry, isAnswer);
+                    },
+                  );
                 })));
               },
               child: const Icon(Icons.play_arrow_rounded)))
