@@ -2,21 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/reminder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:nanoid/nanoid.dart';
 
-class Reminder {
-  const Reminder(this.minFreq, this.maxFreq, this.freqFactor);
-
-  final int minFreq;
-  final int maxFreq;
-  final int freqFactor;
-
-  int computeFreq(int freq, bool doDecrease) {
-    return (freq + (doDecrease ? -freqFactor : freqFactor))
-        .clamp(minFreq, maxFreq);
-  }
+int daysBetween(DateTime from, DateTime to) {
+  from = DateTime(from.year, from.month, from.day);
+  to = DateTime(to.year, to.month, to.day);
+  return (to.difference(from).inHours / 24).round();
 }
 
 class AList {
@@ -25,6 +19,7 @@ class AList {
         _tags = {},
         _stats = AListStats() {
     genId();
+    _initReminder();
   }
 
   AList.from(AList list)
@@ -34,6 +29,7 @@ class AList {
         _tags = Set.from(list._tags),
         _stats = AListStats() {
     genId();
+    _initReminder();
   }
 
   AList._(List<Map> entries, Set<String> tags, String path, AListStats stats)
@@ -41,6 +37,8 @@ class AList {
         _tags = Set.from(tags),
         _stats = stats {
     _readPath(path);
+
+    _initReminder();
   }
 
   factory AList.fromJson(String id, String name, String rawData, String path) {
@@ -48,6 +46,7 @@ class AList {
     AList list = AList._(List.from(data['entries']), Set.from(data['tags']),
         path, AListStats.fromJson(data["listStats"]));
 
+    ReminderNotification.add(list._reminder);
     return list;
   }
 
@@ -64,7 +63,7 @@ class AList {
   final AListStats _stats;
   String _dirPath = '';
   String addon = "JpnAddon";
-  final Reminder _reminder = const Reminder(0, 4, 1);
+  late final Reminder _reminder;
 
   AListStats get stats => _stats;
 
@@ -79,14 +78,16 @@ class AList {
   bool get isEmpty => _entries.isEmpty;
   bool get isNotEmpty => _entries.isNotEmpty;
 
+  void _initReminder() {
+    _reminder = Reminder(DateTime.now(), path);
+  }
+
   void _readPath(String path) {
     String rawName = stripPath(path).last;
     var tmp = _splitName(rawName);
     _id = tmp.key;
     name = tmp.value;
-    print('path read: $path');
     _dirPath = path.substring(0, path.length - rawName.length);
-    print('dirPath read: $_dirPath');
   }
 
   static MapEntry<String, String> _splitName(String name) {
@@ -110,11 +111,9 @@ class AList {
 
     assert(entry.isNotEmpty);
 
-    //TODO: adjust freq
+    if (!entry.containsKey("freq")) entry["freq"] = _reminder.initFreq;
 
-    if (!entry.containsKey("freq")) entry["freq"] = _reminder.maxFreq;
-
-    entry["freq"] = _reminder.computeFreq(entry["freq"], isGood);
+    entry["freq"] += isGood ? -_reminder.freqStep : _reminder.freqStep;
 
     _stats.lastScore += isGood ? 1 : 0;
   }
@@ -123,7 +122,6 @@ class AList {
 class QuizStats {
   QuizStats(this.time, this.mode, {this.score = 0});
   factory QuizStats.fromJson(Map<String, dynamic> data) {
-    print(data);
     return QuizStats(
         DateTime.fromMillisecondsSinceEpoch(int.parse(data['data'][1])),
         data['data'][0],
@@ -184,8 +182,6 @@ abstract class FileExplorer {
     _fe = fe;
     await fe._initRootPath();
     createDirectory(_rootPath, cd: true);
-    print('current: $current');
-    print('root: $_rootPath');
   }
 
   dynamic _initRootPath();
@@ -206,10 +202,6 @@ abstract class FileExplorer {
 
   bool _exists(String path);
   static bool exists(String path) => _fe._exists(path);
-
-  //static List<String> stripPath(String path) {
-  //  return (path.split('/'))..removeWhere((e) => e.isEmpty);
-  //}
 
   bool _isDirLoaded(String path);
 
@@ -377,8 +369,12 @@ class AppData {
   };
 }
 
-class ATab {
-  ATab(
+abstract class ATab {
+  void reload();
+}
+
+class AppBarItem {
+  AppBarItem(
       {required this.icon,
       required this.tab,
       bool isMain = false,
@@ -386,10 +382,9 @@ class ATab {
       : tabIcon = isMain ? const Icon(Icons.home) : icon,
         bMain = isMain;
 
-  final Icon icon;
+  Icon icon = const Icon(Icons.abc);
   Icon tabIcon;
-  //final Widget Function(void Function(Widget widget) setNotchButton) builder;
-  final Widget tab;
+  final ATab Function() tab;
   final bool bMain;
   final bool Function()? onWillPop;
 }
@@ -416,7 +411,6 @@ class MobileFileExplorer extends FileExplorer {
   dynamic _initRootPath() async {
     var dir = await getApplicationDocumentsDirectory();
     FileExplorer._rootPath = '${dir.path}/fe/root/';
-    print('initroot');
   }
 
   @override
@@ -508,9 +502,7 @@ class MobileFileExplorer extends FileExplorer {
     File file = File('$dirPath${list.uniqueName}');
 
     list.path = file.absolute.path;
-    print('new list: ${list.path}');
     FileExplorer._loadList(list);
-    print('is loaded : ${FileExplorer._isListLoaded(list.path)}');
   }
 
   @override
@@ -521,9 +513,6 @@ class MobileFileExplorer extends FileExplorer {
     }
 
     //we suppose the list is already load
-    //AList list =
-    //    FileExplorer._loadedListsQueue.firstWhere((e) => e.path == list);
-    print('write: ${list.name} ${list.stats.stats.length}');
     file.writeAsStringSync(jsonEncode(list.toJson()));
   }
 
@@ -536,20 +525,12 @@ class MobileFileExplorer extends FileExplorer {
     File file = File(list.path);
     ret = (newName == oldName) || !file.existsSync();
     if (!rename || !ret) list.name = oldName;
-    print('name: ${list.name} $newName');
     return true;
   }
 
   @override
   dynamic _createDirectory(String path) =>
       Directory(path)..createSync(recursive: true);
-  //dynamic _createDirectory(String path) {
-  //  Directory dir = Directory(path);
-  //  dir.createSync(recursive: true);
-  //  print('path : $path --> ${dir.path}');
-//
-  //  return dir;
-  //}
 
   @override
   void _clearDir(String path) {
@@ -574,7 +555,7 @@ class MobileFileExplorer extends FileExplorer {
   }
 }
 
-class WebFileExplorer extends FileExplorer {
+class CloudFileExplorer extends FileExplorer {
   String _curr = '';
 
   @override
@@ -590,11 +571,7 @@ class WebFileExplorer extends FileExplorer {
   String _toRelative(String path) => _curr;
 
   @override
-  dynamic _initRootPath() async {
-    //var dir = await getApplicationDocumentsDirectory();
-    //var _rootPath = '${dir.path}/fe/root/';
-    //_createDirectory(_rootPath, cd: true);
-  }
+  dynamic _initRootPath() async {}
 
   @override
   bool _isDirectory(String path) {
@@ -648,7 +625,9 @@ class DataLoader {
 
   static load({bool force = false}) async {
     if (_isDataLoaded && !force) return;
-    await FileExplorer.init(kIsWeb ? WebFileExplorer() : MobileFileExplorer());
+    await FileExplorer.init(
+        kIsWeb ? CloudFileExplorer() : MobileFileExplorer());
+    if (!kIsWeb) await ReminderNotification.init();
     _isDataLoaded = true;
     //await Future.delayed(const Duration(seconds: 2));
   }
