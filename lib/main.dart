@@ -1,29 +1,41 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/tab.dart';
-import 'package:memorize/web/login.dart';
+
+import 'package:memorize/mobile/tab.dart'
+    if (dart.library.js) 'package:memorize/web/tab.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:provider/provider.dart';
+import 'package:memorize/ad_state.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  final AdState? adState =
+      kIsWeb ? null : AdState(MobileAds.instance.initialize());
+
+  runApp(
+      Provider.value(value: adState, builder: (context, _) => const MyApp()));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key, this.listToGoTo}) : super(key: key);
+  const MyApp({Key? key, this.listToOpen}) : super(key: key);
 
-  final String? listToGoTo;
+  final String? listToOpen;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
+      title: 'Memorize',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        brightness: Brightness.dark,
+        primaryColor: Colors.white,
+        colorScheme: const ColorScheme.dark(secondary: Colors.cyanAccent),
         fontFamily: 'FiraSans',
       ),
-      home: SplashScreen(
-          builder: (context) =>
-              MainPage(title: 'Memorize', listPath: listToGoTo)),
+      home: SplashScreen(builder: (context) {
+        return MainPage(title: 'Memorize', listPath: listToOpen);
+      }),
     );
   }
 }
@@ -52,129 +64,8 @@ class _SplashScreen extends State<SplashScreen> {
             return const Scaffold(
                 body: Center(child: CircularProgressIndicator()));
           } else {
-            return widget.builder(context); //const MainPage(title: 'Memorize');
+            return widget.builder(context);
           }
         });
-  }
-}
-
-class MainPage extends StatefulWidget {
-  const MainPage({Key? key, required this.title, this.listPath})
-      : super(key: key);
-
-  final String title;
-  final String? listPath;
-
-  static _MainPage? of(BuildContext context) =>
-      context.findAncestorStateOfType<_MainPage>();
-
-  @override
-  State<MainPage> createState() => _MainPage();
-}
-
-class _MainPage extends State<MainPage> {
-  int _currTabIndex = 0;
-  late void Function(Widget widget) test;
-
-  List<AppBarItem> tabs = [];
-  late Widget _currTab;
-
-  @override
-  void initState() {
-    super.initState();
-
-    if (tabs.isEmpty) {
-      tabs = [
-        kIsWeb
-            ? AppBarItem(
-                icon: const Icon(Icons.web), tab: () => const LoginPage())
-            : AppBarItem(
-                icon: const Icon(Icons.list),
-                tab: () => ListExplorer(
-                      listPath: widget.listPath,
-                    )),
-        AppBarItem(
-            icon: const Icon(Icons.settings),
-            tab: () => ListExplorer(
-                  listPath: widget.listPath,
-                )),
-      ];
-    }
-
-    _currTab = tabs.first.tab() as Widget;
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(),
-              Center(
-                  child: Text(
-                widget.title,
-                style: const TextStyle(color: Colors.black),
-              )),
-              GestureDetector(
-                onTap: () {
-                  print('clicked');
-                },
-                child: const Icon(Icons.ring_volume),
-              )
-            ]),
-        backgroundColor: AppData.colors["bar"],
-      ),
-      body: _currTab,
-      bottomNavigationBar: _buildBottomBar(),
-    );
-  }
-
-  List<BottomNavigationBarItem> _buildBottomNavBarItems() {
-    List<BottomNavigationBarItem> ret = [];
-    for (AppBarItem t in tabs) {
-      ret.add(BottomNavigationBarItem(
-        icon: t.tabIcon,
-        label: '',
-      ));
-    }
-
-    return ret;
-  }
-
-  Widget _buildBottomBar() {
-    return Theme(
-        data: ThemeData(backgroundColor: Colors.black87),
-        child: BottomAppBar(
-            shape: const CircularNotchedRectangle(),
-            clipBehavior: Clip.antiAlias,
-            child: BottomNavigationBar(
-              currentIndex: _currTabIndex,
-              onTap: (value) {
-                if (_currTabIndex != value) {
-                  setState(() {
-                    _currTabIndex = value;
-                    _currTab = tabs[value].tab() as Widget;
-                  });
-                } else {
-                  (_currTab as ATab).reload();
-                }
-              },
-              items: _buildBottomNavBarItems(),
-              selectedItemColor: AppData.colors["buttonSelected"],
-              unselectedItemColor: AppData.colors["buttonIdle"],
-            )));
   }
 }
