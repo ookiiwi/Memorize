@@ -10,6 +10,7 @@ import 'package:memorize/stats.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
+import 'package:provider/provider.dart';
 
 const String listPage = 'listPage';
 
@@ -98,7 +99,7 @@ class _ListExplorer extends State<ListExplorer>
   static late BuildContext _navCtx;
   final double _searchHeight = 50;
   final double _horizontalMargin = 10;
-  final Color _seletedColor = Colors.lightBlue;
+  final Color _seletedColor = Colors.cyanAccent;
   final TextEditingController _controller = TextEditingController();
   late final RouteController _routeController;
   final List _selectedItems = [];
@@ -159,7 +160,8 @@ class _ListExplorer extends State<ListExplorer>
             return;
           }
           if (r.settings.name == '/') return;
-          Navigator.of(_navCtx).removeRoute(r);
+          if (r.navigator == null) return;
+          Navigator.of(r.navigator!.context).removeRoute(r);
         },
       );
 
@@ -186,7 +188,6 @@ class _ListExplorer extends State<ListExplorer>
         child: RotationTransition(
           turns: _addBtnAnim,
           child: FloatingActionButton(
-              elevation: 0,
               heroTag: "listMenuBtn",
               onPressed: () {
                 setState(() {
@@ -207,62 +208,68 @@ class _ListExplorer extends State<ListExplorer>
   Widget _buildAddBtns(BuildContext ctx) {
     void Function() openBuilder;
 
-    return Column(children: [
-      Container(
-          margin: const EdgeInsets.all(5),
-          child: FloatingActionButton(
-            elevation: 0,
-            heroTag: "dirAddBtn",
-            onPressed: () {
-              showDialog(
-                  context: ctx,
-                  builder: (ctx) => TextFieldDialog(
-                        controller: _controller,
-                        hintText: 'dirname',
-                        hasConfirmed: (value) {
-                          setState(() {
-                            _openBtnMenu = !_openBtnMenu;
-                            if (value) {
-                              FileExplorer.createDirectory(_controller.text);
-                            }
-                          });
-                        },
-                      ));
-            },
-            child: const Icon(Icons.folder),
-          )),
-      Container(
-          margin: const EdgeInsets.all(5),
-          child: OpenContainer(
-              tappable: false,
-              routeSettings: const RouteSettings(name: listPage),
-              transitionType: ContainerTransitionType.fade,
-              transitionDuration: Duration(milliseconds: _listBtnAnimDuration),
-              closedColor: Colors.blue,
-              closedShape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(360)),
-              closedBuilder: (context, action) {
-                openBuilder = action;
-                return GestureDetector(
-                  onTap: () {
-                    openBuilder();
-                    setState(() {
-                      _showAddBtn = false;
-                    });
+    return Container(
+        margin: const EdgeInsets.only(bottom: 5),
+        child: Column(children: [
+          Container(
+              margin: const EdgeInsets.all(5),
+              child: FloatingActionButton(
+                //elevation: 0,
+                heroTag: "dirAddBtn",
+                onPressed: () {
+                  showDialog(
+                      context: ctx,
+                      builder: (ctx) => TextFieldDialog(
+                            controller: _controller,
+                            hintText: 'dirname',
+                            hasConfirmed: (value) {
+                              setState(() {
+                                _openBtnMenu = !_openBtnMenu;
+                                if (value) {
+                                  FileExplorer.createDirectory(
+                                      _controller.text);
+                                }
+                              });
+                            },
+                          ));
+                },
+                child: const Icon(Icons.folder),
+              )),
+          Container(
+              margin: const EdgeInsets.all(5),
+              child: OpenContainer(
+                  openElevation: 0,
+                  closedElevation: 4,
+                  tappable: false,
+                  routeSettings: const RouteSettings(name: listPage),
+                  transitionType: ContainerTransitionType.fade,
+                  transitionDuration:
+                      Duration(milliseconds: _listBtnAnimDuration),
+                  closedColor: Theme.of(context).colorScheme.secondary,
+                  closedShape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(360)),
+                  closedBuilder: (context, action) {
+                    openBuilder = action;
+                    return GestureDetector(
+                      onTap: () {
+                        openBuilder();
+                        setState(() {
+                          _showAddBtn = false;
+                        });
+                      },
+                      child: const SizedBox(
+                          height: 56,
+                          width: 56,
+                          child: Icon(
+                            Icons.list,
+                            color: Colors.black,
+                          )),
+                    );
                   },
-                  child: const SizedBox(
-                      height: 56,
-                      width: 56,
-                      child: Icon(
-                        Icons.list,
-                        color: Colors.white,
-                      )),
-                );
-              },
-              openBuilder: (context, _) {
-                return ListPage();
-              })),
-    ]);
+                  openBuilder: (context, _) {
+                    return Scaffold(body: ListPage());
+                  })),
+        ]));
   }
 
   Widget _buildSelectionBtns() {
@@ -316,7 +323,7 @@ class _ListExplorer extends State<ListExplorer>
         builder: (context) {
           _navCtx = context;
           return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.all(10),
               child: Stack(
                 children: [
                   Column(children: [
@@ -368,7 +375,11 @@ class _ListExplorer extends State<ListExplorer>
                                           ? _seletedColor
                                           : Colors.grey,
                                       borderRadius: BorderRadius.circular(30)),
-                                  child: Center(child: Text(tabs[i])),
+                                  child: Center(
+                                      child: Text(
+                                    tabs[i],
+                                    style: const TextStyle(color: Colors.black),
+                                  )),
                                 ));
                           }),
                     ),
@@ -489,11 +500,13 @@ class _ListExplorer extends State<ListExplorer>
                                     : Container(
                                         key: _dummyListBtnKey,
                                         margin: const EdgeInsets.all(5),
-                                        child: FloatingActionButton(
-                                          elevation: 0,
-                                          onPressed: () {},
-                                          child: const Icon(Icons.list),
-                                        )),
+                                        child: _openBtnMenu
+                                            ? Container()
+                                            : FloatingActionButton(
+                                                elevation: 0,
+                                                onPressed: () {},
+                                                child: const Icon(Icons.list),
+                                              )),
                               )))
                     ],
                   )
@@ -660,7 +673,8 @@ class _ListPage extends State<ListPage> {
   Widget build(BuildContext ctx) {
     return PageView(
       children: [
-        Stack(children: [
+        Container(
+            child: Stack(children: [
           _buildElts(),
           Align(
               alignment: Alignment.bottomCenter,
@@ -726,7 +740,7 @@ class _ListPage extends State<ListPage> {
                                   },
                                 ));
                       }))
-        ]),
+        ])),
         StatsPage(
             points: _list.stats.stats.map((e) => [e.time, e.score]).toList())
       ],
@@ -767,7 +781,7 @@ class _ListSearchPage extends State<ListSearchPage> {
   @override
   Widget build(BuildContext ctx) {
     return Container(
-        margin: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(10),
         child: Column(
           children: [
             Container(
@@ -822,6 +836,129 @@ class _ListSearchPage extends State<ListSearchPage> {
                   text: 'Confirm'),
             ]),
           ],
+        ));
+  }
+}
+
+class SettingsPage extends StatefulWidget with ATab {
+  SettingsPage({Key? key}) : super(key: key);
+
+  late final void Function() _reload;
+
+  @override
+  void reload() {
+    _reload();
+  }
+
+  @override
+  State<SettingsPage> createState() => _SettingsPage();
+}
+
+class _SettingsPage extends State<SettingsPage> {
+  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+  late BuildContext _navCtx;
+
+  @override
+  void initState() {
+    super.initState();
+    widget._reload = () {
+      _popHome();
+    };
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  void _popHome() {
+    if (Navigator.of(_navCtx).canPop()) {
+      Navigator.of(_navCtx).pop();
+    }
+  }
+
+  Widget _buildField(BuildContext context, String text,
+      {required WidgetBuilder builder}) {
+    return GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) {
+            return Scaffold(body: SafeArea(child: builder(context)));
+          }, transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset(0.0, 0.0);
+            final tween = Tween(begin: begin, end: end);
+            final offsetAnimation = animation.drive(tween);
+
+            return SlideTransition(
+              position: offsetAnimation,
+              child: child,
+            );
+          }));
+        },
+        child: Container(
+          margin: const EdgeInsets.all(5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+          height: MediaQuery.of(context).size.height * 0.08,
+          width: MediaQuery.of(context).size.width,
+          decoration: BoxDecoration(
+              color: Colors.amber, borderRadius: BorderRadius.circular(20)),
+          child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.contain,
+              child: Text(text)),
+        ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TabNavigator(
+        onWillPop: () async {
+          _popHome();
+          return false;
+        },
+        navigatorKey: _navKey,
+        builder: (context) {
+          _navCtx = context;
+          return Container(
+              margin: const EdgeInsets.all(10),
+              height: MediaQuery.of(context).size.height,
+              width: MediaQuery.of(context).size.width,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  _buildField(context, 'Notifications',
+                      builder: (context) => Container()),
+                  _buildField(context, 'About',
+                      builder: (context) => Container()),
+                ],
+              ));
+        });
+  }
+}
+
+class SettingsSection extends StatefulWidget {
+  @override
+  State<SettingsSection> createState() => _SettingsSection();
+}
+
+class _SettingsSection extends State<SettingsSection> {
+  Widget _buildField({required Widget child}) {
+    return Container(
+        child: child,
+        decoration: BoxDecoration(
+            color: Colors.amber, borderRadius: BorderRadius.circular(10)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        margin: const EdgeInsets.all(10),
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
+        child: ListView(
+          children: [],
         ));
   }
 }
