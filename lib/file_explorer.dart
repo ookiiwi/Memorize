@@ -6,7 +6,6 @@ import 'package:memorize/data.dart';
 import 'package:memorize/web/login.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 
 enum FileType { dir, list, unknown }
 
@@ -83,14 +82,15 @@ class CloudFileExplorer extends FileExplorer {
                 'action': 'get',
                 'username': currentUser!.username,
                 'pwd': currentUser!.password,
-                'filename': "$_root/$listname"
+                'filename': "$_wd/$listname"
               }));
 
       if (response.statusCode == 200) {
         ret = AList.fromJson(
             '', listname.split('/').last, response.body, listname);
       } else {
-        print('notfound');
+        print('notfound: ${response.statusCode}');
+        print('notfound body: ${response.body}');
       }
     } catch (e) {
       print('fetch error: $e');
