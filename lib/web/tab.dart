@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
+import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/db.dart';
 import 'package:memorize/tab.dart';
+import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
 
 class MainPage extends StatefulWidget {
@@ -36,25 +38,21 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
     _animController.animateTo(1.0, duration: Duration.zero);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    //_title = Provider.of<String>(context);
-  }
-
-  void _manageDrawer() {
+  void _manageDrawer({bool open = true}) {
     if (_scaffoldKey.currentState == null) {
       return;
     }
-    if (_scaffoldKey.currentState!.isDrawerOpen) {
-      _scaffoldKey.currentState!.openEndDrawer();
-      _animController.forward();
-      setState(() => _isMenuOpen = false);
-    } else {
-      _scaffoldKey.currentState!.openDrawer();
-      _animController.reverse();
-      setState(() => _isMenuOpen = true);
-    }
+    setState(() {
+      if (_scaffoldKey.currentState!.isDrawerOpen) {
+        _scaffoldKey.currentState!.openEndDrawer();
+        _animController.forward();
+        _isMenuOpen = false;
+      } else if (open) {
+        _scaffoldKey.currentState!.openDrawer();
+        _animController.reverse();
+        _isMenuOpen = true;
+      }
+    });
   }
 
   @override
@@ -74,14 +72,19 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
               child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    FittedBox(
-                        fit: BoxFit.fitHeight,
-                        child: Center(
-                            child: Text(
-                          _title,
-                          style: const TextStyle(
-                              color: Colors.black, fontWeight: FontWeight.bold),
-                        ))),
+                    GestureDetector(
+                        onTap: () => setState(() {
+                              _currentPage = HomePage();
+                            }),
+                        child: FittedBox(
+                            fit: BoxFit.fitHeight,
+                            child: Center(
+                                child: Text(
+                              _title,
+                              style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold),
+                            )))),
                     Container(),
                     const Spacer(),
                     FittedBox(
@@ -122,12 +125,14 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
               padding: EdgeInsets.only(left: 40, top: _appBarHeight * 2),
               width: MediaQuery.of(context).size.width,
               pageBuilderCallback: (page) => setState(() {
-                if (_currentPage.runtimeType != page.runtimeType) {
-                  _currentPage = page;
-                } else {
-                  _currentPage.reload();
+                if (page != null) {
+                  if (_currentPage.runtimeType != page.runtimeType) {
+                    _currentPage = page;
+                  } else {
+                    _currentPage.reload();
+                  }
                 }
-                _manageDrawer();
+                _manageDrawer(open: false);
               }),
             ),
             body: SafeArea(child: _currentPage as Widget)));
@@ -181,7 +186,7 @@ class NavigationMenu extends StatefulWidget {
   final double? height;
   final double? width;
   final EdgeInsets? padding;
-  final void Function(ATab) pageBuilderCallback;
+  final void Function(ATab?) pageBuilderCallback;
 
   @override
   State<NavigationMenu> createState() => _NavigationMenu();
@@ -189,6 +194,10 @@ class NavigationMenu extends StatefulWidget {
 
 class _NavigationMenu extends State<NavigationMenu>
     with SingleTickerProviderStateMixin {
+  bool get _isLogged =>
+      currentUser != null &&
+      currentUser!.status == UserConnectionStatus.loggedIn;
+
   @override
   void initState() {
     super.initState();
@@ -204,27 +213,6 @@ class _NavigationMenu extends State<NavigationMenu>
     super.dispose();
   }
 
-  Widget _buildField(BuildContext context,
-      {required Widget child, required WidgetBuilder pageBuilder}) {
-    return Container(
-        margin: const EdgeInsets.all(5),
-        child: FittedBox(
-            fit: BoxFit.contain,
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    primary: Colors.transparent,
-                    elevation: 0,
-                    shadowColor: Colors.transparent),
-                onPressed: () =>
-                    widget.pageBuilderCallback(pageBuilder(context) as ATab),
-                child: Container(
-                  height: 30,
-                  decoration:
-                      BoxDecoration(borderRadius: BorderRadius.circular(20)),
-                  child: Center(child: child),
-                ))));
-  }
-
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -236,45 +224,85 @@ class _NavigationMenu extends State<NavigationMenu>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildField(context,
+                NavigationMenuItem(
                     child: const Text(
                       'Home',
                       style: TextStyle(fontWeight: FontWeight.bold),
-                    ), pageBuilder: (context) {
-                  return HomePage();
-                }),
-                _buildField(context,
-                    child: const Text(
-                      'Explorer',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ), pageBuilder: (context) {
-                  return ListExplorer();
-                }),
-                _buildField(context,
-                    child: const Text(
-                      'Settings',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ), pageBuilder: (context) {
-                  return SettingsPage();
-                })
+                    ),
+                    onTap: () => widget.pageBuilderCallback(HomePage())),
+                NavigationMenuItem(
+                    child: Text(
+                      _isLogged ? 'Profile' : 'Login',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onTap: () {
+                      if (!_isLogged) {
+                        showDialog(
+                            context: context,
+                            builder: (context) => Dialog(
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20)),
+                                backgroundColor: Colors.transparent,
+                                child: LoginPage(onValidate: (value) {
+                                  if (value) {
+                                    Navigator.of(context).pop();
+                                  }
+                                })));
+                      }
+                      widget.pageBuilderCallback(_isLogged
+                          ? ProfilePage(
+                              onLogout: () =>
+                                  widget.pageBuilderCallback(HomePage()),
+                            )
+                          : null);
+                    }),
+                if (_isLogged)
+                  NavigationMenuItem(
+                      child: const Text(
+                        'Explorer',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onTap: () {
+                        widget.pageBuilderCallback(ListExplorer());
+                      }),
+                if (_isLogged)
+                  NavigationMenuItem(
+                      child: const Text(
+                        'Settings',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onTap: () {
+                        widget.pageBuilderCallback(SettingsPage());
+                      })
               ],
             )));
   }
 }
 
-//class NavigationMenuItem extends StatelessWidget {
-//  const NavigationMenuItem
-//
-//  @override
-//  Widget build(BuildContext context) {
-//    return GestureDetector(
-//        child: Align(
-//            alignment: Alignment.centerLeft,
-//            child: Container(
-//              margin: const EdgeInsets.only(top: 10, bottom: 10, left: 40),
-//              decoration:
-//                  BoxDecoration(borderRadius: BorderRadius.circular(20)),
-//              child: child,
-//            )));
-//  }
-//}
+class NavigationMenuItem extends StatelessWidget {
+  const NavigationMenuItem({Key? key, required this.child, required this.onTap})
+      : super(key: key);
+
+  final Widget child;
+  final void Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        margin: const EdgeInsets.all(5),
+        child: FittedBox(
+            fit: BoxFit.contain,
+            child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    primary: Colors.transparent,
+                    elevation: 0,
+                    shadowColor: Colors.transparent),
+                onPressed: () => onTap(),
+                child: Container(
+                  height: 30,
+                  decoration:
+                      BoxDecoration(borderRadius: BorderRadius.circular(20)),
+                  child: Center(child: child),
+                ))));
+  }
+}
