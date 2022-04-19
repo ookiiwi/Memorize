@@ -1,12 +1,16 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
+import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/db.dart';
+import 'package:memorize/file_explorer.dart';
 import 'package:memorize/quiz.dart';
 import 'package:memorize/stats.dart';
+import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
@@ -14,54 +18,27 @@ import 'package:provider/provider.dart';
 
 const String listPage = 'listPage';
 
-class RouteController {
-  RouteController({required Future<bool> Function() canPop}) {
-    _routesCanPop.add(canPop);
-    routeIndex = _routesCanPop.length - 1;
-  }
-
-  late final int routeIndex;
-  static final List<Future<bool> Function()> _routesCanPop = [];
-
-  static Future<bool> canPop() async {
-    return _routesCanPop.isEmpty ? false : await _routesCanPop.last();
-  }
-
-  static Future<bool> pop<T extends Object?>(BuildContext context,
-      {T? result}) async {
-    bool canpop = await canPop();
-    if (canpop && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(result);
-      return true;
-    }
-    return false;
-  }
-
-  void dispose() {
-    assert(_routesCanPop.isNotEmpty);
-    _routesCanPop.removeLast();
-  }
-}
-
 class TabNavigator extends StatelessWidget {
   const TabNavigator(
       {required this.navigatorKey,
       required this.builder,
       Key? key,
       this.restorationScopeId,
-      this.observers = const <NavigatorObserver>[],
-      this.onWillPop})
+      this.observers = const <NavigatorObserver>[]})
       : super(key: key);
   final GlobalKey<NavigatorState> navigatorKey;
   final WidgetBuilder builder;
-  final Future<bool> Function()? onWillPop;
   final String? restorationScopeId;
   final List<NavigatorObserver> observers;
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
         onWillPop: () async {
-          return onWillPop != null ? await onWillPop!() : false;
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.maybePop();
+            return false;
+          }
+          return true;
         },
         child: Navigator(
           restorationScopeId: restorationScopeId,
@@ -94,14 +71,14 @@ class ListExplorer extends StatefulWidget with ATab {
 class _ListExplorer extends State<ListExplorer>
     with RouteAware, TickerProviderStateMixin {
   SortType _sortType = SortType.rct;
-  List<String> _items = [];
+  List<FileInfo> _items = [];
+  Future<List> _fItems = Future.value([]);
   bool _openBtnMenu = false;
   static late BuildContext _navCtx;
   final double _searchHeight = 50;
   final double _horizontalMargin = 10;
   final Color _seletedColor = Colors.cyanAccent;
   final TextEditingController _controller = TextEditingController();
-  late final RouteController _routeController;
   final List _selectedItems = [];
   bool _openSelection = false;
   final GlobalKey key = GlobalKey();
@@ -114,8 +91,11 @@ class _ListExplorer extends State<ListExplorer>
   bool _showAddBtn = true;
   bool _pop = false;
   final int _listBtnAnimDuration = 1000;
+  static final FileExplorer _fe =
+      kIsWeb ? CloudFileExplorer() : MobileFileExplorer();
 
   final NavigationHistoryObserver _navHistory = NavigationHistoryObserver();
+  ModalRoute? _route;
 
   List<String> tabs = ["recent", "ascending", "descending"];
 
@@ -142,30 +122,34 @@ class _ListExplorer extends State<ListExplorer>
       instance.addPostFrameCallback((_) {
         if (widget.listPath != null) {
           Navigator.of(_navCtx).push(MaterialPageRoute(
-              builder: (context) => ListPage(
+              builder: (context) => Provider.value(
+                  value: _fe,
+                  child: ListPage(
                     listPath: widget.listPath,
-                  )));
+                  ))));
         }
       });
     }
 
-    _routeController = RouteController(canPop: () async => false);
-
     widget._reload = () async {
-      _navHistory.history.forEach(
-        (r) {
-          if (r.settings.name == listPage) {
-            if (_openBtnMenu) _popFromAddBtn();
-            RouteController.pop(_navCtx);
-            return;
-          }
-          if (r.settings.name == '/') return;
-          if (r.navigator == null) return;
-          Navigator.of(r.navigator!.context).removeRoute(r);
-        },
-      );
+      setState(() {
+        _updateData();
 
-      setState(() => _openBtnMenu = _openSelection = false);
+        _navHistory.history.forEach(
+          (r) {
+            if (r.settings.name == listPage) {
+              if (_openBtnMenu) _popFromAddBtn();
+              Navigator.of(_navCtx).maybePop();
+              return;
+            }
+            if (r.settings.name == '/') return;
+            if (r.navigator == null) return;
+            Navigator.of(r.navigator!.context).removeRoute(r);
+          },
+        );
+
+        _openBtnMenu = _openSelection = false;
+      });
     };
 
     _addBtnAnimController = AnimationController(
@@ -175,11 +159,40 @@ class _ListExplorer extends State<ListExplorer>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateData();
+
+    _route?.removeScopedWillPopCallback(_canPop);
+    _route = ModalRoute.of(context);
+    _route?.addScopedWillPopCallback(_canPop);
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     _addBtnAnimController.dispose();
-    _routeController.dispose();
+    _route?.removeScopedWillPopCallback(_canPop);
+    _route = null;
     super.dispose();
+  }
+
+  void _updateData() {
+    _fItems = _fe.ls()
+      ..then((value) => setState(() {
+            _items = value;
+          }));
+  }
+
+  Future<bool> _canPop() async {
+    if (_openBtnMenu) _popFromAddBtn();
+    if (Navigator.of(_navCtx).canPop()) {
+      return true;
+    } else {
+      _fe.cd('..');
+      _updateData();
+    }
+    return false;
   }
 
   Widget _buildAddBtn() {
@@ -214,7 +227,6 @@ class _ListExplorer extends State<ListExplorer>
           Container(
               margin: const EdgeInsets.all(5),
               child: FloatingActionButton(
-                //elevation: 0,
                 heroTag: "dirAddBtn",
                 onPressed: () {
                   showDialog(
@@ -226,8 +238,8 @@ class _ListExplorer extends State<ListExplorer>
                               setState(() {
                                 _openBtnMenu = !_openBtnMenu;
                                 if (value) {
-                                  FileExplorer.createDirectory(
-                                      _controller.text);
+                                  _fe.mkdir(_controller.text);
+                                  _updateData();
                                 }
                               });
                             },
@@ -267,7 +279,8 @@ class _ListExplorer extends State<ListExplorer>
                     );
                   },
                   openBuilder: (context, _) {
-                    return Scaffold(body: ListPage());
+                    return Scaffold(
+                        body: Provider.value(value: _fe, child: ListPage()));
                   })),
         ]));
   }
@@ -280,8 +293,9 @@ class _ListExplorer extends State<ListExplorer>
           setState(() {
             _openSelection = false;
             for (var item in _selectedItems) {
-              FileExplorer.delete(item);
+              _fe.remove(item.name);
             }
+            _updateData();
           });
         },
         child: const Icon(Icons.delete),
@@ -302,22 +316,10 @@ class _ListExplorer extends State<ListExplorer>
 
   @override
   Widget build(BuildContext ctx) {
-    _items = FileExplorer.listCurrentDir(sortType: _sortType);
     assert(tabs.length <= SortType.values.length);
 
     return TabNavigator(
         observers: [_navHistory],
-        onWillPop: () async {
-          if (_openBtnMenu) _popFromAddBtn();
-          bool routeCanPop = (await RouteController.canPop()) &&
-              !(await RouteController.pop(_navCtx));
-          if (!routeCanPop) {
-            setState(() {
-              FileExplorer.cd('..');
-            });
-          }
-          return false;
-        },
         restorationScopeId: 'ListExplorer',
         navigatorKey: navKey,
         builder: (context) {
@@ -333,12 +335,12 @@ class _ListExplorer extends State<ListExplorer>
                         height: _searchHeight,
                         alignment: Alignment.centerLeft,
                         padding: const EdgeInsets.all(5),
-                        margin: const EdgeInsets.only(top: 20),
+                        margin: const EdgeInsets.only(top: 5),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(20),
                           color: Colors.grey,
                         ),
-                        child: Text(FileExplorer.currentRelative),
+                        child: Text(_fe.wd),
                       )),
                       Container(
                         margin: const EdgeInsets.only(left: 10),
@@ -390,84 +392,96 @@ class _ListExplorer extends State<ListExplorer>
                             decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(20),
                                 color: _seletedColor),
-                            child: PageView.builder(
-                                itemCount: 1,
-                                itemBuilder: (ctx, i) {
-                                  return Container(
-                                    padding: const EdgeInsets.all(10),
-                                    color: Colors.transparent,
-                                    child: GridView.builder(
-                                        gridDelegate:
-                                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                                          maxCrossAxisExtent: 150.0,
-                                          mainAxisSpacing: 10.0,
-                                          crossAxisSpacing: 10.0,
-                                          childAspectRatio: 1.0,
-                                        ),
-                                        itemCount: _items.length,
-                                        itemBuilder: (context, i) {
-                                          return Selectable(
-                                              top: 0,
-                                              right: 0,
-                                              tag: i,
-                                              onSelected: (i, value) => value
-                                                  ? _selectedItems
-                                                      .add(_items[i])
-                                                  : _selectedItems
-                                                      .remove(_items[i]),
-                                              selectable: _openSelection,
-                                              child: GestureDetector(
-                                                  onLongPress: () => setState(() =>
-                                                      _openSelection = true),
-                                                  behavior: HitTestBehavior
-                                                      .translucent,
-                                                  onTap: () {
-                                                    if (FileExplorer
-                                                        .isDirectory(
-                                                            _items[i])) {
-                                                      setState(() =>
-                                                          FileExplorer.cd(
-                                                              _items[i]));
-                                                    }
-                                                  },
-                                                  child: FileExplorer.isDirectory(
-                                                          _items[i])
-                                                      ? _closedBuilder(
-                                                          context, _items[i])
-                                                      : OpenContainer(
-                                                          routeSettings: const RouteSettings(
-                                                              name: listPage),
-                                                          closedElevation: 0,
-                                                          closedColor:
-                                                              Colors.indigo,
-                                                          closedShape:
-                                                              RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        20),
-                                                          ),
-                                                          transitionType:
-                                                              ContainerTransitionType
-                                                                  .fade,
-                                                          transitionDuration:
-                                                              const Duration(seconds: 1),
-                                                          openBuilder: (context, action) {
-                                                            return ListPage(
-                                                              listPath:
-                                                                  _items[i],
-                                                            );
+                            child: FutureBuilder(
+                                future: _fItems,
+                                builder: ((context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return const Center(
+                                        child: CircularProgressIndicator());
+                                  } else {
+                                    return PageView.builder(
+                                        itemCount: 1,
+                                        itemBuilder: (ctx, i) {
+                                          return Container(
+                                            padding: const EdgeInsets.all(10),
+                                            color: Colors.transparent,
+                                            child: GridView.builder(
+                                                gridDelegate:
+                                                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                                                  maxCrossAxisExtent: 150.0,
+                                                  mainAxisSpacing: 10.0,
+                                                  crossAxisSpacing: 10.0,
+                                                  childAspectRatio: 1.0,
+                                                ),
+                                                itemCount: _items.length,
+                                                itemBuilder: (context, i) {
+                                                  return Selectable(
+                                                      top: 0,
+                                                      right: 0,
+                                                      tag: i,
+                                                      onSelected: (i, value) => value
+                                                          ? _selectedItems
+                                                              .add(_items[i])
+                                                          : _selectedItems.remove(
+                                                              _items[i]),
+                                                      selectable:
+                                                          _openSelection,
+                                                      child: GestureDetector(
+                                                          onLongPress: () =>
+                                                              setState(() =>
+                                                                  _openSelection =
+                                                                      true),
+                                                          behavior: HitTestBehavior
+                                                              .translucent,
+                                                          onTap: () {
+                                                            if (_items[i]
+                                                                    .type ==
+                                                                FileType.dir) {
+                                                              _fe.cd(_items[i]
+                                                                  .name);
+                                                              _updateData();
+                                                            }
                                                           },
-                                                          closedBuilder: (context, action) {
-                                                            return _closedBuilder(
-                                                                context,
-                                                                _items[i],
-                                                                roundBorders:
-                                                                    false);
-                                                          })));
-                                        }),
-                                  );
-                                }))),
+                                                          child: _items[i].type ==
+                                                                  FileType.dir
+                                                              ? _closedBuilder(
+                                                                  context,
+                                                                  _items[i].name)
+                                                              : OpenContainer(
+                                                                  routeSettings: const RouteSettings(name: listPage),
+                                                                  closedElevation: 0,
+                                                                  closedColor: Colors.indigo,
+                                                                  closedShape: RoundedRectangleBorder(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                            20),
+                                                                  ),
+                                                                  transitionType: ContainerTransitionType.fade,
+                                                                  transitionDuration: const Duration(seconds: 1),
+                                                                  openBuilder: (context, action) {
+                                                                    return Provider
+                                                                        .value(
+                                                                            value:
+                                                                                _fe,
+                                                                            child:
+                                                                                ListPage(
+                                                                              listPath: _items[i].name,
+                                                                              createIfDontExists: false,
+                                                                            ));
+                                                                  },
+                                                                  closedBuilder: (context, action) {
+                                                                    return _closedBuilder(
+                                                                        context,
+                                                                        _items[i]
+                                                                            .name,
+                                                                        roundBorders:
+                                                                            false);
+                                                                  })));
+                                                }),
+                                          );
+                                        });
+                                  }
+                                })))),
                   ]),
                   Stack(
                     children: [
@@ -516,18 +530,18 @@ class _ListExplorer extends State<ListExplorer>
   }
 }
 
-class ListPage extends StatefulWidget {
-  ListPage({Key? key, this.listPath}) : super(key: key) {
-    if (listPath != null) {
-      _list = FileExplorer.getList(listPath!) ?? AList('List not found');
-    } else {
-      _list = AList('');
-      FileExplorer.createList(_list);
-    }
-  }
+class ListPage extends StatefulWidget with ATab {
+  ListPage({Key? key, this.listPath, this.createIfDontExists = true})
+      : super(key: key);
 
   final String? listPath;
-  late final AList _list;
+  final bool createIfDontExists;
+  void Function() _reload = () {};
+
+  @override
+  void reload() {
+    _reload();
+  }
 
   @override
   State<ListPage> createState() => _ListPage();
@@ -535,70 +549,63 @@ class ListPage extends StatefulWidget {
 
 class _ListPage extends State<ListPage> {
   final Addon _addon = JpnAddon();
-  late final RouteController _routeController;
   late final TextEditingController _nameController;
-  late final AList _list;
+  AList _list = AList('');
   bool _nameIsValid = false;
   bool get _canPop => _nameIsValid;
   bool _openSelection = false;
   final List _selectedItems = [];
-  AList get list =>
-      FileExplorer.getList(_list.path,
-          ifNoList: () => throw Exception('List not found')) ??
-      _list;
+  late Future _fList;
+  late final FileExplorer _fe;
+  bool _feInit = false;
+  bool _listSet = false;
+  ModalRoute? _route;
 
   @override
   void initState() {
     super.initState();
 
-    _list = widget._list;
+    widget._reload = () => setState(() {});
 
-    _routeController = RouteController(canPop: () async {
-      if (!_canPop) {
-        await showDialog(
-            context: context,
-            builder: (context) {
-              return Dialog(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      alignment: Alignment.center,
-                      margin: const EdgeInsets.all(10),
-                      child: Text(
-                          "The name '${_list.name}' already exists in this directory."),
-                    ),
-                    Row(children: [
-                      Expanded(
-                          child: ConfirmationButton(
-                              onTap: () {
-                                Navigator.of(context).pop();
-                                setState(() {
-                                  _nameIsValid = true;
-                                });
-                              },
-                              text: "Don't save")),
-                      Expanded(
-                          child: ConfirmationButton(
-                              onTap: () => Navigator.of(context).pop(),
-                              text: "Cancel"))
-                    ]),
-                  ]));
-            });
-      }
-
-      return _canPop;
-    });
-
-    _nameIsValid = FileExplorer.canRenameList(_list, _list.name, rename: false);
+    _nameIsValid = true; //TODO: check if name valid
     _nameController = TextEditingController(text: _list.name);
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    _route?.removeScopedWillPopCallback(canPop);
+    _route = ModalRoute.of(context);
+    _route?.addScopedWillPopCallback(canPop);
+
+    if (!_feInit) {
+      _fe = Provider.of<FileExplorer>(context);
+      _feInit = true;
+    }
+
+    if (!_listSet && _feInit) {
+      if (widget.listPath != null) {
+        _fList = _fe.fetch(widget.listPath!).then((value) {
+          assert(!(value == null && !widget.createIfDontExists));
+          _list = value ?? AList("List not found");
+          _nameController.text = _list.name;
+        });
+      } else {
+        _fList = Future.value();
+      }
+
+      _listSet = true;
+    }
+  }
+
+  @override
   void dispose() {
-    super.dispose();
-    _routeController.dispose();
     _nameController.dispose();
+    _route?.removeScopedWillPopCallback(canPop);
+    _route = null;
+
+    super.dispose();
   }
 
   Widget _buildElts() {
@@ -608,14 +615,9 @@ class _ListPage extends State<ListPage> {
             margin: const EdgeInsets.all(20),
             child: TextField(
               controller: _nameController,
-              onSubmitted: (value) {
-                setState(() {
-                  if (FileExplorer.canRenameList(_list, _nameController.text)) {
-                    _nameIsValid = true;
-                  } else {
-                    _nameIsValid = false;
-                  }
-                });
+              onChanged: (value) {
+                //TODO: check if name valid
+                _list.name = _nameController.text;
               },
               decoration: InputDecoration(
                   border: OutlineInputBorder(
@@ -669,82 +671,130 @@ class _ListPage extends State<ListPage> {
     );
   }
 
+  Future<bool> canPop() async {
+    print('listpage pop');
+    if (!_canPop) {
+      await showDialog(
+          context: context,
+          builder: (context) {
+            return Dialog(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    alignment: Alignment.center,
+                    margin: const EdgeInsets.all(10),
+                    child: Text(
+                        "The name '${_list.name}' already exists in this directory."),
+                  ),
+                  Row(children: [
+                    Expanded(
+                        child: ConfirmationButton(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              setState(() {
+                                _nameIsValid = true;
+                              });
+                            },
+                            text: "Don't save")),
+                    Expanded(
+                        child: ConfirmationButton(
+                            onTap: () => Navigator.of(context).pop(),
+                            text: "Cancel"))
+                  ]),
+                ]));
+          });
+    }
+
+    return _canPop;
+  }
+
   @override
   Widget build(BuildContext ctx) {
-    return PageView(
-      children: [
-        Container(
-            child: Stack(children: [
-          _buildElts(),
-          Align(
-              alignment: Alignment.bottomCenter,
-              child: OpenContainer(
-                  transitionType: ContainerTransitionType.fade,
-                  transitionDuration: const Duration(milliseconds: 1000),
-                  openElevation: 0,
-                  closedElevation: 0,
-                  closedColor: Colors.blue,
-                  closedShape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(360)),
-                  closedBuilder: (context, action) {
-                    return const SizedBox(
-                        height: 56.0,
-                        width: 56.0,
-                        child: Icon(
-                          Icons.play_arrow,
-                          color: Colors.white,
-                        ));
-                  },
-                  openBuilder: (context, _) {
-                    return QuizLauncher(
-                      list: _list,
-                    );
-                  })),
-          Positioned(
-              bottom: 10,
-              right: 10,
-              child: _openSelection
-                  ? FloatingActionButton(
-                      heroTag: "prout",
-                      onPressed: () => setState(() {
-                        _openSelection = false;
-                        for (int i in _selectedItems) {
-                          _list.entries.removeAt(i);
-                        }
-                        FileExplorer.writeList(_list);
-                      }),
-                      child: const Icon(Icons.delete),
-                    )
-                  : OpenContainer(
-                      transitionType: ContainerTransitionType.fade,
-                      transitionDuration: const Duration(seconds: 1),
-                      openElevation: 0,
-                      closedElevation: 0,
-                      closedColor: Colors.blue,
-                      closedShape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(360)),
-                      closedBuilder: (context, _) => const SizedBox(
-                          height: 56.0,
-                          width: 56.0,
-                          child: Icon(
-                            Icons.add,
-                            color: Colors.white,
-                          )),
-                      openBuilder: (context, _) {
-                        return ListSearchPage(
-                            addon: _addon,
-                            onConfirm: (values) => setState(
-                                  () {
-                                    _list.entries.addAll(values);
-                                    FileExplorer.writeList(_list);
-                                  },
+    return FutureBuilder(
+        future: _fList,
+        builder: ((context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          } else {
+            return PageView(
+              children: [
+                Stack(children: [
+                  _buildElts(),
+                  Align(
+                      alignment: Alignment.bottomCenter,
+                      child: OpenContainer(
+                          transitionType: ContainerTransitionType.fade,
+                          transitionDuration:
+                              const Duration(milliseconds: 1000),
+                          openElevation: 0,
+                          closedElevation: 0,
+                          closedColor: Colors.blue,
+                          closedShape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(360)),
+                          closedBuilder: (context, action) {
+                            return const SizedBox(
+                                height: 56.0,
+                                width: 56.0,
+                                child: Icon(
+                                  Icons.play_arrow,
+                                  color: Colors.white,
                                 ));
-                      }))
-        ])),
-        StatsPage(
-            points: _list.stats.stats.map((e) => [e.time, e.score]).toList())
-      ],
-    );
+                          },
+                          openBuilder: (context, _) {
+                            return QuizLauncher(
+                              list: _list,
+                            );
+                          })),
+                  Positioned(
+                      bottom: 10,
+                      right: 10,
+                      child: _openSelection
+                          ? FloatingActionButton(
+                              heroTag: "prout",
+                              onPressed: () => setState(() {
+                                _openSelection = false;
+                                for (int i in _selectedItems) {
+                                  _list.entries.removeAt(i);
+                                }
+                                _fe.write(_list);
+                              }),
+                              child: const Icon(Icons.delete),
+                            )
+                          : OpenContainer(
+                              transitionType: ContainerTransitionType.fade,
+                              transitionDuration: const Duration(seconds: 1),
+                              openElevation: 0,
+                              closedElevation: 0,
+                              closedColor: Colors.blue,
+                              closedShape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(360)),
+                              closedBuilder: (context, _) => const SizedBox(
+                                  height: 56.0,
+                                  width: 56.0,
+                                  child: Icon(
+                                    Icons.add,
+                                    color: Colors.white,
+                                  )),
+                              openBuilder: (context, _) {
+                                return ListSearchPage(
+                                    addon: _addon,
+                                    onConfirm: (values) => setState(
+                                          () {
+                                            _list.entries.addAll(values);
+                                            _fe.write(_list);
+                                          },
+                                        ));
+                              }))
+                ]),
+                StatsPage(
+                    points: _list.stats.stats
+                        .map((e) => [e.time, e.score])
+                        .toList())
+              ],
+            );
+          }
+        }));
   }
 }
 
@@ -760,7 +810,6 @@ class ListSearchPage extends StatefulWidget {
 }
 
 class _ListSearchPage extends State<ListSearchPage> {
-  late final RouteController _routeController;
   final TextEditingController _controller = TextEditingController();
   final List _results = [];
   final List _selectedItems = [];
@@ -768,13 +817,11 @@ class _ListSearchPage extends State<ListSearchPage> {
   @override
   void initState() {
     super.initState();
-    _routeController = RouteController(canPop: () async => true);
   }
 
   @override
   void dispose() {
     super.dispose();
-    _routeController.dispose();
     _controller.dispose();
   }
 
@@ -791,8 +838,7 @@ class _ListSearchPage extends State<ListSearchPage> {
                   onChanged: (value) => fetch(value).then((ret) => setState(() {
                         _results.clear();
                         if (ret.isEmpty) return;
-                        _results
-                            .addAll(ret.map((e) => parseDictionaryEntry(e)));
+                        _results.addAll(ret);
                       })),
                   decoration: InputDecoration(
                       border: OutlineInputBorder(
@@ -857,6 +903,7 @@ class SettingsPage extends StatefulWidget with ATab {
 class _SettingsPage extends State<SettingsPage> {
   final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
   late BuildContext _navCtx;
+  ModalRoute? _route;
 
   @override
   void initState() {
@@ -867,14 +914,29 @@ class _SettingsPage extends State<SettingsPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    _route?.removeScopedWillPopCallback(_canPop);
+    _route = ModalRoute.of(context);
+    _route?.addScopedWillPopCallback(_canPop);
+  }
+
+  @override
   void dispose() {
     super.dispose();
+    _route?.removeScopedWillPopCallback(_canPop);
+    _route = null;
   }
 
   void _popHome() {
     if (Navigator.of(_navCtx).canPop()) {
       Navigator.of(_navCtx).pop();
     }
+  }
+
+  Future<bool> _canPop() async {
+    return Navigator.of(_navCtx).canPop();
   }
 
   Widget _buildField(BuildContext context, String text,
@@ -914,10 +976,6 @@ class _SettingsPage extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return TabNavigator(
-        onWillPop: () async {
-          _popHome();
-          return false;
-        },
         navigatorKey: _navKey,
         builder: (context) {
           _navCtx = context;
@@ -939,6 +997,7 @@ class _SettingsPage extends State<SettingsPage> {
 }
 
 class SettingsSection extends StatefulWidget {
+  const SettingsSection({Key? key}) : super(key: key);
   @override
   State<SettingsSection> createState() => _SettingsSection();
 }
@@ -960,5 +1019,42 @@ class _SettingsSection extends State<SettingsSection> {
         child: ListView(
           children: [],
         ));
+  }
+}
+
+class ProfilePage extends StatefulWidget with ATab {
+  const ProfilePage({Key? key, required this.onLogout}) : super(key: key);
+
+  final void Function() onLogout;
+
+  @override
+  void reload() {}
+
+  @override
+  State<ProfilePage> createState() => _ProfilePage();
+}
+
+class _ProfilePage extends State<ProfilePage> {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        GestureDetector(
+            onTap: () {
+              Auth.logout(currentUser!);
+              widget.onLogout();
+            },
+            child: Align(
+                child: Container(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('Loggout',
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.background)),
+                    decoration: BoxDecoration(
+                        color: Colors.lightBlue,
+                        borderRadius: BorderRadius.circular(20)))))
+      ],
+    );
   }
 }
