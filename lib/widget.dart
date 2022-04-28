@@ -1,6 +1,9 @@
+import 'dart:async';
+
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:matrix_gesture_detector/matrix_gesture_detector.dart';
-import 'package:vector_math/vector_math_64.dart' as vec;
+import 'package:provider/provider.dart';
 
 class Selectable extends StatefulWidget {
   const Selectable(
@@ -438,4 +441,337 @@ class _SearchWidget extends State<SearchWidget> {
                   )))
         ]));
   }
+}
+
+Offset? getWidgetPosition(GlobalKey key) {
+  final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+  return renderBox?.localToGlobal(Offset.zero);
+}
+
+Size? getWidgetSize(GlobalKey key) {
+  final renderBox = key.currentContext?.findRenderObject() as RenderBox?;
+  return renderBox?.size;
+}
+
+typedef _ContextMenuOpenSubmenuCallback = void Function(ContextMenu? submenu);
+
+class ContextMenu extends StatefulWidget {
+  const ContextMenu(
+      {Key? key,
+      required this.position,
+      this.excludedArea,
+      this.children = const <Widget>[],
+      this.primary = false})
+      : super(key: key);
+
+  final RelativeRect position;
+  final RelativeRect? excludedArea;
+  final List<Widget> children;
+  final bool primary;
+
+  @override
+  State<ContextMenu> createState() => _ContextMenu();
+}
+
+class _ContextMenu extends State<ContextMenu> {
+  late final RelativeRect position;
+  late final RelativeRect? excludedArea;
+  late final List<Widget> children;
+  ContextMenu? _openedSubmenu;
+  int? _submenuOwner;
+  bool _opensub = false;
+  int? _focusId;
+  Timer? _timer;
+  static const double _verticalPadding = 5;
+  bool _isTopLevel = true;
+  late final bool primary;
+  VoidCallback? _requestFocusForParent;
+
+  @override
+  void initState() {
+    super.initState();
+    position = widget.position;
+    excludedArea = widget.position;
+    children = widget.children;
+    primary = widget.primary;
+
+    try {
+      _requestFocusForParent =
+          Provider.of<VoidCallback>(context, listen: false);
+    } catch (e) {}
+  }
+
+  @override
+  void dispose() {
+    _cancelTimer();
+    super.dispose();
+  }
+
+  void _cancelTimer() {
+    if (_timer != null) {
+      _timer!.cancel();
+    }
+  }
+
+  void _manageFocus(int id) {
+    assert(id < children.length);
+    if (children[id] is ContextSubmenu) {
+      _cancelTimer();
+    } else if (_openedSubmenu != null && id != _focusId) {
+      if (_timer == null || !_timer!.isActive) {
+        _timer = Timer(const Duration(seconds: 1), () {
+          if (mounted) {
+            setState(() {
+              _openedSubmenu = _submenuOwner = null;
+            });
+          } else {
+            print('hamar, its not mounted');
+          }
+        });
+      }
+    }
+
+    if (id != _focusId) {
+      setState(() {
+        _focusId = id;
+      });
+    }
+  }
+
+  EdgeInsets _getPadding() {
+    double left = position.left;
+    double top = position.top;
+    double right = MediaQuery.of(context).size.width - position.right;
+    double bottom = MediaQuery.of(context).size.height - position.bottom;
+
+    if (right < 0) {
+      left += right;
+      right = 0.0;
+    }
+
+    if (bottom < 0) {
+      bottom = MediaQuery.of(context).size.height - top;
+      top -= position.bottom - top;
+    }
+
+    EdgeInsets ret = EdgeInsets.fromLTRB(
+      left,
+      top,
+      right,
+      bottom,
+    );
+
+    return ret;
+  }
+
+  void _dismissMenu() {
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: _isTopLevel && primary ? _dismissMenu : null,
+        onSecondaryTap: _isTopLevel && primary ? _dismissMenu : null,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+                padding: _getPadding(),
+                child: Card(
+                    elevation: 5.0,
+                    child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTapDown: (details) {
+                          setState(() => _isTopLevel = false);
+                        },
+                        onTapUp: (details) {
+                          setState(() => _isTopLevel = true);
+                        },
+                        onSecondaryTapDown: (details) {
+                          setState(() => _isTopLevel = false);
+                        },
+                        onSecondaryTapUp: (details) {
+                          setState(() => _isTopLevel = true);
+                        },
+                        child: MouseRegion(
+                            opaque: false,
+                            onEnter: (event) {
+                              if (_requestFocusForParent != null) {
+                                _requestFocusForParent!();
+                              }
+                            },
+                            onExit: (event) {
+                              if (_focusId != null &&
+                                  children[_focusId!] is! ContextSubmenu) {
+                                setState(() {
+                                  _focusId = null;
+                                });
+                              }
+                            },
+                            child: Provider<_ContextMenuDetails>.value(
+                                updateShouldNotify: (old, n) => true,
+                                value: _ContextMenuDetails(
+                                  callback: (ContextMenu? submenu) {
+                                    setState(() {
+                                      _opensub = !_opensub;
+                                      _openedSubmenu = submenu;
+                                      _submenuOwner = _focusId;
+                                    });
+                                  },
+                                  verticalPadding: _verticalPadding,
+                                ),
+                                builder: (context, child) => Container(
+                                    height: double.infinity,
+                                    width: double.infinity,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: _verticalPadding),
+                                    child: ListView.builder(
+                                        primary: false,
+                                        shrinkWrap: true,
+                                        itemCount: children.length,
+                                        itemBuilder: (context, i) {
+                                          int id = i;
+                                          return MouseRegion(
+                                              onEnter: (event) {
+                                                _manageFocus(
+                                                  id,
+                                                );
+                                              },
+                                              child: Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(horizontal: 5),
+                                                  color: _focusId != id
+                                                      ? Colors.transparent
+                                                      : Colors.white24,
+                                                  child: children[i]));
+                                        }))))))),
+            if (_openedSubmenu != null)
+              Provider<VoidCallback>.value(
+                  value: () {
+                    assert(_submenuOwner != null);
+                    _cancelTimer();
+                    _manageFocus(_submenuOwner!);
+                  },
+                  child: _openedSubmenu!)
+          ],
+        ));
+  }
+}
+
+class _ContextMenuDetails {
+  const _ContextMenuDetails({
+    required this.callback,
+    required this.verticalPadding,
+  });
+
+  final _ContextMenuOpenSubmenuCallback callback;
+  final double verticalPadding;
+}
+
+class ContextMenuItem extends StatelessWidget {
+  const ContextMenuItem({Key? key, required this.child, this.onTap})
+      : super(key: key);
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (details) {
+          if (onTap != null) {
+            onTap!();
+          }
+        },
+        child: child);
+  }
+}
+
+class ContextSubmenu extends StatefulWidget {
+  const ContextSubmenu(
+      {Key? key,
+      required this.children,
+      required this.title,
+      this.decoration,
+      required this.size})
+      : super(key: key);
+
+  final List<Widget> children;
+  final String title;
+  final Decoration? decoration;
+  final Size size;
+
+  @override
+  State<ContextSubmenu> createState() => _ContextSubmenu();
+}
+
+class _ContextSubmenu extends State<ContextSubmenu> {
+  final GlobalKey _key = GlobalKey();
+  late _ContextMenuDetails _details;
+
+  RelativeRect? _computeSubMenuPosition() {
+    final pos = getWidgetPosition(_key);
+    final size = getWidgetSize(_key);
+    if (pos != null && size != null) {
+      double x = pos.dx + size.width;
+      double y = pos.dy - _details.verticalPadding;
+
+      return RelativeRect.fromLTRB(
+          x, y, x + widget.size.width, y + widget.size.height);
+    }
+    return null;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _details = Provider.of<_ContextMenuDetails>(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (event) {
+        final pos = _computeSubMenuPosition();
+        assert(pos != null);
+        _details.callback(ContextMenu(
+          position: _computeSubMenuPosition()!,
+          children: widget.children,
+        ));
+      },
+      child: Container(
+          key: _key,
+          decoration: widget.decoration,
+          child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Text(widget.title),
+                const Icon(Icons.arrow_forward_ios_rounded)
+              ])),
+    );
+  }
+}
+
+Future<T?> showContextMenu<T>(
+    BuildContext context, RelativeRect position, List<Widget> children) {
+  const Duration transitionDuration = Duration.zero;
+  return showModal(
+      context: context,
+      configuration: const FadeScaleTransitionConfiguration(
+          barrierDismissible: false,
+          barrierColor: Colors.transparent,
+          transitionDuration: transitionDuration,
+          reverseTransitionDuration: transitionDuration),
+      builder: (context) => SizedBox(
+          height: MediaQuery.of(context).size.height,
+          width: MediaQuery.of(context).size.width,
+          child: Material(
+              color: Colors.transparent,
+              child: ContextMenu(
+                  primary: true, position: position, children: children))));
 }
