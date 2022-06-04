@@ -483,6 +483,7 @@ class _ContextMenu extends State<ContextMenu> {
   int? _focusId;
   Timer? _timer;
   static const double _verticalPadding = 5;
+  static const double _borderRadius = 7;
   bool _isTopLevel = true;
   late final bool primary;
   VoidCallback? _requestFocusForParent;
@@ -575,11 +576,12 @@ class _ContextMenu extends State<ContextMenu> {
         onTap: _isTopLevel && primary ? _dismissMenu : null,
         onSecondaryTap: _isTopLevel && primary ? _dismissMenu : null,
         child: Stack(
-          clipBehavior: Clip.none,
           children: [
             Padding(
                 padding: _getPadding(),
                 child: Card(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_borderRadius)),
                     elevation: 5.0,
                     child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
@@ -625,8 +627,10 @@ class _ContextMenu extends State<ContextMenu> {
                                 builder: (context, child) => Container(
                                     height: double.infinity,
                                     width: double.infinity,
-                                    decoration: const BoxDecoration(
+                                    decoration: BoxDecoration(
                                       color: Colors.green,
+                                      borderRadius:
+                                          BorderRadius.circular(_borderRadius),
                                     ),
                                     padding: const EdgeInsets.symmetric(
                                         vertical: _verticalPadding),
