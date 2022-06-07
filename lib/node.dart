@@ -44,7 +44,7 @@ class NodeIOController {
   final void Function(NodeIOController?)? connCallback;
   void Function(NodeIOController)? connFeedback;
   void Function(String id)? disconnect;
-  Offset Function() anchor;
+  ValueNotifier<Offset> anchor;
 }
 
 class NodeInputController extends NodeIOController {
@@ -55,7 +55,7 @@ class NodeInputController extends NodeIOController {
       void Function(NodeIOController)? connFeedback,
       this.post,
       void Function(String id)? disconnect,
-      required Offset Function() anchor})
+      required ValueNotifier<Offset> anchor})
       : super(
             id: id,
             nodeId: nodeId,
@@ -84,7 +84,7 @@ class NodeOutputController extends NodeIOController {
       void Function(NodeIOController)? connFeedback,
       this.update,
       void Function(String id)? disconnect,
-      required Offset Function() anchor})
+      required ValueNotifier<Offset> anchor})
       : super(
             id: id,
             nodeId: nodeId,
@@ -97,11 +97,7 @@ class NodeOutputController extends NodeIOController {
 }
 
 class _InternalNodeIOController {
-  _InternalNodeIOController(
-    this.id,
-    this.connect,
-    this.disconnect,
-  );
+  _InternalNodeIOController(this.id, this.connect, this.disconnect);
 
   final String id;
   final GlobalKey key = GlobalKey(debugLabel: 'nodeioKey');
@@ -129,11 +125,7 @@ abstract class NodeIO extends StatefulWidget {
   GlobalKey get _key => _internalIOController.key;
   late _InternalNodeIOController _internalIOController;
 
-  Offset get anchor {
-    var pos = getWidgetPosition(_internalIOController.key);
-    assert(pos != null);
-    return Offset(pos!.dx + 100, pos.dy);
-  }
+  var anchor = ValueNotifier(Offset.zero);
 
   @override
   State<NodeIO> createState() => _NodeIO();
@@ -146,14 +138,16 @@ abstract class NodeIO extends StatefulWidget {
   void disconnect(String id) => _internalIOController.disconnect(id);
 }
 
-class _NodeIO<T extends NodeIO> extends State<T> {
+class _NodeIO<T extends NodeIO> extends State<T> with ChangeNotifier {
   late final NodeController controller;
   Offset? _offset;
+  Offset _posDiff = Offset.zero;
   late double dimension;
   bool _trackPointer = false;
   NodeIOController? _childIOController;
   NodeIOController? _hoverParentIOController;
   NodeIOController? _currParentIOController;
+  late final ValueNotifier<Offset>? _nodeOffset;
 
   late NodeIOController _ioController;
   bool _connInProgress = false;
@@ -179,26 +173,55 @@ class _NodeIO<T extends NodeIO> extends State<T> {
           _childIOController = controller;
           setState(() {});
         },
-        anchor: () => widget.anchor);
+        anchor: widget.anchor);
+
     controller = widget.controller;
     dimension = widget.dimension;
-  }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+    _nodeOffset = Provider.of<ValueNotifier<Offset>?>(context, listen: false)
+      ?..addListener(() {
+        if (_nodeOffset != null) {
+          widget.anchor.value += _nodeOffset!.value - _posDiff;
+          _posDiff = _nodeOffset!.value;
+        } else {
+          widget.anchor.value = anchor;
+        }
+      });
 
-    if (mounted) {
-      Provider.of<Matrix4?>(context, listen: true);
-      setState(() {});
-    }
+    WidgetsBinding.instance?.addPostFrameCallback((_) {
+      widget.anchor.value = anchor;
+      if (_nodeOffset != null) {
+        _posDiff = _nodeOffset!.value;
+      }
+    });
   }
 
   @override
   void didUpdateWidget(T oldWidget) {
     super.didUpdateWidget(oldWidget);
     widget._internalIOController = oldWidget._internalIOController;
-    setState(() {});
+    widget.anchor = oldWidget.anchor;
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Offset get anchor {
+    var pos = getWidgetPosition(widget._internalIOController.key);
+    assert(pos != null);
+    Offset ret = Offset(
+        pos!.dx + dimension / 2, pos.dy - kToolbarHeight + dimension / 2);
+
+    return widget.controller.toScene != null
+        ? widget.controller.toScene!(ret)
+        : ret;
+  }
+
+  @override
+  void dispose() {
+    widget.anchor.dispose();
+    super.dispose();
   }
 
   Offset _anchor() {
@@ -258,8 +281,8 @@ class _NodeIO<T extends NodeIO> extends State<T> {
                   },
                   onPanUpdate: (details) {
                     if (_childIOController != null) {
-                      _offset = (_childIOController!.anchor() -
-                          widget.anchor +
+                      _offset = (_childIOController!.anchor.value -
+                          widget.anchor.value +
                           Offset(dimension / 2, dimension / 2));
                     } else {
                       _offset = details.localPosition;
@@ -279,10 +302,13 @@ class _NodeIO<T extends NodeIO> extends State<T> {
 }
 
 class NodeController with ChangeNotifier {
-  NodeController();
+  NodeController({this.toScene});
 
   NodeIOController? ioController;
+  Offset Function(Offset)? toScene;
   String? rootId;
+  final ValueNotifier<List<List<Widget>>> renderingLayers =
+      ValueNotifier([[], [], []]);
 }
 
 class _InternalNode extends StatefulWidget {
@@ -303,18 +329,19 @@ class _InternalNode extends StatefulWidget {
   State<_InternalNode> createState() => _InternalNodeState();
 }
 
-class _InternalNodeState extends State<_InternalNode> {
-  late final Matrix4 _matrix;
+class _InternalNodeState extends State<_InternalNode> with ChangeNotifier {
+  late final ValueNotifier<Matrix4> _matrix;
+  final ValueNotifier<Offset> _offset = ValueNotifier(Offset.zero);
   final GlobalKey _nodeKey = GlobalKey(debugLabel: 'nodeKey');
   Size? _nodeSize;
-  static const double _borderWidth = 1.0;
-  static const Color _borderColor = Colors.white;
   static const double _borderRadius = 5;
 
   @override
   void initState() {
     super.initState();
-    _matrix = Matrix4.identity()..translate(widget.offset.dx, widget.offset.dy);
+    _matrix = ValueNotifier(
+        Matrix4.identity()..translate(widget.offset.dx, widget.offset.dy));
+    _offset.value = Offset(widget.offset.dx, widget.offset.dy);
   }
 
   @override
@@ -326,57 +353,44 @@ class _InternalNodeState extends State<_InternalNode> {
         setState(() {});
       });
     }
-
     return Transform(
-        transform: _matrix,
+        transform: _matrix.value,
         child: GestureDetector(
             behavior: HitTestBehavior.translucent,
             onPanUpdate: (details) {
               setState(() {
-                _matrix.translate(details.delta.dx, details.delta.dy);
+                _matrix.value.translate(details.delta.dx, details.delta.dy);
+                _offset.value =
+                    _offset.value.translate(details.delta.dx, details.delta.dy);
               });
             },
             child: Provider.value(
-                value: _matrix,
-                updateShouldNotify: (a, b) => true,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                        height: _nodeSize?.height ?? 0,
-                        width: _nodeSize?.width ?? 0,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 5),
-                          padding: const EdgeInsets.symmetric(vertical: 5),
-                          decoration: BoxDecoration(
-                              border: const Border.fromBorderSide(BorderSide(
-                                  color: _borderColor, width: _borderWidth)),
-                              borderRadius:
-                                  BorderRadius.circular(_borderRadius),
-                              color: Colors.grey.shade800),
-                        )),
-                    FittedBox(
-                        child: Column(
-                      key: _nodeKey,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                            width: _nodeSize != null
-                                ? _nodeSize!.width - 10 - _borderWidth * 2
-                                : null,
-                            margin: const EdgeInsets.only(top: _borderWidth),
-                            decoration: const BoxDecoration(
-                              borderRadius: BorderRadius.only(
-                                  topLeft: Radius.circular(_borderRadius),
-                                  topRight: Radius.circular(_borderRadius)),
-                              color: Colors.grey,
-                            ),
-                            child: Center(child: Text(widget.title))),
-                        ...widget.children
-                      ],
-                    )),
-                  ],
+                value: _offset,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 5),
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(_borderRadius),
+                      color: Colors.grey.shade800),
+                  child: IntrinsicWidth(
+                      stepHeight: 1,
+                      child: Column(
+                        key: _nodeKey,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 5),
+                              decoration: const BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(_borderRadius),
+                                    topRight: Radius.circular(_borderRadius)),
+                                color: Colors.grey,
+                              ),
+                              child: Center(child: Text(widget.title))),
+                          ...widget.children
+                        ],
+                      )),
                 ))));
   }
 }
@@ -393,7 +407,7 @@ abstract class Node extends StatefulWidget {
   final String id = nanoid();
 }
 
-class NodeProperty extends NodeIO {
+abstract class NodeProperty extends NodeIO {
   NodeProperty(
     String nodeId, {
     Key? key,
@@ -404,16 +418,6 @@ class NodeProperty extends NodeIO {
             key: key, onConnect: onConnect, controller: controller);
 
   final WidgetBuilder builder;
-
-  @override
-  State<NodeProperty> createState() => _NodeProperty();
-}
-
-class _NodeProperty extends State<NodeProperty> {
-  @override
-  Widget build(BuildContext context) {
-    return widget.builder(context);
-  }
 }
 
 class NodeInput extends NodeProperty {
@@ -472,13 +476,8 @@ class _NodeInput extends _NodeIO<NodeInput> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currParentIOController is NodeOutputController) {
-      WidgetsBinding.instance!.addPostFrameCallback(
-          (_) => (_currParentIOController as NodeOutputController).update!());
-    }
-
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         super.build(context),
         widget.builder(context),
@@ -492,11 +491,12 @@ class NodeOutput extends NodeProperty {
   NodeOutput(
     String nodeId, {
     Key? key,
-    this.data,
+    required ValueNotifier<NodeData?> data,
     required WidgetBuilder builder,
     required NodeController controller,
     VoidCallback? onConnect,
-  }) : super(nodeId,
+  })  : _data = data,
+        super(nodeId,
             key: key,
             builder: builder,
             onConnect: onConnect,
@@ -504,18 +504,18 @@ class NodeOutput extends NodeProperty {
 
   final List<NodeInputController> children = [];
   NodeIOCode code = NodeIOCode.success;
-  final NodeData? data;
+  ValueNotifier<NodeData?> _data;
+  get data => _data;
 
   @override
   State<NodeOutput> createState() => _NodeOutput();
 
   void emit() {
-    //print('try emit --> path: ${data?.path}');
     //TODO: emit but no data
-    //to check for loop
-    if (data?.path.lookup(controller.rootId) == null) return;
+    //      to check for loop
+    if (data.value?.path.lookup(controller.rootId) == null) return;
 
-    bool isLooping = data?.path.lookup(id) != null;
+    bool isLooping = data.value?.path.lookup(id) != null;
 
     //TODO: test
     if (isLooping && code == NodeIOCode.infiniteLoop) {
@@ -532,22 +532,20 @@ class NodeOutput extends NodeProperty {
     for (NodeInputController child in children) {
       if (child.post == null) continue;
 
-      if (data != null) {
-        child.post!(data!.copyWith(code: code)..path.add(nodeId));
+      if (data.value != null) {
+        child.post!(data.value!.copyWith(code: code)..path.add(nodeId));
       }
     }
   }
 
   @override
   void disconnect(String id) {
-    super.disconnect(id);
     children.removeWhere((e) => e.id == id);
+    super.disconnect(id);
   }
 }
 
 class _NodeOutput extends _NodeIO<NodeOutput> {
-  Size _propSize = Size.zero;
-
   @override
   void initState() {
     super.initState();
@@ -556,36 +554,28 @@ class _NodeOutput extends _NodeIO<NodeOutput> {
         nodeId: widget.nodeId,
         connCallback: _ioController.connCallback,
         connFeedback: (controller) => setState(() => connect(controller)),
-        update: () => setState(() {}),
         disconnect: (id) {
           widget.disconnect(id);
           setState(() {});
         },
-        anchor: () => widget.anchor);
+        anchor: widget.anchor);
 
     widget._internalIOController.connect = connect;
+    widget._internalIOController.disconnect = disconnect;
+    widget.data.addListener(() {
+      widget.emit();
+    });
   }
 
   @override
   void didUpdateWidget(NodeOutput oldWidget) {
     super.didUpdateWidget(oldWidget);
     widget.children.addAll(oldWidget.children);
-    //if (widget.data != oldWidget.data) {
-    WidgetsBinding.instance?.addPostFrameCallback((_) {
-      print('data changed');
-      widget.emit();
-    });
-    //}
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
+    widget._data = oldWidget._data;
   }
 
   @override
   bool connect(NodeIOController controller) {
-    super.connect(controller);
     if ((controller is! NodeInputController) ||
         controller.nodeId == widget.nodeId) {
       if (controller.disconnect != null) controller.disconnect!(widget.id);
@@ -601,42 +591,38 @@ class _NodeOutput extends _NodeIO<NodeOutput> {
     }
 
     widget.emit();
+
+    assert(widget.children.isNotEmpty);
+    widget.controller.renderingLayers.value[0].add(NodeLink(
+        id: controller.id,
+        start: widget.anchor,
+        end: widget.children.last.anchor));
+    widget.controller.renderingLayers.notifyListeners();
     return true;
   }
 
-  List<Widget> _buildLinks() {
-    Offset off =
-        Offset(_propSize.width + dimension * 1.5, _propSize.height / 2);
-    return List.from(widget.children.map((e) {
-      return CustomPaint(
-          willChange: true,
-          painter: NodeLinkPainter(off, (e.anchor() - widget.anchor + off)));
-    }));
+  @override
+  void disconnect(String ioId) {
+    widget.controller.renderingLayers.value[0]
+        .removeWhere((e) => (e as NodeLink).id == ioId);
+    widget.controller.renderingLayers.notifyListeners();
+
+    super.disconnect(ioId);
   }
 
   @override
   Widget build(BuildContext context) {
-    var k = GlobalKey();
-    var tmp = Container(key: k, child: widget.builder(context));
-    WidgetsBinding.instance!.addPostFrameCallback((_) {
-      if (_propSize == Size.zero) {
-        setState(() {
-          _propSize = _propSize = getWidgetSize(k) ?? Size.zero;
-        });
-      }
-    });
-
     return Stack(
       children: [
-        ..._buildLinks(),
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        Center(
+            child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             SizedBox.square(dimension: dimension),
-            tmp,
+            widget.builder(context),
             super.build(context),
           ],
-        )
+        ))
       ],
     );
   }
@@ -665,6 +651,36 @@ class NodeLinkPainter extends CustomPainter {
   }
 }
 
+class NodeLink extends StatefulWidget {
+  const NodeLink({Key? key, this.id, required this.start, required this.end})
+      : super(key: key);
+
+  final String? id;
+  final ValueNotifier<Offset> start;
+  final ValueNotifier<Offset> end;
+
+  @override
+  State<NodeLink> createState() => _NodeLink();
+}
+
+class _NodeLink extends State<NodeLink> {
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder(
+        valueListenable: widget.start,
+        builder: (context, cnValue, child) {
+          return ValueListenableBuilder(
+              valueListenable: widget.end,
+              builder: (context, cnValue, child) {
+                return CustomPaint(
+                    willChange: true,
+                    painter:
+                        NodeLinkPainter(widget.start.value, widget.end.value));
+              });
+        });
+  }
+}
+
 class ContainerNode extends Node {
   ContainerNode(
       {Key? key,
@@ -676,11 +692,12 @@ class ContainerNode extends Node {
   State<ContainerNode> createState() => _ContainerNode();
 }
 
-class _ContainerNode extends State<ContainerNode> {
-  NodeData? _data;
+class _ContainerNode extends State<ContainerNode> with ChangeNotifier {
+  final ValueNotifier<NodeData?> _data = ValueNotifier(null);
+  NodeData? _wrappedData;
   late final String id;
   late final NodeController controller;
-  Color _color = Colors.purple;
+  final List<double> _argbColor = [255, 255, 255, 255];
 
   @override
   void initState() {
@@ -689,10 +706,43 @@ class _ContainerNode extends State<ContainerNode> {
     controller = widget.controller;
   }
 
-  NodeData? _buildData() {
-    return _data?.copyWith(
+  @override
+  void dispose() {
+    _data.dispose();
+    super.dispose();
+  }
+
+  NodeData? _wrapData(NodeData? data) {
+    return data?.copyWith(
         data: Container(
-            height: 100, width: 100, color: _color, child: _data?.data));
+            height: 100,
+            width: 100,
+            color: Color.fromARGB(_argbColor[0].toInt(), _argbColor[1].toInt(),
+                _argbColor[2].toInt(), _argbColor[3].toInt()),
+            child: _wrappedData?.data));
+  }
+
+  List<Widget> _buildColorSliders() {
+    List<Widget> ret = [];
+
+    for (int i = 0; i < _argbColor.length; ++i) {
+      ret.add(Center(
+          child: ValueListenableBuilder(
+              valueListenable: _data,
+              builder: (context, cnt, child) => Row(children: [
+                    Slider(
+                        max: 255,
+                        value: _argbColor[i],
+                        onChanged: (value) {
+                          _argbColor[i] = value;
+                          _data.value = _wrapData(_wrappedData);
+                          if (_data.value == null) setState(() {});
+                        }),
+                    Text(_argbColor[i].toInt().toString())
+                  ]))));
+    }
+
+    return ret;
   }
 
   @override
@@ -702,42 +752,22 @@ class _ContainerNode extends State<ContainerNode> {
         offset: widget.offset,
         controller: controller,
         children: [
-          NodeOutput(id, controller: controller, data: _buildData(),
-              builder: (context) {
-            return const SizedBox(
+          SizedBox(
               height: 50,
-              width: 100,
-            );
-          }),
-          NodeProperty(
-            id,
-            controller: controller,
-            builder: (context) {
-              return SizedBox(
-                  height: 50,
-                  width: 100,
-                  child: GestureDetector(
-                      onTap: (() {
-                        setState(() {
-                          print('change color : $_data');
-                          _color = Colors.red;
-                        });
-                      }),
-                      child: Container(
-                        color: _color,
-                        margin: const EdgeInsets.all(5),
-                      )));
-            },
-          ),
-          NodeInput(id,
-              controller: controller,
-              callback: (data) => setState(() {
-                    print('post for $id');
-                    _data = data;
-                  }),
-              builder: (context) {
-                return const SizedBox(height: 50, width: 100);
-              })
+              child: NodeOutput(id, controller: controller, data: _data,
+                  builder: (context) {
+                return const SizedBox();
+              })),
+          Column(children: _buildColorSliders()),
+          SizedBox(
+              height: 50,
+              child: NodeInput(id, controller: controller, callback: (data) {
+                _wrappedData = data;
+                _data.value = _wrapData(_wrappedData);
+                _data.notifyListeners();
+              }, builder: (context) {
+                return const SizedBox();
+              }))
         ]);
   }
 }
@@ -775,10 +805,14 @@ class _InputNodeGroup extends State<InputNodeGroup> {
         title: widget.title,
         offset: widget.offset,
         children: [
-          NodeOutput(id, controller: controller, data: NodeData(path: {id}),
-              builder: (context) {
-            return const SizedBox(height: 50, width: 100);
-          })
+          SizedBox(
+              height: 50,
+              child: NodeOutput(id,
+                  controller: controller,
+                  data: ValueNotifier(NodeData(path: {id})),
+                  builder: (context) {
+                return const SizedBox();
+              }))
         ],
         controller: controller);
   }
@@ -817,12 +851,13 @@ class _OutputNodeGroup extends State<OutputNodeGroup> {
         title: widget.title,
         offset: widget.offset,
         children: [
-          NodeInput(id, controller: controller, callback: (data) {
-            //print('callback');
-            if (data?.data is Widget) widget.dataCallback(data!.data);
-          }, builder: (context) {
-            return const SizedBox(height: 50, width: 100);
-          })
+          SizedBox(
+              height: 50,
+              child: NodeInput(id, controller: controller, callback: (data) {
+                if (data?.data is Widget) widget.dataCallback(data!.data);
+              }, builder: (context) {
+                return const SizedBox();
+              }))
         ],
         controller: widget.controller);
   }
