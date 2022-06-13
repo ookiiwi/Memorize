@@ -9,15 +9,16 @@ enum NodeIOCode { infiniteLoop, sameType, success }
 enum NodeIOConnectionState { connected, waiting, disconnected }
 
 class NodeData {
-  NodeData({this.path = const {}, this.data, this.code = NodeIOCode.success});
+  NodeData({Set<String>? path, this.data, this.code = NodeIOCode.success})
+      : path = path ?? {};
 
   NodeData copyWith({dynamic data, NodeIOCode? code}) {
     return NodeData(
-        path: path, data: data ?? this.data, code: code ?? this.code);
+        path: path.toSet(), data: data ?? this.data, code: code ?? this.code);
   }
 
   final Set<String> path;
-  final dynamic data;
+  dynamic data;
   final NodeIOCode code;
 }
 
@@ -125,7 +126,7 @@ abstract class NodeIO extends StatefulWidget {
   GlobalKey get _key => _internalIOController.key;
   late _InternalNodeIOController _internalIOController;
 
-  var anchor = ValueNotifier(Offset.zero);
+  final anchor = ValueNotifier(Offset.zero);
 
   @override
   State<NodeIO> createState() => _NodeIO();
@@ -200,7 +201,7 @@ class _NodeIO<T extends NodeIO> extends State<T> with ChangeNotifier {
   void didUpdateWidget(T oldWidget) {
     super.didUpdateWidget(oldWidget);
     widget._internalIOController = oldWidget._internalIOController;
-    widget.anchor = oldWidget.anchor;
+    widget.anchor.value = oldWidget.anchor.value;
 
     if (mounted) {
       setState(() {});
@@ -452,17 +453,19 @@ class _NodeInput extends _NodeIO<NodeInput> {
   void initState() {
     super.initState();
     _ioController = NodeInputController.from(_ioController)
-      ..connFeedback = ((controller) {
-        if (_currParentIOController?.disconnect != null) {
-          _currParentIOController?.disconnect!(widget.id);
-        }
-        widget.connState = NodeIOConnectionState.connected;
-        _currParentIOController = controller;
-        _hoverParentIOController = null;
-      })
+      ..connFeedback = _connFeedback
       ..post = widget.callback;
 
     widget._internalIOController.connect = connect;
+  }
+
+  void _connFeedback(controller) {
+    if (_currParentIOController?.disconnect != null) {
+      _currParentIOController?.disconnect!(widget.id);
+    }
+    widget.connState = NodeIOConnectionState.connected;
+    _currParentIOController = controller;
+    _hoverParentIOController = null;
   }
 
   @override
@@ -505,42 +508,46 @@ class NodeOutput extends NodeProperty {
   final List<NodeInputController> children = [];
   NodeIOCode code = NodeIOCode.success;
   ValueNotifier<NodeData?> _data;
-  get data => _data;
+  ValueNotifier<NodeData?> get data => _data;
 
   @override
   State<NodeOutput> createState() => _NodeOutput();
 
   void emit() {
-    //TODO: emit but no data
-    //      to check for loop
-    if (data.value?.path.lookup(controller.rootId) == null) return;
+    bool rootLinked = data.value?.path.lookup(controller.rootId) != null;
 
-    bool isLooping = data.value?.path.lookup(id) != null;
+    bool isLooping = data.value?.path.contains(nodeId) ?? false;
 
-    //TODO: test
     if (isLooping && code == NodeIOCode.infiniteLoop) {
-      //notifyListeners();
       print('loop');
       return;
     } else if (isLooping) {
       code = NodeIOCode.infiniteLoop;
+      print('looping ${data.value?.path}');
     } else {
       code = NodeIOCode.success;
     }
 
-    print('emit');
+    NodeData postData = data.value?.copyWith(code: code) ?? NodeData();
+    postData.path.add(nodeId);
+    if (!rootLinked) postData.data = null;
+
     for (NodeInputController child in children) {
       if (child.post == null) continue;
 
-      if (data.value != null) {
-        child.post!(data.value!.copyWith(code: code)..path.add(nodeId));
-      }
+      child.post!(postData);
     }
   }
 
   @override
   void disconnect(String id) {
-    children.removeWhere((e) => e.id == id);
+    children.removeWhere((e) {
+      if (e.id == id) {
+        if (e.disconnect != null) e.disconnect!(id);
+        return true;
+      }
+      return false;
+    });
     super.disconnect(id);
   }
 }
@@ -584,11 +591,11 @@ class _NodeOutput extends _NodeIO<NodeOutput> {
     }
 
     super.connect(controller);
-    widget.children.add(controller);
-    widget.connState = NodeIOConnectionState.connected;
     if (controller.connFeedback != null) {
       controller.connFeedback!(_ioController);
     }
+    widget.children.add(controller);
+    widget.connState = NodeIOConnectionState.connected;
 
     widget.emit();
 
@@ -764,7 +771,6 @@ class _ContainerNode extends State<ContainerNode> with ChangeNotifier {
               child: NodeInput(id, controller: controller, callback: (data) {
                 _wrappedData = data;
                 _data.value = _wrapData(_wrappedData);
-                _data.notifyListeners();
               }, builder: (context) {
                 return const SizedBox();
               }))
@@ -809,8 +815,7 @@ class _InputNodeGroup extends State<InputNodeGroup> {
               height: 50,
               child: NodeOutput(id,
                   controller: controller,
-                  data: ValueNotifier(NodeData(path: {id})),
-                  builder: (context) {
+                  data: ValueNotifier(null), builder: (context) {
                 return const SizedBox();
               }))
         ],
@@ -828,7 +833,7 @@ class OutputNodeGroup extends Node {
       : super(key: key, controller: controller, offset: offset);
 
   final String title;
-  final void Function(Widget) dataCallback;
+  final void Function(Widget?) dataCallback;
 
   @override
   State<OutputNodeGroup> createState() => _OutputNodeGroup();
@@ -854,7 +859,7 @@ class _OutputNodeGroup extends State<OutputNodeGroup> {
           SizedBox(
               height: 50,
               child: NodeInput(id, controller: controller, callback: (data) {
-                if (data?.data is Widget) widget.dataCallback(data!.data);
+                if (data?.data is Widget?) widget.dataCallback(data?.data);
               }, builder: (context) {
                 return const SizedBox();
               }))
