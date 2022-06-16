@@ -141,10 +141,9 @@ abstract class NodeIO extends StatefulWidget {
 
 class _NodeIO<T extends NodeIO> extends State<T> with ChangeNotifier {
   late final NodeController controller;
-  Offset? _offset;
+  ValueNotifier<Offset>? _offset;
   Offset _posDiff = Offset.zero;
   late double dimension;
-  bool _trackPointer = false;
   NodeIOController? _childIOController;
   NodeIOController? _hoverParentIOController;
   NodeIOController? _currParentIOController;
@@ -154,14 +153,12 @@ class _NodeIO<T extends NodeIO> extends State<T> with ChangeNotifier {
   bool _connInProgress = false;
 
   bool connect(NodeIOController controller) {
-    //_currParentIOController = controller;
-    _trackPointer = false;
+    //_currParentIOController = controller
     return true;
   }
 
   void disconnect(String ioId) {
     _currParentIOController = null;
-    _trackPointer = false;
   }
 
   @override
@@ -225,80 +222,64 @@ class _NodeIO<T extends NodeIO> extends State<T> with ChangeNotifier {
     super.dispose();
   }
 
-  Offset _anchor() {
-    return Offset(dimension / 2, dimension / 2);
-  }
-
-  Widget _link() {
-    return CustomPaint(
-      painter: NodeLinkPainter(_anchor(), _offset ?? Offset.zero),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Stack(clipBehavior: Clip.none, children: [
-      if (_trackPointer) _link(),
-      Positioned(
-          child: MouseRegion(
-              onEnter: ((event) {
-                if (controller.ioController?.connCallback != null &&
-                    !_connInProgress) {
-                  _hoverParentIOController = controller.ioController;
-                  (_hoverParentIOController!.connCallback!)(_ioController);
-                }
-              }),
-              onExit: ((event) {
-                //remove this io from parent
-                if (_hoverParentIOController?.connCallback != null) {
-                  (_hoverParentIOController!.connCallback!)(null);
-                }
-              }),
-              child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanStart: (details) {
-                    controller.ioController = _ioController;
-                    _connInProgress = true;
+    return MouseRegion(
+      onEnter: ((event) {
+        if (controller.ioController?.connCallback != null && !_connInProgress) {
+          _hoverParentIOController = controller.ioController;
+          (_hoverParentIOController!.connCallback!)(_ioController);
+        }
+      }),
+      onExit: ((event) {
+        //remove this io from parent
+        if (_hoverParentIOController?.connCallback != null) {
+          (_hoverParentIOController!.connCallback!)(null);
+        }
+      }),
+      child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onPanStart: (details) {
+            controller.ioController = _ioController;
+            _connInProgress = true;
 
-                    _offset ??= _anchor();
-                    _trackPointer = true;
-                    setState(() {});
-                  },
-                  onPanEnd: (details) {
-                    _offset = null;
-                    _connInProgress = false;
-                    _trackPointer = false;
+            _offset ??= ValueNotifier(
+                details.globalPosition - const Offset(0, kToolbarHeight));
 
-                    if (_childIOController != null) {
-                      widget.connect(_childIOController!);
-                    }
+            controller.renderingLayers.value[0].add(
+                NodeLink(id: widget.id, start: widget.anchor, end: _offset!));
+            controller.renderingLayers.notifyListeners();
+          },
+          onPanEnd: (details) {
+            _offset = null;
+            _connInProgress = false;
 
-                    _childIOController = null;
-                    controller.ioController = null;
+            if (_childIOController != null) {
+              widget.connect(_childIOController!);
+            }
 
-                    _trackPointer = false;
+            _childIOController = null;
+            controller.ioController = null;
 
-                    setState(() {});
-                  },
-                  onPanUpdate: (details) {
-                    if (_childIOController != null) {
-                      _offset = (_childIOController!.anchor.value -
-                          widget.anchor.value +
-                          Offset(dimension / 2, dimension / 2));
-                    } else {
-                      _offset = details.localPosition;
-                    }
-                    setState(() {});
-                  },
-                  child: Container(
-                    key: widget._key,
-                    height: dimension,
-                    width: dimension,
-                    constraints: BoxConstraints.tight(Size.square(dimension)),
-                    decoration: const BoxDecoration(
-                        shape: BoxShape.circle, color: Colors.grey),
-                  )))),
-    ]);
+            controller.renderingLayers.value[0]
+                .removeWhere((e) => (e as NodeLink).id == widget.id);
+            controller.renderingLayers.notifyListeners();
+            setState(() {});
+          },
+          onPanUpdate: (details) {
+            _offset!.value = _childIOController != null
+                ? _childIOController!.anchor.value
+                : details.globalPosition - const Offset(0, kToolbarHeight);
+          },
+          child: Container(
+            key: widget._key,
+            height: dimension,
+            width: dimension,
+            constraints: BoxConstraints.tight(Size.square(dimension)),
+            decoration:
+                const BoxDecoration(shape: BoxShape.circle, color: Colors.grey),
+          )),
+    );
   }
 }
 
@@ -591,6 +572,7 @@ class _NodeOutput extends _NodeIO<NodeOutput> {
     }
 
     super.connect(controller);
+
     if (controller.connFeedback != null) {
       controller.connFeedback!(_ioController);
     }
@@ -647,9 +629,31 @@ class NodeLinkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     Paint paint = Paint()
       ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
       ..color = color;
 
+    //Offset quarter = Offset(
+    //  (start.dx + end.dx) / 4,
+    //  (start.dy + end.dy) / 4,
+    //);
+
+    //Offset middle = Offset(
+    //  (start.dx + end.dx) / 2,
+    //  (start.dy + end.dy) / 2,
+    //);
+
+    //Path path = Path()
+    //      ..moveTo(start.dx, start.dy)
+    //..quadraticBezierTo(
+    //    middle.dx * 0.8, middle.dy * 0.8, middle.dx, middle.dy)
+    //..quadraticBezierTo(1.2 * middle.dx, 1.2 * middle.dy, end.dx, end.dy)
+    //..cubicTo(middle.dx * 0.75, middle.dy * 0.9, middle.dx * 1.25,
+    //    middle.dy * 1.25, end.dx, end.dy)
+    //..close()
+    //;
+
     canvas.drawLine(start, end, paint);
+    //canvas.drawPath(path, paint);
   }
 
   @override
