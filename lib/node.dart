@@ -3,10 +3,10 @@ import 'package:memorize/widget.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:provider/provider.dart';
 
-typedef NodeCallback = dynamic Function(NodeData? data);
+typedef NodeCallback = dynamic Function(NodeData data);
 
 enum NodeIOCode { infiniteLoop, sameType, success }
-enum NodeIOConnectionState { connected, waiting, disconnected }
+enum NodeIOConnState { connected, pending, none }
 
 class NodeData {
   NodeData({Set<String>? path, this.data, this.code = NodeIOCode.success})
@@ -102,7 +102,7 @@ class _InternalNodeIOController {
 
   final String id;
   final GlobalKey key = GlobalKey(debugLabel: 'nodeioKey');
-  NodeIOConnectionState connectionState = NodeIOConnectionState.disconnected;
+  NodeIOConnState connectionState = NodeIOConnState.none;
   bool Function(NodeIOController controller) connect;
   void Function(String id) disconnect;
 }
@@ -119,60 +119,25 @@ abstract class NodeIO extends StatefulWidget {
   final VoidCallback? onConnect;
 
   final NodeController controller;
-  NodeIOConnectionState get connState => _internalIOController.connectionState;
-  set connState(NodeIOConnectionState state) =>
+  NodeIOConnState get connState => _internalIOController.connectionState;
+  set connState(NodeIOConnState state) =>
       _internalIOController.connectionState = state;
   final double dimension;
   GlobalKey get _key => _internalIOController.key;
   late _InternalNodeIOController _internalIOController;
-
-  final anchor = ValueNotifier(Offset.zero);
-
-  @override
-  State<NodeIO> createState() => _NodeIO();
-
-  bool connect(NodeIOController controller) {
-    if (onConnect != null) onConnect!();
-    return _internalIOController.connect(controller);
-  }
-
-  void disconnect(String id) => _internalIOController.disconnect(id);
 }
 
-class _NodeIO<T extends NodeIO> extends State<T> {
+abstract class _NodeIO<T extends NodeIO> extends State<T> {
   late final NodeController controller;
   ValueNotifier<Offset>? _offset;
   Offset _posDiff = Offset.zero;
   late double dimension;
-  NodeIOController? _childIOController;
-  NodeIOController? _hoverParentIOController;
-  NodeIOController? _currParentIOController;
   late final ValueNotifier<Offset>? _nodeOffset;
-
-  late NodeIOController _ioController;
-  bool _connInProgress = false;
-
-  bool connect(NodeIOController controller) {
-    //_currParentIOController = controller
-    return true;
-  }
-
-  void disconnect(String ioId) {
-    _currParentIOController = null;
-  }
+  final ValueNotifier<Offset> anchor = ValueNotifier(Offset.zero);
 
   @override
   void initState() {
     super.initState();
-    _ioController = NodeIOController(
-        id: widget.id,
-        nodeId: widget.nodeId,
-        connCallback: (controller) {
-          _childIOController = controller;
-          print('connCallback: $_childIOController');
-          setState(() {});
-        },
-        anchor: widget.anchor);
 
     controller = widget.controller;
     dimension = widget.dimension;
@@ -180,15 +145,16 @@ class _NodeIO<T extends NodeIO> extends State<T> {
     _nodeOffset = Provider.of<ValueNotifier<Offset>?>(context, listen: false)
       ?..addListener(() {
         if (_nodeOffset != null) {
-          widget.anchor.value += _nodeOffset!.value - _posDiff;
+          anchor.value += _nodeOffset!.value - _posDiff;
           _posDiff = _nodeOffset!.value;
         } else {
-          widget.anchor.value = anchor;
+          anchor.value = _computeAnchor;
         }
       });
 
+    // widget must be in the tree in order to get its position
     WidgetsBinding.instance?.addPostFrameCallback((_) {
-      widget.anchor.value = anchor;
+      anchor.value = _computeAnchor;
       if (_nodeOffset != null) {
         _posDiff = _nodeOffset!.value;
       }
@@ -199,14 +165,13 @@ class _NodeIO<T extends NodeIO> extends State<T> {
   void didUpdateWidget(T oldWidget) {
     super.didUpdateWidget(oldWidget);
     widget._internalIOController = oldWidget._internalIOController;
-    widget.anchor.value = oldWidget.anchor.value;
 
     if (mounted) {
       setState(() {});
     }
   }
 
-  Offset get anchor {
+  Offset get _computeAnchor {
     var pos = getWidgetPosition(widget._internalIOController.key);
     assert(pos != null);
     Offset ret = Offset(
@@ -217,63 +182,71 @@ class _NodeIO<T extends NodeIO> extends State<T> {
         : ret;
   }
 
+  List get _linkData;
+
+  void _connEndPoint() {
+    if (controller.connState.value != NodeIOConnState.pending) return;
+
+    controller.linksLayer.value = List.from(controller.linksLayer.value)
+      ..last = controller.linksLayer.value.last.copyWith(
+          key: UniqueKey(),
+          data: _linkData[0],
+          postCallback: _linkData[1],
+          end: anchor);
+  }
+
+  @override
+  void dispose() {
+    anchor.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: ((event) {
-        if (controller.ioController?.connCallback != null && !_connInProgress) {
-          _hoverParentIOController = controller.ioController;
-          (_hoverParentIOController!.connCallback!)(_ioController);
-        }
+        controller.snapOffset.value = anchor.value;
+        controller.connState.addListener(_connEndPoint);
       }),
       onExit: ((event) {
-        //remove this io from parent
-        if (_hoverParentIOController?.connCallback != null) {
-          (_hoverParentIOController!.connCallback!)(null);
-        }
+        controller.snapOffset.value = null;
+        controller.connState.removeListener(_connEndPoint);
       }),
       child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onPanStart: (details) {
-            controller.ioController = _ioController;
-            _connInProgress = true;
-
             _offset ??= ValueNotifier(
                 details.globalPosition - const Offset(0, kToolbarHeight));
 
-            controller.renderingLayers['0']
-                ?.value = List.from(controller.renderingLayers['0']!.value)
-              ..add(
-                  NodeLink(id: widget.id, start: widget.anchor, end: _offset!));
+            controller.linksLayer.value = List.from(controller.linksLayer.value)
+              ..add(NodeLink(
+                key: UniqueKey(),
+                id: widget.id,
+                start: anchor,
+                end: _offset!,
+                data: _linkData[0],
+                postCallback: _linkData[1],
+              ));
           },
           onPanEnd: (details) {
             _offset = null;
-            _connInProgress = false;
 
-            _childIOController = null;
-            controller.ioController = null;
-
-            // TODO: fix end instead of delete link
-            controller.renderingLayers['0']?.value =
-                List.from(controller.renderingLayers['0']!.value)
-                  ..removeWhere((e) => (e as NodeLink).id == widget.id);
-
-            if (_childIOController != null) {
-              // TODO: centralize connect function in NodeIO instead of separate NodeOutput/Input
-              widget.connect(_childIOController!);
+            if (controller.snapOffset.value == null) {
+              controller.linksLayer.value =
+                  List.from(controller.linksLayer.value)..removeLast();
+            } else {
+              controller.connState.value = NodeIOConnState.pending;
+              controller.connState.value = NodeIOConnState.none;
             }
-            //setState(() {});
           },
           onPanUpdate: (details) {
-            _offset!.value = _childIOController != null
-                ? _childIOController!.anchor.value
-                : details.globalPosition - const Offset(0, kToolbarHeight);
+            _offset!.value = widget.controller.snapOffset.value ??
+                details.globalPosition - const Offset(0, kToolbarHeight);
           },
           child: Container(
             key: widget._key,
             height: dimension,
             width: dimension,
-            constraints: BoxConstraints.tight(Size.square(dimension)),
             decoration:
                 const BoxDecoration(shape: BoxShape.circle, color: Colors.grey),
           )),
@@ -286,18 +259,18 @@ class NodeController with ChangeNotifier {
 
   NodeIOController? ioController;
   ValueNotifier<String?> focusedNode = ValueNotifier(null);
+  ValueNotifier<NodeIOConnState> connState =
+      ValueNotifier(NodeIOConnState.none);
   Offset Function(Offset)? toScene;
+  ValueNotifier<Offset?> snapOffset = ValueNotifier(null);
   String? rootId;
-  final Map<String, ValueNotifier<List<Widget>>> renderingLayers = {
-    '0': ValueNotifier([])
-  };
+
+  ValueNotifier<List<NodeLink>> linksLayer = ValueNotifier([]);
 
   @override
   void dispose() {
     focusedNode.dispose();
-    for (var e in renderingLayers.values) {
-      e.dispose();
-    }
+    linksLayer.dispose();
     super.dispose();
   }
 }
@@ -439,49 +412,11 @@ class NodeInput extends NodeProperty {
 
   @override
   State<NodeInput> createState() => _NodeInput();
-
-  @override
-  bool connect(NodeIOController controller) =>
-      _internalIOController.connect(controller);
-
-  @override
-  void disconnect(String id) => _internalIOController.disconnect(id);
 }
 
 class _NodeInput extends _NodeIO<NodeInput> {
   @override
-  void initState() {
-    super.initState();
-    _ioController = NodeInputController.from(_ioController)
-      ..connFeedback = (controller) {
-        if (_ioController.connFeedback != null) {
-          _ioController.connFeedback!(controller);
-        }
-        _connFeedback(controller);
-      }
-      ..post = widget.callback;
-
-    widget._internalIOController.connect = connect;
-  }
-
-  void _connFeedback(controller) {
-    if (_currParentIOController?.disconnect != null) {
-      _currParentIOController?.disconnect!(widget.id);
-    }
-    widget.connState = NodeIOConnectionState.connected;
-    _currParentIOController = controller;
-    _hoverParentIOController = null;
-  }
-
-  @override
-  bool connect(NodeIOController controller) {
-    if (controller.connFeedback != null) {
-      controller.connFeedback!(_ioController);
-      print('conn to output');
-    }
-
-    return false;
-  }
+  List get _linkData => [null, widget.callback];
 
   @override
   Widget build(BuildContext context) {
@@ -500,12 +435,11 @@ class NodeOutput extends NodeProperty {
   NodeOutput(
     String nodeId, {
     Key? key,
-    required ValueNotifier<NodeData?> data,
+    required this.data,
     required WidgetBuilder builder,
     required NodeController controller,
     VoidCallback? onConnect,
-  })  : _data = data,
-        super(nodeId,
+  }) : super(nodeId,
             key: key,
             builder: builder,
             onConnect: onConnect,
@@ -513,115 +447,22 @@ class NodeOutput extends NodeProperty {
 
   final List<NodeInputController> children = [];
   NodeIOCode code = NodeIOCode.success;
-  ValueNotifier<NodeData?> _data;
-  ValueNotifier<NodeData?> get data => _data;
+  final ValueNotifier<NodeData> data;
 
   @override
   State<NodeOutput> createState() => _NodeOutput();
-
-  void emit() {
-    bool rootLinked = data.value?.path.lookup(controller.rootId) != null;
-
-    bool isLooping = data.value?.path.contains(nodeId) ?? false;
-
-    if (isLooping && code == NodeIOCode.infiniteLoop) {
-      print('loop');
-      return;
-    } else if (isLooping) {
-      code = NodeIOCode.infiniteLoop;
-      print('looping ${data.value?.path}');
-    } else {
-      code = NodeIOCode.success;
-    }
-
-    NodeData postData = data.value?.copyWith(code: code) ?? NodeData();
-    postData.path.add(nodeId);
-    if (!rootLinked) postData.data = null;
-
-    for (NodeInputController child in children) {
-      if (child.post == null) continue;
-
-      child.post!(postData);
-    }
-  }
-
-  @override
-  void disconnect(String id) {
-    children.removeWhere((e) {
-      if (e.id == id) {
-        if (e.disconnect != null) e.disconnect!(id);
-        return true;
-      }
-      return false;
-    });
-    super.disconnect(id);
-  }
 }
 
 class _NodeOutput extends _NodeIO<NodeOutput> {
   @override
-  void initState() {
-    super.initState();
-    _ioController = NodeOutputController(
-        id: widget.id,
-        nodeId: widget.nodeId,
-        connCallback: _ioController.connCallback,
-        connFeedback: (controller) => setState(() => connect(controller)),
-        disconnect: (id) {
-          widget.disconnect(id);
-          setState(() {});
-        },
-        anchor: widget.anchor);
-
-    widget._internalIOController.connect = connect;
-    widget._internalIOController.disconnect = disconnect;
-    widget.data.addListener(() {
-      widget.emit();
-    });
-  }
-
-  @override
   void didUpdateWidget(NodeOutput oldWidget) {
     super.didUpdateWidget(oldWidget);
     widget.children.addAll(oldWidget.children);
-    widget._data = oldWidget._data;
+    widget.data.value = oldWidget.data.value;
   }
 
   @override
-  bool connect(NodeIOController controller) {
-    if ((controller is! NodeInputController) ||
-        controller.nodeId == widget.nodeId) {
-      if (controller.disconnect != null) controller.disconnect!(widget.id);
-      print('not input or same node');
-      return false;
-    }
-
-    super.connect(controller);
-
-    if (controller.connFeedback != null) {
-      controller.connFeedback!(_ioController);
-    }
-    widget.children.add(controller);
-    widget.connState = NodeIOConnectionState.connected;
-
-    widget.emit();
-    print('connect');
-
-    assert(widget.children.isNotEmpty);
-    widget.controller.renderingLayers['0']?.value.add(NodeLink(
-        id: controller.id,
-        start: widget.anchor,
-        end: widget.children.last.anchor));
-    return true;
-  }
-
-  @override
-  void disconnect(String ioId) {
-    widget.controller.renderingLayers[0]?.value
-        .removeWhere((e) => (e as NodeLink).id == ioId);
-
-    super.disconnect(ioId);
-  }
+  List get _linkData => [widget.data, null];
 
   @override
   Widget build(BuildContext context) {
@@ -683,30 +524,65 @@ class NodeLinkPainter extends CustomPainter {
 }
 
 class NodeLink extends StatefulWidget {
-  const NodeLink({Key? key, this.id, required this.start, required this.end})
+  const NodeLink(
+      {Key? key,
+      this.id,
+      required this.start,
+      required this.end,
+      this.data,
+      this.postCallback})
       : super(key: key);
 
   final String? id;
   final ValueNotifier<Offset> start;
   final ValueNotifier<Offset> end;
+  final ValueNotifier? data;
+  final void Function(NodeData?)? postCallback;
 
   @override
   State<NodeLink> createState() => _NodeLink();
+
+  NodeLink copyWith(
+      {Key? key,
+      ValueNotifier<Offset>? start,
+      ValueNotifier<Offset>? end,
+      ValueNotifier? data,
+      void Function(NodeData?)? postCallback}) {
+    return NodeLink(
+      key: key,
+      start: start ?? this.start,
+      end: end ?? this.end,
+      data: data ?? this.data,
+      postCallback: postCallback ?? this.postCallback,
+    );
+  }
 }
 
 class _NodeLink extends State<NodeLink> {
   @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance?.addPostFrameCallback((_) {
+      if (widget.postCallback != null && widget.data != null) {
+        widget.data?.addListener(() {
+          widget.postCallback!(widget.data?.value);
+        });
+        widget.postCallback!(widget.data?.value);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
         valueListenable: widget.start,
-        builder: (context, cnValue, child) {
+        builder: (context, Offset start, child) {
           return ValueListenableBuilder(
               valueListenable: widget.end,
-              builder: (context, cnValue, child) {
+              builder: (context, Offset end, child) {
                 return CustomPaint(
-                    willChange: true,
-                    painter:
-                        NodeLinkPainter(widget.start.value, widget.end.value));
+                    willChange: true, painter: NodeLinkPainter(start, end));
               });
         });
   }
@@ -724,8 +600,8 @@ class ContainerNode extends Node {
 }
 
 class _ContainerNode extends State<ContainerNode> {
-  final ValueNotifier<NodeData?> _data = ValueNotifier(null);
-  NodeData? _wrappedData;
+  final ValueNotifier<NodeData> _data = ValueNotifier(NodeData());
+  NodeData _wrappedData = NodeData();
   late final String id;
   late final NodeController controller;
   final List<double> _argbColor = [255, 255, 255, 255];
@@ -743,14 +619,14 @@ class _ContainerNode extends State<ContainerNode> {
     super.dispose();
   }
 
-  NodeData? _wrapData(NodeData? data) {
-    return data?.copyWith(
+  NodeData _wrapData(NodeData data) {
+    return data.copyWith(
         data: Container(
             height: 100,
             width: 100,
             color: Color.fromARGB(_argbColor[0].toInt(), _argbColor[1].toInt(),
                 _argbColor[2].toInt(), _argbColor[3].toInt()),
-            child: _wrappedData?.data));
+            child: _wrappedData.data as Widget));
   }
 
   List<Widget> _buildColorSliders() {
@@ -767,7 +643,6 @@ class _ContainerNode extends State<ContainerNode> {
                         onChanged: (value) {
                           _argbColor[i] = value;
                           _data.value = _wrapData(_wrappedData);
-                          if (_data.value == null) setState(() {});
                         }),
                     Text(_argbColor[i].toInt().toString())
                   ]))));
@@ -843,7 +718,7 @@ class _InputNodeGroup extends State<InputNodeGroup> {
             height: 50,
             child: NodeOutput(id,
                 controller: controller,
-                data: ValueNotifier(null), builder: (context) {
+                data: ValueNotifier(NodeData()), builder: (context) {
               return const SizedBox();
             }))
       ],
@@ -889,7 +764,7 @@ class _OutputNodeGroup extends State<OutputNodeGroup> {
         SizedBox(
             height: 50,
             child: NodeInput(id, controller: controller, callback: (data) {
-              if (data?.data is Widget?) widget.dataCallback(data?.data);
+              if (data.data is Widget?) widget.dataCallback(data.data);
             }, builder: (context) {
               return const SizedBox();
             }))
