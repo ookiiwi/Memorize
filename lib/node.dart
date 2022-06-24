@@ -8,6 +8,11 @@ typedef NodeCallback = dynamic Function(NodeData data);
 enum NodeIOCode { infiniteLoop, sameType, success }
 enum NodeIOConnState { connected, pending, none }
 
+class NodeIOConnInfo {
+  String? linkId;
+  NodeIOConnState state = NodeIOConnState.none;
+}
+
 class NodeData {
   NodeData({Set<String>? path, this.data, this.code = NodeIOCode.success})
       : path = path ?? {};
@@ -134,6 +139,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
   late double dimension;
   late final ValueNotifier<Offset>? _nodeOffset;
   final ValueNotifier<Offset> anchor = ValueNotifier(Offset.zero);
+  final List<String> _connections = [];
 
   @override
   void initState() {
@@ -185,7 +191,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
   List get _linkData;
 
   void _connEndPoint() {
-    if (controller.connState.value != NodeIOConnState.pending) return;
+    if (controller.connInfo.value?.state != NodeIOConnState.pending) return;
 
     controller.linksLayer.value = List.from(controller.linksLayer.value)
       ..last = controller.linksLayer.value.last.copyWith(
@@ -193,6 +199,15 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
           data: _linkData[0],
           postCallback: _linkData[1],
           end: anchor);
+
+    _connections.add(controller.connInfo.value!.linkId!);
+    controller.connResponseInfo.value = NodeIOConnInfo()
+      ..linkId = _connections.last
+      ..state = NodeIOConnState.connected;
+  }
+
+  void _onConnResponse() {
+    _connections.add(controller.connResponseInfo.value!.linkId!);
   }
 
   @override
@@ -206,11 +221,11 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
     return MouseRegion(
       onEnter: ((event) {
         controller.snapOffset.value = anchor.value;
-        controller.connState.addListener(_connEndPoint);
+        controller.connInfo.addListener(_connEndPoint);
       }),
       onExit: ((event) {
         controller.snapOffset.value = null;
-        controller.connState.removeListener(_connEndPoint);
+        controller.connInfo.removeListener(_connEndPoint);
       }),
       child: GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -221,7 +236,6 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
             controller.linksLayer.value = List.from(controller.linksLayer.value)
               ..add(NodeLink(
                 key: UniqueKey(),
-                id: widget.id,
                 start: anchor,
                 end: _offset!,
                 data: _linkData[0],
@@ -235,8 +249,13 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
               controller.linksLayer.value =
                   List.from(controller.linksLayer.value)..removeLast();
             } else {
-              controller.connState.value = NodeIOConnState.pending;
-              controller.connState.value = NodeIOConnState.none;
+              controller.connResponseInfo.addListener(_onConnResponse);
+              controller.connInfo.value = NodeIOConnInfo()
+                ..linkId = controller.linksLayer.value.last.id
+                ..state = NodeIOConnState.pending;
+              controller.connInfo.value = NodeIOConnInfo()
+                ..state = NodeIOConnState.none;
+              controller.connResponseInfo.removeListener(_onConnResponse);
             }
           },
           onPanUpdate: (details) {
@@ -259,8 +278,9 @@ class NodeController with ChangeNotifier {
 
   NodeIOController? ioController;
   ValueNotifier<String?> focusedNode = ValueNotifier(null);
-  ValueNotifier<NodeIOConnState> connState =
-      ValueNotifier(NodeIOConnState.none);
+  ValueNotifier<NodeIOConnInfo?> connInfo = ValueNotifier(null);
+  ValueNotifier<NodeIOConnInfo?> connResponseInfo = ValueNotifier(null);
+
   Offset Function(Offset)? toScene;
   ValueNotifier<Offset?> snapOffset = ValueNotifier(null);
   String? rootId;
@@ -419,6 +439,30 @@ class _NodeInput extends _NodeIO<NodeInput> {
   List get _linkData => [null, widget.callback];
 
   @override
+  void _connEndPoint() {
+    super._connEndPoint();
+    _clearLinks();
+  }
+
+  @override
+  void _onConnResponse() {
+    super._onConnResponse();
+    _clearLinks();
+  }
+
+  void _clearLinks() {
+    if (_connections.length < 2) return;
+    controller.linksLayer.value = List.from(controller.linksLayer.value)
+      ..removeWhere((e) {
+        if (e.id == _connections.first) {
+          return true;
+        }
+        return false;
+      });
+    _connections.removeAt(0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -485,6 +529,7 @@ class NodeLinkPainter extends CustomPainter {
   final Offset start, end;
   final double strokeWidth;
   final Color color;
+  Path _path = Path();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -493,28 +538,11 @@ class NodeLinkPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..color = color;
 
-    //Offset quarter = Offset(
-    //  (start.dx + end.dx) / 4,
-    //  (start.dy + end.dy) / 4,
-    //);
+    _path = Path()
+      ..moveTo(start.dx, start.dy)
+      ..lineTo(end.dx, end.dy);
 
-    //Offset middle = Offset(
-    //  (start.dx + end.dx) / 2,
-    //  (start.dy + end.dy) / 2,
-    //);
-
-    //Path path = Path()
-    //      ..moveTo(start.dx, start.dy)
-    //..quadraticBezierTo(
-    //    middle.dx * 0.8, middle.dy * 0.8, middle.dx, middle.dy)
-    //..quadraticBezierTo(1.2 * middle.dx, 1.2 * middle.dy, end.dx, end.dy)
-    //..cubicTo(middle.dx * 0.75, middle.dy * 0.9, middle.dx * 1.25,
-    //    middle.dy * 1.25, end.dx, end.dy)
-    //..close()
-    //;
-
-    canvas.drawLine(start, end, paint);
-    //canvas.drawPath(path, paint);
+    canvas.drawPath(_path, paint);
   }
 
   @override
@@ -524,16 +552,17 @@ class NodeLinkPainter extends CustomPainter {
 }
 
 class NodeLink extends StatefulWidget {
-  const NodeLink(
+  NodeLink(
       {Key? key,
-      this.id,
       required this.start,
       required this.end,
       this.data,
       this.postCallback})
-      : super(key: key);
+      : _id = nanoid(),
+        super(key: key);
 
-  final String? id;
+  String _id;
+  get id => _id;
   final ValueNotifier<Offset> start;
   final ValueNotifier<Offset> end;
   final ValueNotifier? data;
@@ -554,7 +583,7 @@ class NodeLink extends StatefulWidget {
       end: end ?? this.end,
       data: data ?? this.data,
       postCallback: postCallback ?? this.postCallback,
-    );
+    ).._id = id;
   }
 }
 
@@ -574,6 +603,12 @@ class _NodeLink extends State<NodeLink> {
   }
 
   @override
+  void didUpdateWidget(oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    widget._id = oldWidget._id;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
         valueListenable: widget.start,
@@ -582,7 +617,8 @@ class _NodeLink extends State<NodeLink> {
               valueListenable: widget.end,
               builder: (context, Offset end, child) {
                 return CustomPaint(
-                    willChange: true, painter: NodeLinkPainter(start, end));
+                    child: const SizedBox.expand(),
+                    painter: NodeLinkPainter(start, end));
               });
         });
   }
