@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:matrix_gesture_detector/matrix_gesture_detector.dart';
+import 'package:nanoid/nanoid.dart';
 import 'package:provider/provider.dart';
 
 class Selectable extends StatefulWidget {
@@ -566,7 +567,7 @@ class _ContextMenu extends State<ContextMenu> {
   }
 
   void _dismissMenu() {
-    Navigator.of(context).pop();
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -576,6 +577,7 @@ class _ContextMenu extends State<ContextMenu> {
         onTap: _isTopLevel && primary ? _dismissMenu : null,
         onSecondaryTap: _isTopLevel && primary ? _dismissMenu : null,
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
             Padding(
                 padding: _getPadding(),
@@ -764,18 +766,68 @@ class _ContextSubmenu extends State<ContextSubmenu> {
 Future<T?> showContextMenu<T>(
     BuildContext context, RelativeRect position, List<Widget> children) {
   const Duration transitionDuration = Duration.zero;
-  return showModal(
+
+  final registerMenu =
+      Provider.of<ContexMenuRegisterCallback?>(context, listen: false);
+
+  Future<T?> _showMenu() => showModal(
       context: context,
       configuration: const FadeScaleTransitionConfiguration(
           barrierDismissible: false,
           barrierColor: Colors.transparent,
           transitionDuration: transitionDuration,
           reverseTransitionDuration: transitionDuration),
-      builder: (context) => SizedBox(
-          height: MediaQuery.of(context).size.height,
-          width: MediaQuery.of(context).size.width,
-          child: Material(
-              color: Colors.transparent,
-              child: ContextMenu(
-                  primary: true, position: position, children: children))));
+      builder: (context) {
+        return SizedBox(
+            height: MediaQuery.of(context).size.height,
+            width: MediaQuery.of(context).size.width,
+            child: Material(
+                color: Colors.transparent,
+                child: ContextMenu(
+                    primary: true, position: position, children: children)));
+      });
+
+  if (registerMenu != null) {
+    registerMenu(_showMenu);
+    return Future.value();
+  }
+
+  return _showMenu();
+}
+
+class ContextMenuManager extends StatefulWidget {
+  const ContextMenuManager({Key? key, this.child, this.builder})
+      : super(key: key);
+
+  final Widget? child;
+  final Widget Function(BuildContext context, Widget? child)? builder;
+
+  @override
+  State<ContextMenuManager> createState() => _ContextMenuManager();
+}
+
+typedef ContexMenuRegisterCallback = void Function(Future Function() showMenu);
+
+class _ContextMenuManager extends State<ContextMenuManager> {
+  Future Function()? _showMenu;
+
+  void test(_) {
+    _showMenu!();
+    _showMenu = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Provider<ContexMenuRegisterCallback?>.value(
+        value: (Future Function() showMenu) {
+          if (_showMenu == null) {
+            setState(() {});
+            WidgetsBinding.instance?.addPostFrameCallback(test);
+          }
+
+          _showMenu = showMenu;
+        },
+        builder: widget.builder,
+        child: widget.child);
+  }
 }
