@@ -10,10 +10,12 @@ typedef NodeCallback = dynamic Function(NodeData data);
 
 enum NodeIOCode { infiniteLoop, sameType, success }
 enum NodeIOConnState { connected, pending, none }
+enum NodeIOType { input, output }
 
 class NodeIOConnInfo {
   String? linkId;
   NodeIOConnState state = NodeIOConnState.none;
+  NodeIOType type = NodeIOType.output;
 }
 
 class NodeData {
@@ -144,6 +146,8 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
   final ValueNotifier<Offset> anchor = ValueNotifier(Offset.zero);
   final List<String> _connections = [];
 
+  late final NodeIOType ioType;
+
   @override
   void initState() {
     super.initState();
@@ -193,8 +197,10 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
 
   List get _linkData;
 
-  void _connEndPoint() {
-    if (controller.connInfo.value?.state != NodeIOConnState.pending) return;
+  bool _connEndPoint() {
+    if (controller.connInfo.value?.state != NodeIOConnState.pending) {
+      return false;
+    }
 
     controller.linksLayer.value = List.from(controller.linksLayer.value)
       ..last = controller.linksLayer.value.last.copyWith(
@@ -206,11 +212,20 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
     _connections.add(controller.connInfo.value!.linkId!);
     controller.connResponseInfo.value = NodeIOConnInfo()
       ..linkId = _connections.last
-      ..state = NodeIOConnState.connected;
+      ..state = NodeIOConnState.connected
+      ..type = ioType;
+
+    return true;
   }
 
-  void _onConnResponse() {
+  bool _onConnResponse() {
+    if (controller.connResponseInfo.value?.type == ioType) {
+      controller.linksLayer.value = List.from(controller.linksLayer.value)
+        ..removeLast();
+      return false;
+    }
     _connections.add(controller.connResponseInfo.value!.linkId!);
+    return true;
   }
 
   @override
@@ -448,15 +463,23 @@ class _NodeInput extends _NodeIO<NodeInput> {
   List get _linkData => [null, widget.callback];
 
   @override
-  void _connEndPoint() {
-    super._connEndPoint();
-    _clearLinks();
+  void initState() {
+    super.initState();
+    ioType = NodeIOType.input;
   }
 
   @override
-  void _onConnResponse() {
+  bool _connEndPoint() {
+    super._connEndPoint();
+    _clearLinks();
+    return true;
+  }
+
+  @override
+  bool _onConnResponse() {
     super._onConnResponse();
     _clearLinks();
+    return true;
   }
 
   void _clearLinks() {
@@ -508,6 +531,12 @@ class NodeOutput extends NodeProperty {
 }
 
 class _NodeOutput extends _NodeIO<NodeOutput> {
+  @override
+  void initState() {
+    super.initState();
+    ioType = NodeIOType.output;
+  }
+
   @override
   void didUpdateWidget(NodeOutput oldWidget) {
     super.didUpdateWidget(oldWidget);
