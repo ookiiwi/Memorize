@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/widget.dart';
 import 'package:nanoid/nanoid.dart';
@@ -235,12 +236,21 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
 
             controller.linksLayer.value = List.from(controller.linksLayer.value)
               ..add(NodeLink(
-                key: UniqueKey(),
-                start: anchor,
-                end: _offset!,
-                data: _linkData[0],
-                postCallback: _linkData[1],
-              ));
+                  start: anchor,
+                  end: _offset!,
+                  data: _linkData[0],
+                  postCallback: _linkData[1],
+                  onDisconnect: (linkId) {
+                    controller.linksLayer.value =
+                        List.from(controller.linksLayer.value)
+                          ..removeWhere((e) {
+                            return e.id == linkId;
+                          });
+                  }));
+          },
+          onPanUpdate: (details) {
+            _offset!.value = widget.controller.snapOffset.value ??
+                details.globalPosition - const Offset(0, kToolbarHeight);
           },
           onPanEnd: (details) {
             _offset = null;
@@ -258,10 +268,6 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
               controller.connResponseInfo.removeListener(_onConnResponse);
             }
           },
-          onPanUpdate: (details) {
-            _offset!.value = widget.controller.snapOffset.value ??
-                details.globalPosition - const Offset(0, kToolbarHeight);
-          },
           child: Container(
             key: widget._key,
             height: dimension,
@@ -277,15 +283,16 @@ class NodeController with ChangeNotifier {
   NodeController({this.toScene});
 
   NodeIOController? ioController;
-  ValueNotifier<String?> focusedNode = ValueNotifier(null);
-  ValueNotifier<NodeIOConnInfo?> connInfo = ValueNotifier(null);
-  ValueNotifier<NodeIOConnInfo?> connResponseInfo = ValueNotifier(null);
+  final ValueNotifier<String?> focusedNode = ValueNotifier(null);
+  final ValueNotifier<NodeIOConnInfo?> connInfo = ValueNotifier(null);
+  final ValueNotifier<NodeIOConnInfo?> connResponseInfo = ValueNotifier(null);
 
-  Offset Function(Offset)? toScene;
-  ValueNotifier<Offset?> snapOffset = ValueNotifier(null);
+  final Offset Function(Offset)? toScene;
+  final ValueNotifier<Offset?> snapOffset = ValueNotifier(null);
   String? rootId;
 
-  ValueNotifier<List<NodeLink>> linksLayer = ValueNotifier([]);
+  String? selectedLinkId;
+  final ValueNotifier<List<NodeLink>> linksLayer = ValueNotifier([]);
 
   @override
   void dispose() {
@@ -346,7 +353,7 @@ class _InternalNodeState extends State<_InternalNode> {
     return Transform(
         transform: _matrix,
         child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
+            behavior: HitTestBehavior.opaque,
             onTapDown: (event) {
               if (widget.onFocus != null) widget.onFocus!();
             },
@@ -455,6 +462,7 @@ class _NodeInput extends _NodeIO<NodeInput> {
     controller.linksLayer.value = List.from(controller.linksLayer.value)
       ..removeWhere((e) {
         if (e.id == _connections.first) {
+          e.dispose();
           return true;
         }
         return false;
@@ -522,105 +530,127 @@ class _NodeOutput extends _NodeIO<NodeOutput> {
   }
 }
 
-class NodeLinkPainter extends CustomPainter {
-  NodeLinkPainter(this.start, this.end,
-      {this.strokeWidth = 4, this.color = Colors.red});
+class NodeLinkController {
+  String? _selectedId;
+}
 
-  final Offset start, end;
+class NodeLinkPainter extends CustomPainter {
+  NodeLinkPainter(this.context, this._notifier,
+      {required this.links,
+      this.strokeWidth = 10,
+      this.color = Colors.red,
+      required this.nodeLinkController})
+      : super(
+            repaint: Listenable.merge([
+          Listenable.merge(links.map((e) => e.start).toList() +
+              links.map((e) => e.end).toList()),
+          _notifier
+        ])) {
+    contextMenuController = Provider.of<ContextMenuController?>(context);
+  }
+
+  final BuildContext context;
+  final ValueNotifier<Offset?> _notifier;
+  final List<NodeLink> links;
   final double strokeWidth;
   final Color color;
-  Path _path = Path();
+  final NodeLinkController nodeLinkController;
+  late final ContextMenuController? contextMenuController;
 
   @override
   void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..color = color;
+    final paint = Paint()..strokeWidth = strokeWidth;
 
-    _path = Path()
-      ..moveTo(start.dx, start.dy)
-      ..lineTo(end.dx, end.dy);
+    for (NodeLink link in links) {
+      final path = Path()
+        ..moveTo(link.startOff.dx, link.startOff.dy - strokeWidth / 2)
+        ..lineTo(link.endOff.dx, link.endOff.dy - strokeWidth / 2)
+        ..lineTo(link.endOff.dx, link.endOff.dy + strokeWidth / 2)
+        ..lineTo(link.startOff.dx, link.startOff.dy + strokeWidth / 2)
+        ..lineTo(link.startOff.dx, link.startOff.dy - strokeWidth / 2)
+        ..close();
 
-    canvas.drawPath(_path, paint);
+      if (_notifier.value != null && path.contains(_notifier.value!)) {
+        nodeLinkController._selectedId = link.id;
+
+        var pos = const Offset(100, 100);
+
+        showContextMenu(context, contextMenuController,
+            RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 100, pos.dy + 150), [
+          ContextMenuItem(
+              onTap: () {
+                link.disconnect();
+                Navigator.of(context).maybePop();
+              },
+              child: const Text('Disconnect'))
+        ]);
+      }
+
+      paint
+        ..style = PaintingStyle.fill
+        ..color = color;
+
+      canvas.drawPath(path, paint);
+    }
   }
 
   @override
-  bool shouldRepaint(NodeLinkPainter oldDelegate) {
-    return oldDelegate.start != start || oldDelegate.end != end;
-  }
+  bool shouldRepaint(NodeLinkPainter oldDelegate) => true;
 }
 
-class NodeLink extends StatefulWidget {
+class NodeLink {
   NodeLink(
-      {Key? key,
-      required this.start,
+      {required this.start,
       required this.end,
       this.data,
-      this.postCallback})
-      : _id = nanoid(),
-        super(key: key);
+      this.postCallback,
+      this.onDisconnect})
+      : _id = nanoid() {
+    if (postCallback != null && data != null) {
+      data?.addListener(_postCallback);
+      postCallback!(data?.value);
+    }
+  }
 
   String _id;
   get id => _id;
   final ValueNotifier<Offset> start;
   final ValueNotifier<Offset> end;
-  final ValueNotifier? data;
+  final ValueNotifier<NodeData?>? data;
   final void Function(NodeData?)? postCallback;
+  final void Function(String id)? onDisconnect;
 
-  @override
-  State<NodeLink> createState() => _NodeLink();
+  Offset get startOff => start.value;
+  Offset get endOff => end.value;
 
   NodeLink copyWith(
       {Key? key,
       ValueNotifier<Offset>? start,
       ValueNotifier<Offset>? end,
-      ValueNotifier? data,
-      void Function(NodeData?)? postCallback}) {
+      ValueNotifier<NodeData?>? data,
+      void Function(NodeData?)? postCallback,
+      void Function(String id)? onDisconnect}) {
     return NodeLink(
-      key: key,
-      start: start ?? this.start,
-      end: end ?? this.end,
-      data: data ?? this.data,
-      postCallback: postCallback ?? this.postCallback,
-    ).._id = id;
-  }
-}
-
-class _NodeLink extends State<NodeLink> {
-  @override
-  void initState() {
-    super.initState();
-
-    WidgetsBinding.instance?.addPostFrameCallback((_) {
-      if (widget.postCallback != null && widget.data != null) {
-        widget.data?.addListener(() {
-          widget.postCallback!(widget.data?.value);
-        });
-        widget.postCallback!(widget.data?.value);
-      }
-    });
+        start: start ?? this.start,
+        end: end ?? this.end,
+        data: data ?? this.data,
+        postCallback: postCallback ?? this.postCallback,
+        onDisconnect: onDisconnect ?? this.onDisconnect)
+      .._id = id;
   }
 
-  @override
-  void didUpdateWidget(oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    widget._id = oldWidget._id;
+  void _postCallback() => postCallback!(data?.value);
+
+  void disconnect() {
+    if (onDisconnect != null) {
+      onDisconnect!(id);
+      dispose();
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-        valueListenable: widget.start,
-        builder: (context, Offset start, child) {
-          return ValueListenableBuilder(
-              valueListenable: widget.end,
-              builder: (context, Offset end, child) {
-                return CustomPaint(
-                    child: const SizedBox.expand(),
-                    painter: NodeLinkPainter(start, end));
-              });
-        });
+  void dispose() {
+    data?.removeListener(_postCallback);
+    if (postCallback != null) postCallback!(NodeData(data: null));
   }
 }
 
