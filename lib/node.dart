@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/widget.dart';
@@ -537,7 +539,7 @@ class NodeLinkController {
 class NodeLinkPainter extends CustomPainter {
   NodeLinkPainter(this.context, this._notifier,
       {required this.links,
-      this.strokeWidth = 10,
+      this.strokeWidth = 4,
       this.color = Colors.red,
       required this.nodeLinkController})
       : super(
@@ -545,9 +547,7 @@ class NodeLinkPainter extends CustomPainter {
           Listenable.merge(links.map((e) => e.start).toList() +
               links.map((e) => e.end).toList()),
           _notifier
-        ])) {
-    contextMenuController = Provider.of<ContextMenuController?>(context);
-  }
+        ]));
 
   final BuildContext context;
   final ValueNotifier<Offset?> _notifier;
@@ -555,19 +555,24 @@ class NodeLinkPainter extends CustomPainter {
   final double strokeWidth;
   final Color color;
   final NodeLinkController nodeLinkController;
-  late final ContextMenuController? contextMenuController;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..strokeWidth = strokeWidth;
 
     for (NodeLink link in links) {
+      Offset a = link.startOff - Offset(0, strokeWidth / 2);
+      Offset b = link.endOff - Offset(0, strokeWidth / 2);
+      Offset n = Offset(-(b.dy - a.dy), b.dx - a.dx);
+      Offset u = n / n.distance * strokeWidth;
+      Offset c = b + u;
+      Offset d = a + u;
+
       final path = Path()
-        ..moveTo(link.startOff.dx, link.startOff.dy - strokeWidth / 2)
-        ..lineTo(link.endOff.dx, link.endOff.dy - strokeWidth / 2)
-        ..lineTo(link.endOff.dx, link.endOff.dy + strokeWidth / 2)
-        ..lineTo(link.startOff.dx, link.startOff.dy + strokeWidth / 2)
-        ..lineTo(link.startOff.dx, link.startOff.dy - strokeWidth / 2)
+        ..moveTo(a.dx, a.dy)
+        ..lineTo(b.dx, b.dy)
+        ..lineTo(c.dx, c.dy)
+        ..lineTo(d.dx, d.dy)
         ..close();
 
       if (_notifier.value != null && path.contains(_notifier.value!)) {
@@ -575,7 +580,7 @@ class NodeLinkPainter extends CustomPainter {
 
         var pos = const Offset(100, 100);
 
-        showContextMenu(context, contextMenuController,
+        showContextMenu(context,
             RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 100, pos.dy + 150), [
           ContextMenuItem(
               onTap: () {
