@@ -3,7 +3,7 @@ import 'package:memorize/widget.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:provider/provider.dart';
 
-typedef NodeCallback = dynamic Function(NodeData data);
+typedef NodeCallback = dynamic Function(NodeData? data);
 
 enum NodeIOCode { infiniteLoop, sameType, success }
 enum NodeIOConnState { connected, pending, none }
@@ -210,13 +210,15 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
       ..state = NodeIOConnState.connected
       ..type = ioType;
 
-    return true;
+    return controller.connInfo.value!.type != ioType ? true : false;
   }
 
   bool _onConnResponse() {
     if (controller.connResponseInfo.value?.type == ioType) {
-      controller.linksLayer.value = List.from(controller.linksLayer.value)
-        ..removeLast();
+      if (controller.linksLayer.value.isNotEmpty) {
+        controller.linksLayer.value = List.from(controller.linksLayer.value)
+          ..removeLast();
+      }
       return false;
     }
     _connections.add(controller.connResponseInfo.value!.linkId!);
@@ -280,11 +282,15 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
               controller.connResponseInfo.addListener(_onConnResponse);
               controller.connInfo.value = NodeIOConnInfo()
                 ..linkId = controller.linksLayer.value.last.id
-                ..state = NodeIOConnState.pending;
+                ..state = NodeIOConnState.pending
+                ..type = ioType;
               controller.connInfo.value = NodeIOConnInfo()
-                ..state = NodeIOConnState.none;
+                ..state = NodeIOConnState.none
+                ..type = ioType;
               controller.connResponseInfo.removeListener(_onConnResponse);
-              controller.linksLayer.value.last.sendData();
+              if (controller.linksLayer.value.isNotEmpty) {
+                controller.linksLayer.value.last.sendData();
+              }
             }
           },
           child: Container(
@@ -472,15 +478,15 @@ class _NodeInput extends _NodeIO<NodeInput> {
 
   @override
   bool _connEndPoint() {
-    super._connEndPoint();
-    _clearLinks();
+    if (super._connEndPoint()) _clearLinks();
+
     return true;
   }
 
   @override
   bool _onConnResponse() {
-    super._onConnResponse();
-    _clearLinks();
+    if (super._onConnResponse()) _clearLinks();
+
     return true;
   }
 
@@ -875,7 +881,7 @@ class _OutputNodeGroup extends State<OutputNodeGroup> {
         SizedBox(
             height: 50,
             child: NodeInput(id, controller: controller, callback: (data) {
-              if (data.data is Widget?) widget.dataCallback(data.data);
+              if (data?.data is Widget?) widget.dataCallback(data?.data);
             }, builder: (context) {
               return const SizedBox();
             }))
