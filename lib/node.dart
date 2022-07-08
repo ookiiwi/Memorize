@@ -257,7 +257,11 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
                     controller.linksLayer.value =
                         List.from(controller.linksLayer.value)
                           ..removeWhere((e) {
-                            return e.id == linkId;
+                            if (e.id == linkId) {
+                              e.sendData(data: null);
+                              return true;
+                            }
+                            return false;
                           });
                   }));
           },
@@ -630,6 +634,11 @@ class NodeLinkPainter extends CustomPainter {
   bool shouldRepaint(NodeLinkPainter oldDelegate) => true;
 }
 
+class _NoData {
+  /// Dummy class to check if user passed data as optional argument
+  const _NoData();
+}
+
 class NodeLink {
   NodeLink(
       {required this.start,
@@ -670,7 +679,8 @@ class NodeLink {
       .._id = id;
   }
 
-  void sendData() => postCallback!(data?.value);
+  void sendData({data = const _NoData()}) =>
+      postCallback!(data is! _NoData ? data : this.data?.value);
 
   void disconnect() {
     if (onDisconnect != null) {
@@ -681,7 +691,6 @@ class NodeLink {
 
   void dispose() {
     data?.removeListener(sendData);
-    if (postCallback != null) postCallback!(NodeData(data: null));
   }
 }
 
@@ -723,7 +732,7 @@ class _ContainerNode extends State<ContainerNode> {
             width: 100,
             color: Color.fromARGB(_argbColor[0].toInt(), _argbColor[1].toInt(),
                 _argbColor[2].toInt(), _argbColor[3].toInt()),
-            child: _wrappedData.data as Widget));
+            child: _wrappedData.data as Widget?));
   }
 
   List<Widget> _buildColorSliders() {
@@ -766,8 +775,13 @@ class _ContainerNode extends State<ContainerNode> {
         SizedBox(
             height: 50,
             child: NodeInput(id, controller: controller, callback: (data) {
-              _wrappedData = data;
-              _data.value = _wrapData(_wrappedData);
+              if (data != null) {
+                _wrappedData = data;
+
+                _data.value = _wrapData(_wrappedData);
+              } else {
+                _data.value = NodeData();
+              }
             }, builder: (context) {
               return const SizedBox();
             }))
