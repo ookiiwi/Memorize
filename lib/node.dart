@@ -280,6 +280,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
               controller.connInfo.value = NodeIOConnInfo()
                 ..state = NodeIOConnState.none;
               controller.connResponseInfo.removeListener(_onConnResponse);
+              controller.linksLayer.value.last.sendData();
             }
           },
           child: Container(
@@ -638,8 +639,7 @@ class NodeLink {
       this.onDisconnect})
       : _id = nanoid() {
     if (postCallback != null && data != null) {
-      data?.addListener(_postCallback);
-      postCallback!(data?.value);
+      data?.addListener(sendData);
     }
   }
 
@@ -670,7 +670,7 @@ class NodeLink {
       .._id = id;
   }
 
-  void _postCallback() => postCallback!(data?.value);
+  void sendData() => postCallback!(data?.value);
 
   void disconnect() {
     if (onDisconnect != null) {
@@ -680,7 +680,7 @@ class NodeLink {
   }
 
   void dispose() {
-    data?.removeListener(_postCallback);
+    data?.removeListener(sendData);
     if (postCallback != null) postCallback!(NodeData(data: null));
   }
 }
