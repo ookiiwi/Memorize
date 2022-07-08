@@ -1,6 +1,3 @@
-import 'dart:math';
-
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/widget.dart';
 import 'package:nanoid/nanoid.dart';
@@ -190,9 +187,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
     Offset ret = Offset(
         pos!.dx + dimension / 2, pos.dy - kToolbarHeight + dimension / 2);
 
-    return widget.controller.toScene != null
-        ? widget.controller.toScene!(ret)
-        : ret;
+    return widget.controller.toScene(ret);
   }
 
   List get _linkData;
@@ -238,6 +233,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
   Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: ((event) {
+        if (_offset != null) return;
         controller.snapOffset.value = anchor.value;
         controller.connInfo.addListener(_connEndPoint);
       }),
@@ -248,8 +244,8 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
       child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onPanStart: (details) {
-            _offset ??= ValueNotifier(
-                details.globalPosition - const Offset(0, kToolbarHeight));
+            _offset ??= ValueNotifier(controller.toScene(
+                details.globalPosition - const Offset(0, kToolbarHeight)));
 
             controller.linksLayer.value = List.from(controller.linksLayer.value)
               ..add(NodeLink(
@@ -266,8 +262,9 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
                   }));
           },
           onPanUpdate: (details) {
-            _offset!.value = widget.controller.snapOffset.value ??
-                details.globalPosition - const Offset(0, kToolbarHeight);
+            _offset!.value = controller.snapOffset.value ??
+                controller.toScene(
+                    details.globalPosition - const Offset(0, kToolbarHeight));
           },
           onPanEnd: (details) {
             _offset = null;
@@ -297,14 +294,14 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
 }
 
 class NodeController with ChangeNotifier {
-  NodeController({this.toScene});
+  NodeController({required this.toScene});
 
   NodeIOController? ioController;
   final ValueNotifier<String?> focusedNode = ValueNotifier(null);
   final ValueNotifier<NodeIOConnInfo?> connInfo = ValueNotifier(null);
   final ValueNotifier<NodeIOConnInfo?> connResponseInfo = ValueNotifier(null);
 
-  final Offset Function(Offset)? toScene;
+  final Offset Function(Offset) toScene;
   final ValueNotifier<Offset?> snapOffset = ValueNotifier(null);
   String? rootId;
 
