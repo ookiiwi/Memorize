@@ -1,3 +1,5 @@
+import 'dart:html' as html;
+
 import 'package:flutter/material.dart';
 import 'package:memorize/widget.dart';
 import 'package:nanoid/nanoid.dart';
@@ -305,7 +307,7 @@ abstract class _NodeIO<T extends NodeIO> extends State<T> {
 }
 
 class NodeController with ChangeNotifier {
-  NodeController({required this.toScene});
+  NodeController({required this.toScene, required this.onDelete});
 
   NodeIOController? ioController;
   final ValueNotifier<String?> focusedNode = ValueNotifier(null);
@@ -318,6 +320,8 @@ class NodeController with ChangeNotifier {
 
   String? selectedLinkId;
   final ValueNotifier<List<NodeLink>> linksLayer = ValueNotifier([]);
+
+  final void Function(String id) onDelete;
 
   @override
   void dispose() {
@@ -333,11 +337,13 @@ class _InternalNode extends StatefulWidget {
       this.title = '',
       this.children = const <Widget>[],
       this.onFocus,
+      this.controller,
       this.offset = Offset.zero})
       : super(key: key);
 
   final List<Widget> children;
   final VoidCallback? onFocus;
+  final NodeController? controller;
   final Offset offset;
   final String title;
   final String id;
@@ -358,6 +364,7 @@ class _InternalNodeState extends State<_InternalNode> {
     super.initState();
     _matrix = Matrix4.identity()..translate(widget.offset.dx, widget.offset.dy);
     _offset.value = Offset(widget.offset.dx, widget.offset.dy);
+    html.document.onContextMenu.listen((event) => event.preventDefault());
   }
 
   @override
@@ -379,8 +386,25 @@ class _InternalNodeState extends State<_InternalNode> {
         transform: _matrix,
         child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTapDown: (event) {
+            onTap: () {
               if (widget.onFocus != null) widget.onFocus!();
+            },
+            onSecondaryTapDown: (details) {
+              final pos = details.globalPosition;
+              showContextMenu(
+                  context,
+                  RelativeRect.fromLTRB(
+                      pos.dx, pos.dy, pos.dx + 100, pos.dy + 150),
+                  [
+                    ContextMenuItem(
+                        onTap: () {
+                          if (widget.controller != null) {
+                            widget.controller!.onDelete(widget.id);
+                          }
+                          Navigator.of(context).maybePop();
+                        },
+                        child: const Text('Delete'))
+                  ]);
             },
             onPanUpdate: (details) {
               setState(() {
@@ -626,6 +650,10 @@ class NodeLinkPainter extends CustomPainter {
               },
               child: const Text('Disconnect'))
         ]);
+
+        WidgetsBinding.instance?.addPostFrameCallback((_) {
+          _notifier.value = null;
+        });
       }
 
       paint
@@ -767,6 +795,7 @@ class _ContainerNode extends State<ContainerNode> {
   Widget build(BuildContext context) {
     return _InternalNode(
       widget.id,
+      controller: controller,
       title: 'Container',
       offset: widget.offset,
       onFocus: () => controller.focusedNode.value = id,
