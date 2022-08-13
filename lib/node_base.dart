@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:get_it/get_it.dart';
+import 'package:memorize/node.dart';
 import 'package:nanoid/nanoid.dart';
 
 class _OutputPropertyData<T> extends ValueNotifier<T?> {
@@ -33,7 +35,9 @@ abstract class Node {
   final String id;
   late final List<InputProperty> inputProps;
   late final List<OutputProperty> outputProps;
+  List<Property> get properties => List.from(outputProps)..addAll(inputProps);
   final ValueNotifier<bool> _canEmit = ValueNotifier(false);
+  final _rootNode = GetIt.I<RootNode>();
 
   _OutputPropertyData<T> wrapData<T>(
           T Function() dataBuilder, List<ValueListenable> valuesToWatch) =>
@@ -42,58 +46,57 @@ abstract class Node {
           builder: dataBuilder,
           valuesToWatch: valuesToWatch);
 
-  void connect(int port, InputProperty prop, bool canEmit, bool isCyclic) {
-    _canEmit.value = canEmit;
-    outputProps[port].connect(prop, isCyclic);
-  }
-
-  void disconnect(int port, InputProperty prop) =>
-      outputProps[port].disconnect(prop);
+  void updateEmission() => _canEmit.value = _rootNode.canEmitData(this);
 }
 
 abstract class Property {
   Property(
-    this.connId, {
+    this.parent,
+    this.port, {
     ValueNotifier? data,
     this.builderName,
     this.builderOptions = const [],
   }) : _dataNotifier = data ?? ValueNotifier(null);
 
-  Property.fromJson(Map<String, dynamic> json, {ValueNotifier? data})
+  Property.fromJson(Map<String, dynamic> json, this.parent,
+      {ValueNotifier? data})
       : _dataNotifier = data ?? ValueNotifier(null),
-        connId = json['id'],
+        port = json['port'],
         builderName = json["builderName"],
         builderOptions = List.from(["builderOptions"]);
 
   Map<String, dynamic> toJson() => {
-        "id": connId,
+        "port": port,
         "type": runtimeType.toString(),
         "builderName": builderName,
         "builderOptions": builderOptions
       };
 
-  final String connId;
+  final int port;
 
   final String? builderName;
   final List builderOptions;
   final Set<String> cycles = {};
+  final Node parent;
 
   ValueNotifier _dataNotifier;
   get data => _dataNotifier.value;
 
   ValueNotifier get dataNotifier => _dataNotifier;
+
+  String getConnId(Property prop) => '${prop.parent.id}.${prop.port}';
 }
 
 class InputProperty extends Property {
-  InputProperty(super.connId,
+  InputProperty(super.port, super.parent,
       {this.onNotifierChanged,
       super.data,
       super.builderName,
       super.builderOptions});
 
-  InputProperty.fromJson(Map<String, dynamic> json,
+  InputProperty.fromJson(Map<String, dynamic> json, Node parent,
       {ValueNotifier? data, this.onNotifierChanged})
-      : super.fromJson(json, data: data);
+      : super.fromJson(json, parent, data: data);
 
   set dataNotifier(ValueNotifier notifier) => _dataNotifier = notifier;
 
@@ -104,17 +107,18 @@ class InputProperty extends Property {
 
 class OutputProperty extends Property {
   OutputProperty(
-    super.connId, {
+    super.parent,
+    super.port, {
     _OutputPropertyData? data,
     super.builderName,
     super.builderOptions,
   })  : _connections = {},
         super(data: data);
 
-  OutputProperty.fromJson(Map<String, dynamic> json,
+  OutputProperty.fromJson(Map<String, dynamic> json, Node parent,
       {_OutputPropertyData? data})
       : _connections = Set.from(json['connections']),
-        super.fromJson(json, data: data);
+        super.fromJson(json, parent, data: data);
 
   @override
   Map<String, dynamic> toJson() =>
@@ -124,13 +128,16 @@ class OutputProperty extends Property {
   Set<String> get connections => _connections.toSet();
 
   void connect(InputProperty prop, bool isCyclic) {
-    _connections.add(prop.connId);
-    isCyclic ? cycles.add(prop.connId) : prop.dataNotifier = dataNotifier;
+    parent.updateEmission();
+    final connId = getConnId(prop);
+    _connections.add(connId);
+    isCyclic ? cycles.add(connId) : prop.dataNotifier = dataNotifier;
   }
 
   void disconnect(InputProperty prop) {
-    _connections.remove(prop.connId);
-    cycles.remove(prop.connId);
+    final connId = getConnId(prop);
+    _connections.remove(connId);
+    cycles.remove(connId);
     prop.dataNotifier = ValueNotifier(null);
   }
 }
