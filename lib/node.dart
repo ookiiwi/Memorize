@@ -1,10 +1,12 @@
 import 'package:directed_graph/directed_graph.dart';
 import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
 import 'package:memorize/node_base.dart';
 
-enum IOType { input, output, none }
+export 'package:memorize/node_base.dart'
+    show Node, Property, OutputProperty, InputProperty;
 
-typedef DataEmissionApprover = bool Function(Node node);
+enum IOType { input, output, none }
 
 class NodeUtil {
   static Node fromJson(Map<String, dynamic> json) {
@@ -19,9 +21,6 @@ class NodeUtil {
         throw TypeError();
     }
   }
-
-  static IOType ioTypeFromString(String type) =>
-      IOType.values.firstWhere((e) => e.toString() == type);
 }
 
 class NodeConnDetails {
@@ -33,10 +32,14 @@ class NodeConnDetails {
 }
 
 class RootNode {
-  RootNode() : graph = DirectedGraph({}, comparator: _comparator);
+  RootNode() : graph = DirectedGraph({}, comparator: _comparator) {
+    _registerSingletonInstance();
+  }
 
   RootNode.fromJson(Map<String, dynamic> json)
       : graph = DirectedGraph({}, comparator: _comparator) {
+    _registerSingletonInstance();
+
     final Map<String, dynamic> nodes = Map.from(json['nodes']);
     final Map<String, List> graphOfIds = Map.from(json['graph']);
 
@@ -51,12 +54,17 @@ class RootNode {
           final propId = splitId(port)[1];
 
           connect(
-              NodeConnDetails(node, i),
-              Set.from(entry.value.map((e) =>
-                  NodeConnDetails(NodeUtil.fromJson(nodes[nodeId]), propId))));
+              node.outputProps[i],
+              Set.from(entry.value.map(
+                  (e) => NodeUtil.fromJson(nodes[nodeId]).inputProps[propId])));
         }
       }
     }
+  }
+
+  void _registerSingletonInstance() {
+    GetIt.I.resetScope(dispose: false);
+    GetIt.I.registerSingleton(this);
   }
 
   Map<String, dynamic> toJson() {
@@ -86,33 +94,32 @@ class RootNode {
     return ret;
   }
 
-  void connect(NodeConnDetails output, Set<NodeConnDetails> inputs) {
-    graph.addEdges(output.node, inputs.map((e) => e.node).toSet());
+  void connect(OutputProperty output, Set<InputProperty> inputs) {
+    graph.addEdges(output.parent, inputs.map((e) => e.parent).toSet());
 
     final cycles = graph.cycle;
 
     for (var input in inputs) {
-      output.node.connect(output.port, input.node.inputProps[input.port],
-          _canEmitData(output.node), _checkCycle(cycles, input.node));
+      output.connect(input, _checkCycle(cycles, input.parent));
     }
   }
 
   bool _checkCycle(List cycles, Node node) =>
       cycles.isNotEmpty && cycles.contains(node);
 
-  void disconnect(NodeConnDetails output, Set<NodeConnDetails> inputs) {
+  void disconnect(OutputProperty output, Set<InputProperty> inputs) {
     graph.removeEdges(
-        output.node,
+        output.parent,
         inputs.map((e) {
-          output.node.disconnect(output.port, e.node.inputProps[e.port]);
-          return e.node;
+          output.disconnect(e);
+          return e.parent;
         }).toSet());
   }
 
   void addNode(Node node) => graph.addEdges(node, {});
   void removeNode(Node node) => graph.remove(node);
 
-  bool _canEmitData(Node node) {
+  bool canEmitData(Node node) {
     final start = graph.firstWhere((e) => e is InputGroup, orElse: () => node);
     return graph.path(start, node).isNotEmpty;
   }
@@ -121,23 +128,24 @@ class RootNode {
 class ContainerNode extends Node {
   ContainerNode() : _argb = List.generate(4, (i) => ValueNotifier(255.0)) {
     outputProps = List.unmodifiable([
-      OutputProperty('$id.0', data: wrapData(() => null, _argb)),
+      OutputProperty(this, 0, data: wrapData(() => null, _argb)),
     ]);
 
     inputProps = List.unmodifiable(List.generate(
         _argb.length,
-        (i) => InputProperty('$id.$i',
+        (i) => InputProperty(this, i,
             builderName: "slider", builderOptions: [0, 255], data: _argb[i])));
   }
 
   ContainerNode.fromJson(Map<String, dynamic> json)
       : _argb = json["argb"].map((e) => ValueNotifier(e)).toList(),
         super.fromJson(json) {
-    outputProps = List.unmodifiable(
-        [OutputProperty.fromJson(json, data: wrapData(() => null, _argb))]);
+    outputProps = List.unmodifiable([
+      OutputProperty.fromJson(json, this, data: wrapData(() => null, _argb))
+    ]);
 
-    inputProps = List.unmodifiable(List.generate(
-        _argb.length, (i) => InputProperty.fromJson(json, data: _argb[i])));
+    inputProps = List.unmodifiable(List.generate(_argb.length,
+        (i) => InputProperty.fromJson(json, this, data: _argb[i])));
   }
 
   @override
@@ -151,7 +159,8 @@ class InputGroup extends Node {
   InputGroup() {
     outputProps = List.unmodifiable([
       OutputProperty(
-        '$id.0',
+        this,
+        0,
       )
     ]);
 
@@ -160,7 +169,7 @@ class InputGroup extends Node {
 
   InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
     outputProps = List.unmodifiable(
-        json["outputProps"].map((e) => OutputProperty.fromJson(e)));
+        json["outputProps"].map((e) => OutputProperty.fromJson(e, this)));
     inputProps = List.unmodifiable([]);
   }
 }
@@ -168,24 +177,24 @@ class InputGroup extends Node {
 class OutputGroup extends Node {
   OutputGroup() {
     outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable([InputProperty('$id.0')]);
+    inputProps = List.unmodifiable([InputProperty(this, 0)]);
   }
 
   OutputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
     outputProps = List.unmodifiable([]);
     inputProps = List.unmodifiable(
-        json['inputProps'].map((e) => InputProperty.fromJson(e)));
+        json['inputProps'].map((e) => InputProperty.fromJson(e, this)));
   }
 }
 
 class DummyNode extends Node {
   DummyNode() {
     outputProps = [
-      OutputProperty('$id.0',
+      OutputProperty(this, 0,
           data: wrapData(() => DateTime.now(), [inputData])),
     ];
     inputProps = [
-      InputProperty('$id.0', data: inputData),
+      InputProperty(this, 0, data: inputData),
     ];
   }
 
