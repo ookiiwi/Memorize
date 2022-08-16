@@ -3,6 +3,7 @@ import 'package:memorize/node.dart';
 import 'package:memorize/widget.dart';
 import 'package:multi_value_listenable_builder/multi_value_listenable_builder.dart';
 import 'package:nanoid/nanoid.dart';
+import 'package:nil/nil.dart';
 import 'package:provider/provider.dart';
 
 export 'package:memorize/node.dart';
@@ -71,8 +72,9 @@ class VisualRootNodeState extends State<VisualRootNode> {
   @override
   Widget build(BuildContext context) {
     return LinkRenderer(
-        builder: (context) => Stack(children: [
-              if (widget.builder != null) widget.builder!(context),
+        primaryBuilder: (context) =>
+            (widget.builder != null) ? widget.builder!(context) : const Nil(),
+        secondaryBuilder: (context) => Stack(children: [
               ..._root.graph
                   .map((e) => VisualNode(
                         node: e,
@@ -328,7 +330,9 @@ class _NodeIO extends State<NodeIO> {
     _lastLink?.end = (io != null ? io.anchor : _offset ?? anchor);
   }
 
-  void _connect() {
+  List _processIO() {
+    assert(_currIOConn != null);
+
     final InputProperty input;
     final OutputProperty output;
 
@@ -340,6 +344,14 @@ class _NodeIO extends State<NodeIO> {
       output = _currIOConn!.property as OutputProperty;
     }
 
+    return [input, output];
+  }
+
+  void _connect() {
+    final tmp = _processIO();
+    final InputProperty input = tmp.first;
+    final OutputProperty output = tmp.last;
+
     output.cyclesNotifier.addListener(() {
       output.cycles.contains(input.connId)
           ? _linkColor.value = Colors.black
@@ -347,6 +359,17 @@ class _NodeIO extends State<NodeIO> {
     });
 
     VisualRootNode.of(context)._root.connect(output, {input});
+  }
+
+  _getlinkDisconnectionCallBack() {
+    final tmp = _processIO();
+    final InputProperty input = tmp.first;
+    final OutputProperty output = tmp.last;
+
+    return (link) {
+      LinkRenderer.of(context).remove(link);
+      VisualRootNode.of(context)._root.disconnect(output, {input});
+    };
   }
 
   @override
@@ -385,9 +408,13 @@ class _NodeIO extends State<NodeIO> {
                   _offset!.value = toScene(details.globalPosition);
                 },
                 onPanEnd: (details) {
-                  _currIOConn != null
-                      ? _connect()
-                      : LinkRenderer.of(context).removeLast();
+                  if (_currIOConn != null) {
+                    _connect();
+                    LinkRenderer.of(context).last.onDelete =
+                        _getlinkDisconnectionCallBack();
+                  } else {
+                    LinkRenderer.of(context).removeLast();
+                  }
                   _offset = _ioConnCallback = _currIOConn = null;
                 },
                 child: Container(
@@ -402,7 +429,7 @@ class _NodeIO extends State<NodeIO> {
 
 class Link extends StatelessWidget {
   Link(ValueNotifier<Offset> start, ValueNotifier<Offset> end,
-      {Key? key, this.color, this.stroke})
+      {Key? key, this.color, this.stroke, this.onDelete})
       : id = nanoid(),
         _start = ValueNotifier(start),
         _end = ValueNotifier(end),
@@ -418,15 +445,38 @@ class Link extends StatelessWidget {
   set end(ValueNotifier<Offset> notifier) => _end.value = notifier;
   final ValueNotifier<Color>? color;
   final double? stroke;
+  void Function(Link)? onDelete;
+
+  late TapDownDetails _rightClickDetails;
+
+  void _showContextMenu(BuildContext context, TapDownDetails details) {
+    final pos = details.globalPosition;
+
+    showContextMenu(context,
+        RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 100, pos.dy + 150), [
+      ContextMenuItem(
+          onTap: () {
+            onDelete != null ? onDelete!(this) : null;
+            Navigator.of(context).pop();
+          },
+          child: const Text('Delete')),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
         child: MultiValueListenableBuilder(
             valueListenables: [_start, _end],
-            builder: (context, value, child) => CustomPaint(
-                painter:
-                    LinkPainter(start, end, color: color, stroke: stroke))));
+            builder: (context, value, child) => GestureDetector(
+                onTap: () => print('tap $id'),
+                onSecondaryTap: () =>
+                    _showContextMenu(context, _rightClickDetails),
+                onSecondaryTapDown: (details) => _rightClickDetails = details,
+                child: CustomPaint(
+                  painter:
+                      LinkPainter(start, end, color: color, stroke: stroke),
+                ))));
   }
 }
 
@@ -447,7 +497,8 @@ class LinkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     Paint paint = Paint()
       ..color = color.value
-      ..strokeWidth = stroke;
+      ..strokeWidth = stroke
+      ..style = PaintingStyle.fill;
 
     Offset a = start.value - Offset(0, stroke / 2);
     Offset b = end.value - Offset(0, stroke / 2);
@@ -467,16 +518,23 @@ class LinkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(LinkPainter oldDelegate) {
-    return oldDelegate.start.value != start.value ||
-        oldDelegate.end.value != end.value;
-  }
+  bool shouldRepaint(LinkPainter oldDelegate) =>
+      oldDelegate.start.value != start.value ||
+      oldDelegate.end.value != end.value;
+
+  @override
+  bool hitTest(Offset position) => _path.contains(position);
 }
 
 class LinkRenderer extends StatefulWidget {
-  const LinkRenderer({super.key, required this.builder});
+  const LinkRenderer(
+      {super.key, required this.primaryBuilder, this.secondaryBuilder});
 
-  final WidgetBuilder builder;
+  /// Rendered behind of the link layer
+  final WidgetBuilder primaryBuilder;
+
+  /// Rendered on top of the link layer
+  final WidgetBuilder? secondaryBuilder;
 
   static LinkRendererState of(BuildContext context) {
     final result = context.findAncestorStateOfType<LinkRendererState>();
@@ -508,7 +566,12 @@ class LinkRendererState extends State<LinkRenderer> {
   @override
   Widget build(BuildContext context) {
     return Stack(
-      children: [..._links, widget.builder(context)],
+      fit: StackFit.expand,
+      children: [
+        widget.primaryBuilder(context),
+        ..._links,
+        if (widget.secondaryBuilder != null) widget.secondaryBuilder!(context)
+      ],
     );
   }
 }
