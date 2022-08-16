@@ -99,17 +99,19 @@ class RootNode {
   void connect(OutputProperty output, Set<InputProperty> inputs) {
     graph.addEdges(output.parent, inputs.map((e) => e.parent).toSet());
 
-    final cycles = graph.cycle;
-    final isOutputCyclic = _checkCycle(cycles, output.parent);
+    final cycle = graph.cycle;
+    final isOutputCyclic = isCyclic(output.parent, cycle: cycle);
 
     for (var input in inputs) {
       output.connect(
-          input, isOutputCyclic && _checkCycle(cycles, input.parent));
+          input, isOutputCyclic && isCyclic(input.parent, cycle: cycle));
     }
   }
 
-  bool _checkCycle(List cycles, Node node) =>
-      cycles.isNotEmpty && cycles.contains(node);
+  bool isCyclic(Node node, {List? cycle}) {
+    cycle ??= graph.cycle;
+    return cycle.isNotEmpty && cycle.contains(node);
+  }
 
   void disconnect(OutputProperty output, Set<InputProperty> inputs) {
     graph.removeEdges(
@@ -127,7 +129,7 @@ class RootNode {
   void removeNode(Node node) => graph.remove(node);
 
   bool canEmitData(Node node) {
-    return isConnectedToInput(node) && !_checkCycle(graph.cycle, node);
+    return isConnectedToInput(node) && !isCyclic(node);
   }
 
   bool isConnectedToInput(Node node) {
