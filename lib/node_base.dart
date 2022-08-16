@@ -3,21 +3,26 @@ import 'package:get_it/get_it.dart';
 import 'package:memorize/node.dart';
 import 'package:nanoid/nanoid.dart';
 
+GetIt getIt = GetIt.instance;
+
 class _OutputPropertyData<T> extends ValueNotifier<T?> {
   _OutputPropertyData(
       {required this.canEmit,
       required this.builder,
       List<ValueListenable> valuesToWatch = const []})
-      : _listenable = Listenable.merge(valuesToWatch..add(canEmit)),
+      : _listenable = Listenable.merge(List.from(valuesToWatch)..add(canEmit)),
         super(null) {
     _listenable.addListener(_emit);
+    _emit();
   }
 
   final T Function() builder;
   final Listenable _listenable;
   final ValueNotifier<bool> canEmit;
 
-  void _emit() => value = canEmit.value ? builder() : null;
+  void _emit() {
+    value = canEmit.value ? builder() : null;
+  }
 }
 
 abstract class Node {
@@ -37,7 +42,8 @@ abstract class Node {
   late final List<OutputProperty> outputProps;
   List<Property> get properties => List.from(outputProps)..addAll(inputProps);
   final ValueNotifier<bool> _canEmit = ValueNotifier(false);
-  final _rootNode = GetIt.I<RootNode>();
+  bool get canEmit => _canEmit.value;
+  ValueNotifier<bool> get canEmitNotifier => _canEmit;
 
   _OutputPropertyData<T> wrapData<T>(
           T Function() dataBuilder, List<ValueListenable> valuesToWatch) =>
@@ -46,7 +52,22 @@ abstract class Node {
           builder: dataBuilder,
           valuesToWatch: valuesToWatch);
 
-  void updateEmission() => _canEmit.value = _rootNode.canEmitData(this);
+  void updateEmission() => _canEmit.value = getIt<RootNode>().canEmitData(this);
+}
+
+abstract class InputNode extends Node {
+  InputNode() {
+    _init();
+  }
+
+  InputNode.fromJson(Map<String, dynamic> json) {
+    _init();
+  }
+
+  void _init() {
+    inputProps = List.unmodifiable([]);
+    _canEmit.value = true;
+  }
 }
 
 abstract class Property {
@@ -78,6 +99,7 @@ abstract class Property {
   final List builderOptions;
   final Set<String> cycles = {};
   final Node parent;
+  String get connId => getConnId(this);
 
   ValueNotifier _dataNotifier;
   get data => _dataNotifier.value;
@@ -88,7 +110,7 @@ abstract class Property {
 }
 
 class InputProperty extends Property {
-  InputProperty(super.port, super.parent,
+  InputProperty(super.parent, super.port,
       {this.onNotifierChanged,
       super.data,
       super.builderName,
@@ -98,9 +120,17 @@ class InputProperty extends Property {
       {ValueNotifier? data, this.onNotifierChanged})
       : super.fromJson(json, parent, data: data);
 
-  set dataNotifier(ValueNotifier notifier) => _dataNotifier = notifier;
+  set dataNotifier(ValueNotifier notifier) {
+    if (onNotifierChanged != null) onNotifierChanged!(notifier);
+    _dataNotifier = notifier;
+    notifier.addListener(() => parent.updateEmission());
+    parent.updateEmission();
+  }
 
-  set data(value) => dataNotifier.value = value;
+  set data(value) {
+    dataNotifier.value = value;
+    parent.updateEmission();
+  }
 
   final void Function(dynamic value)? onNotifierChanged;
 }
@@ -131,7 +161,9 @@ class OutputProperty extends Property {
     parent.updateEmission();
     final connId = getConnId(prop);
     _connections.add(connId);
-    isCyclic ? cycles.add(connId) : prop.dataNotifier = dataNotifier;
+
+    if (isCyclic) cycles.add(connId);
+    prop.dataNotifier = dataNotifier;
   }
 
   void disconnect(InputProperty prop) {
@@ -139,5 +171,6 @@ class OutputProperty extends Property {
     _connections.remove(connId);
     cycles.remove(connId);
     prop.dataNotifier = ValueNotifier(null);
+    parent.updateEmission();
   }
 }
