@@ -1,6 +1,5 @@
 import 'package:directed_graph/directed_graph.dart';
 import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
 import 'package:memorize/node_base.dart';
 
 export 'package:memorize/node_base.dart'
@@ -63,8 +62,11 @@ class RootNode {
   }
 
   void _registerSingletonInstance() {
-    GetIt.I.resetScope(dispose: false);
-    GetIt.I.registerSingleton(this);
+    getIt.registerSingleton<RootNode>(this);
+  }
+
+  void dispose() {
+    getIt.unregister<RootNode>(instance: this);
   }
 
   Map<String, dynamic> toJson() {
@@ -98,9 +100,11 @@ class RootNode {
     graph.addEdges(output.parent, inputs.map((e) => e.parent).toSet());
 
     final cycles = graph.cycle;
+    final isOutputCyclic = _checkCycle(cycles, output.parent);
 
     for (var input in inputs) {
-      output.connect(input, _checkCycle(cycles, input.parent));
+      output.connect(
+          input, isOutputCyclic && _checkCycle(cycles, input.parent));
     }
   }
 
@@ -111,30 +115,42 @@ class RootNode {
     graph.removeEdges(
         output.parent,
         inputs.map((e) {
-          output.disconnect(e);
           return e.parent;
         }).toSet());
+
+    for (var e in inputs) {
+      output.disconnect(e);
+    }
   }
 
   void addNode(Node node) => graph.addEdges(node, {});
   void removeNode(Node node) => graph.remove(node);
 
   bool canEmitData(Node node) {
+    return isConnectedToInput(node) && !_checkCycle(graph.cycle, node);
+  }
+
+  bool isConnectedToInput(Node node) {
     final start = graph.firstWhere((e) => e is InputGroup, orElse: () => node);
-    return graph.path(start, node).isNotEmpty;
+    return node is InputNode || graph.path(start, node).isNotEmpty;
   }
 }
 
 class ContainerNode extends Node {
-  ContainerNode() : _argb = List.generate(4, (i) => ValueNotifier(255.0)) {
+  ContainerNode()
+      : _argb = List.generate(4, (i) => ValueNotifier(255), growable: false) {
     outputProps = List.unmodifiable([
-      OutputProperty(this, 0, data: wrapData(() => null, _argb)),
+      OutputProperty(this, 0, data: wrapData(buildData, _argb)),
     ]);
 
     inputProps = List.unmodifiable(List.generate(
-        _argb.length,
-        (i) => InputProperty(this, i,
-            builderName: "slider", builderOptions: [0, 255], data: _argb[i])));
+        _argb.length + 1,
+        (i) => i == 0
+            ? InputProperty(this, i)
+            : InputProperty(this, i,
+                builderName: "slider",
+                builderOptions: [0, 255],
+                data: _argb[i - 1])));
   }
 
   ContainerNode.fromJson(Map<String, dynamic> json)
@@ -152,38 +168,60 @@ class ContainerNode extends Node {
   Map<String, dynamic> toJson() =>
       super.toJson()..addAll({"argb": _argb.map((e) => e.value)});
 
-  final List<ValueNotifier> _argb;
+  final List<ValueNotifier<double>> _argb;
+
+  List<int> _extractArgb() => _argb.map((e) => e.value.toInt()).toList();
+
+  Widget buildData() {
+    final argb = _extractArgb();
+    return Container(
+      color: Color.fromARGB(argb[0], argb[1], argb[2], argb[3]),
+    );
+  }
 }
 
-class InputGroup extends Node {
+class InputGroup extends InputNode {
   InputGroup() {
-    outputProps = List.unmodifiable([
-      OutputProperty(
-        this,
-        0,
-      )
-    ]);
-
-    inputProps = List.unmodifiable([]);
+    outputProps = List.unmodifiable(
+        [OutputProperty(this, 0, data: wrapData(() => 10, []))]);
   }
 
   InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
     outputProps = List.unmodifiable(
         json["outputProps"].map((e) => OutputProperty.fromJson(e, this)));
-    inputProps = List.unmodifiable([]);
   }
 }
 
 class OutputGroup extends Node {
-  OutputGroup() {
+  OutputGroup({this.dataChanged}) {
     outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable([InputProperty(this, 0)]);
+    inputProps = List.unmodifiable([
+      InputProperty(this, 0, data: output, onNotifierChanged: _notifierChanged)
+    ]);
   }
 
-  OutputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
+  OutputGroup.fromJson(Map<String, dynamic> json, {this.dataChanged})
+      : super.fromJson(json) {
     outputProps = List.unmodifiable([]);
     inputProps = List.unmodifiable(
         json['inputProps'].map((e) => InputProperty.fromJson(e, this)));
+  }
+
+  ValueNotifier<dynamic> output = ValueNotifier(null);
+  void Function(dynamic)? dataChanged;
+
+  void _notifierChanged(notifier) {
+    output = notifier;
+    _dataChanged();
+    _dataRegisterListener();
+  }
+
+  void _dataRegisterListener() {
+    output.addListener(_dataChanged);
+  }
+
+  void _dataChanged() {
+    if (dataChanged != null) dataChanged!(output.value);
   }
 }
 
@@ -191,12 +229,16 @@ class DummyNode extends Node {
   DummyNode() {
     outputProps = [
       OutputProperty(this, 0,
-          data: wrapData(() => DateTime.now(), [inputData])),
+          data: wrapData(() => DateTime.now(), [inputData, inputData2])),
     ];
     inputProps = [
-      InputProperty(this, 0, data: inputData),
+      InputProperty(this, 0,
+          data: inputData, onNotifierChanged: (n) => inputData = n),
+      InputProperty(this, 1,
+          data: inputData2, onNotifierChanged: (n) => inputData2 = n)
     ];
   }
 
-  final inputData = ValueNotifier<dynamic>(null);
+  var inputData = ValueNotifier<dynamic>(null);
+  var inputData2 = ValueNotifier<dynamic>(null);
 }
