@@ -10,10 +10,8 @@ export 'package:memorize/node.dart';
 typedef IOConnCallback = void Function(_NodeIO? ioState);
 
 extension RenderedNode on Node {
-  void render(BuildContext context, {Offset offset = Offset.zero}) {
-    final root = VisualRootNode.of(context);
-    root.registerNode(this, offset);
-  }
+  void render(BuildContext context, {Offset offset = Offset.zero}) =>
+      VisualRootNode.of(context).registerNode(this, offset);
 }
 
 class VisualRootNode extends StatefulWidget {
@@ -130,7 +128,7 @@ class _VisualNode extends State<VisualNode> {
 
               final pos = _rightClickDetails!.globalPosition;
 
-              // call user callback instead
+              // TODO: call user callback instead
               showContextMenu(
                   context,
                   RelativeRect.fromLTRB(
@@ -270,6 +268,7 @@ class _NodeIO extends State<NodeIO> {
   final _anchorKey = GlobalKey();
   final anchor = ValueNotifier(Offset.zero);
   _NodeIO? _currIOConn;
+  final ValueNotifier<Color> _linkColor = ValueNotifier(Colors.red);
 
   Link? get _lastLink {
     final linkRenderer = LinkRenderer.of(context);
@@ -324,11 +323,6 @@ class _NodeIO extends State<NodeIO> {
     return toScene(ret);
   }
 
-  @override
-  void didUpdateWidget(oldWidget) {
-    super.didUpdateWidget(oldWidget);
-  }
-
   void _ioConn(_NodeIO? io) {
     _currIOConn = io;
     _lastLink?.end = (io != null ? io.anchor : _offset ?? anchor);
@@ -346,11 +340,13 @@ class _NodeIO extends State<NodeIO> {
       output = _currIOConn!.property as OutputProperty;
     }
 
-    VisualRootNode.of(context)._root.connect(output, {input});
+    output.cyclesNotifier.addListener(() {
+      output.cycles.contains(input.connId)
+          ? _linkColor.value = Colors.black
+          : _linkColor.value = Colors.red;
+    });
 
-    if (output.cycles.contains(input.connId)) {
-      debugPrint('edge is cyclic');
-    }
+    VisualRootNode.of(context)._root.connect(output, {input});
   }
 
   @override
@@ -379,7 +375,11 @@ class _NodeIO extends State<NodeIO> {
                   anchor.value = _computeAnchor;
                   _offset = ValueNotifier(toScene(details.globalPosition));
 
-                  LinkRenderer.of(context).add(Link(anchor, _offset!));
+                  LinkRenderer.of(context).add(Link(
+                    anchor,
+                    _offset!,
+                    color: _linkColor,
+                  ));
                 },
                 onPanUpdate: (details) {
                   _offset!.value = toScene(details.globalPosition);
@@ -416,7 +416,7 @@ class Link extends StatelessWidget {
   final ValueNotifier<ValueNotifier<Offset>> _end;
   ValueNotifier<Offset> get end => _end.value;
   set end(ValueNotifier<Offset> notifier) => _end.value = notifier;
-  final Color? color;
+  final ValueNotifier<Color>? color;
   final double? stroke;
 
   @override
@@ -431,21 +431,22 @@ class Link extends StatelessWidget {
 }
 
 class LinkPainter extends CustomPainter {
-  LinkPainter(this.start, this.end, {Color? color, double? stroke})
-      : color = color ?? Colors.red,
+  LinkPainter(this.start, this.end,
+      {ValueNotifier<Color>? color, double? stroke})
+      : color = color ?? ValueNotifier(Colors.red),
         stroke = stroke ?? 4.0,
-        super(repaint: Listenable.merge([start, end]));
+        super(repaint: Listenable.merge([start, end, color]));
 
   final ValueNotifier<Offset> start;
   final ValueNotifier<Offset> end;
-  final Color color;
+  final ValueNotifier<Color> color;
   final double stroke;
   Path _path = Path();
 
   @override
   void paint(Canvas canvas, Size size) {
     Paint paint = Paint()
-      ..color = color
+      ..color = color.value
       ..strokeWidth = stroke;
 
     Offset a = start.value - Offset(0, stroke / 2);
