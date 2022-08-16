@@ -42,8 +42,13 @@ abstract class Node {
   late final List<OutputProperty> outputProps;
   List<Property> get properties => List.from(outputProps)..addAll(inputProps);
   final ValueNotifier<bool> _canEmit = ValueNotifier(false);
+  final ValueNotifier<bool> _isCyclic = ValueNotifier(false);
+
   bool get canEmit => _canEmit.value;
   ValueNotifier<bool> get canEmitNotifier => _canEmit;
+
+  bool get isCyclic => _isCyclic.value;
+  ValueNotifier<bool> get isCyclicNotifier => _isCyclic;
 
   _OutputPropertyData<T> wrapData<T>(
           T Function() dataBuilder, List<ValueListenable> valuesToWatch) =>
@@ -52,7 +57,10 @@ abstract class Node {
           builder: dataBuilder,
           valuesToWatch: valuesToWatch);
 
-  void updateEmission() => _canEmit.value = getIt<RootNode>().canEmitData(this);
+  void updateEmission() {
+    _canEmit.value = getIt<RootNode>().canEmitData(this);
+    _isCyclic.value = getIt<RootNode>().isCyclic(this);
+  }
 }
 
 abstract class InputNode extends Node {
@@ -142,16 +150,29 @@ class OutputProperty extends Property with ChangeNotifier {
     super.builderName,
     super.builderOptions,
   })  : _connections = {},
-        super(data: data);
+        super(data: data) {
+    _init();
+  }
 
   OutputProperty.fromJson(Map<String, dynamic> json, Node parent,
       {_OutputPropertyData? data})
       : _connections = Set.from(json['connections']),
-        super.fromJson(json, parent, data: data);
+        super.fromJson(json, parent, data: data) {
+    _init();
+  }
 
   @override
   Map<String, dynamic> toJson() =>
       super.toJson()..addAll({"connections": _connections.toList()});
+
+  void _init() {
+    parent.isCyclicNotifier.addListener(() {
+      if (!parent.isCyclic) {
+        cycles.clear();
+        cyclesNotifier.notifyListeners();
+      }
+    });
+  }
 
   final Set<String> _connections;
   Set<String> get connections => _connections.toSet();
