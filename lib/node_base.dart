@@ -97,7 +97,6 @@ abstract class Property {
 
   final String? builderName;
   final List builderOptions;
-  final Set<String> cycles = {};
   final Node parent;
   String get connId => getConnId(this);
 
@@ -135,7 +134,7 @@ class InputProperty extends Property {
   final void Function(dynamic value)? onNotifierChanged;
 }
 
-class OutputProperty extends Property {
+class OutputProperty extends Property with ChangeNotifier {
   OutputProperty(
     super.parent,
     super.port, {
@@ -156,6 +155,8 @@ class OutputProperty extends Property {
 
   final Set<String> _connections;
   Set<String> get connections => _connections.toSet();
+  final ValueNotifier<Set<String>> cyclesNotifier = ValueNotifier({});
+  Set<String> get cycles => cyclesNotifier.value;
 
   void connect(InputProperty prop, bool isCyclic) {
     parent.updateEmission();
@@ -164,6 +165,7 @@ class OutputProperty extends Property {
 
     if (isCyclic) cycles.add(connId);
     prop.dataNotifier = dataNotifier;
+    cyclesNotifier.notifyListeners();
   }
 
   void disconnect(InputProperty prop) {
@@ -172,5 +174,6 @@ class OutputProperty extends Property {
     cycles.remove(connId);
     prop.dataNotifier = ValueNotifier(null);
     parent.updateEmission();
+    cyclesNotifier.notifyListeners();
   }
 }
