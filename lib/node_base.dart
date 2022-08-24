@@ -25,6 +25,15 @@ class _OutputPropertyData<T> extends ValueNotifier<T?> {
   }
 }
 
+class FunctionArgs {
+  FunctionArgs(this.positionalArguments, [this.namedArguments]);
+
+  final List? positionalArguments;
+  final Map<Symbol, dynamic>? namedArguments;
+  dynamic apply(Function function) =>
+      Function.apply(function, positionalArguments, namedArguments);
+}
+
 abstract class Node {
   Node() : id = nanoid();
 
@@ -36,6 +45,12 @@ abstract class Node {
         "inputProps": inputProps.map((e) => e.toJson()).toList(),
         "outputProps": outputProps.map((e) => e.toJson()).toList(),
       };
+
+  List<FunctionArgs> getInputPropsArgs([List? json]);
+  List<FunctionArgs> getOutputPropsArgs([List? json]);
+  List<T> applyPropsArgs<T extends Property>(
+          Function function, List<FunctionArgs> args) =>
+      List.unmodifiable(args.map((e) => e.apply(function)));
 
   final String id;
   late final List<InputProperty> inputProps;
@@ -61,6 +76,8 @@ abstract class Node {
     _canEmit.value = getIt<RootNode>().canEmitData(this);
     _isCyclic.value = getIt<RootNode>().isCyclic(this);
   }
+
+  void dispose() {}
 }
 
 abstract class InputNode extends Node {
@@ -68,7 +85,7 @@ abstract class InputNode extends Node {
     _init();
   }
 
-  InputNode.fromJson(Map<String, dynamic> json) {
+  InputNode.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
     _init();
   }
 
@@ -85,21 +102,24 @@ abstract class Property {
     ValueNotifier? data,
     this.builderName,
     this.builderOptions = const [],
-  }) : _dataNotifier = data ?? ValueNotifier(null);
+  })  : assert(builderOptions != null),
+        _dataNotifier = data ?? ValueNotifier(null);
 
   Property.fromJson(Map<String, dynamic> json, this.parent,
       {ValueNotifier? data})
       : _dataNotifier = data ?? ValueNotifier(null),
         port = json['port'],
         builderName = json["builderName"],
-        builderOptions = List.from(["builderOptions"]);
+        builderOptions = List.from(json["builderOptions"]);
 
-  Map<String, dynamic> toJson() => {
-        "port": port,
-        "type": runtimeType.toString(),
-        "builderName": builderName,
-        "builderOptions": builderOptions
-      };
+  Map<String, dynamic> toJson() {
+    return {
+      "port": port,
+      "type": runtimeType.toString(),
+      "builderName": builderName,
+      "builderOptions": builderOptions
+    };
+  }
 
   final int port;
 
@@ -121,13 +141,15 @@ class InputProperty extends Property {
       {this.onNotifierChanged,
       super.data,
       super.builderName,
-      super.builderOptions});
+      List builderOptions = const []})
+      : super(builderOptions: builderOptions);
 
   InputProperty.fromJson(Map<String, dynamic> json, Node parent,
       {ValueNotifier? data, this.onNotifierChanged})
       : super.fromJson(json, parent, data: data);
 
   set dataNotifier(ValueNotifier notifier) {
+    print('new notifier');
     if (onNotifierChanged != null) onNotifierChanged!(notifier);
     _dataNotifier = notifier;
     notifier.addListener(() => parent.updateEmission());
@@ -143,14 +165,14 @@ class InputProperty extends Property {
 }
 
 class OutputProperty extends Property with ChangeNotifier {
-  OutputProperty(
-    super.parent,
-    super.port, {
-    _OutputPropertyData? data,
-    super.builderName,
-    super.builderOptions,
-  })  : _connections = {},
-        super(data: data) {
+  OutputProperty(super.parent, super.port,
+      {_OutputPropertyData? data,
+      super.builderName,
+      List builderOptions =
+          const [] // super.builderOptions is not working well with constructor tearoff e.g Function.apply(__.new, ...),
+      })
+      : _connections = {},
+        super(data: data, builderOptions: builderOptions) {
     _init();
   }
 
