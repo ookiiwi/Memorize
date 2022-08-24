@@ -20,6 +20,15 @@ class NodeUtil {
         throw TypeError();
     }
   }
+
+  static List<T> propertiesFromJson<T extends Property>(
+    Map<String, dynamic> json, {
+    required T Function(Map<String, dynamic> data) propBuilder,
+  }) {
+    assert(T != Property);
+    final data = json[T == OutputProperty ? "outputProps" : "inputProps"];
+    return List.from(data.map((e) => propBuilder(e)));
+  }
 }
 
 class NodeConnDetails {
@@ -31,21 +40,23 @@ class NodeConnDetails {
 }
 
 class RootNode {
-  RootNode() : graph = DirectedGraph({}, comparator: _comparator) {
+  RootNode() {
     _registerSingletonInstance();
   }
 
-  RootNode.fromJson(Map<String, dynamic> json)
-      : graph = DirectedGraph({}, comparator: _comparator) {
+  RootNode.fromJson(Map<String, dynamic> json) {
     _registerSingletonInstance();
 
     final Map<String, dynamic> nodes = Map.from(json['nodes']);
     final Map<String, List> graphOfIds = Map.from(json['graph']);
 
     for (MapEntry<String, List> entry in graphOfIds.entries) {
-      if (entry.value.isEmpty) continue;
-
       final node = NodeUtil.fromJson(nodes[entry.key]);
+
+      if (entry.value.isEmpty) {
+        addNode(node);
+        continue;
+      }
 
       for (int i = 0; i < node.outputProps.length; ++i) {
         for (var port in node.outputProps[i].connections) {
@@ -83,7 +94,7 @@ class RootNode {
     return {'nodes': nodes, 'graph': graphOfIds};
   }
 
-  final DirectedGraph<Node> graph;
+  final DirectedGraph<Node> graph = DirectedGraph({}, comparator: _comparator);
   int _idPtr = 0;
   int get newId => _idPtr++;
 
@@ -141,34 +152,50 @@ class RootNode {
 class ContainerNode extends Node {
   ContainerNode()
       : _argb = List.generate(4, (i) => ValueNotifier(255), growable: false) {
-    outputProps = List.unmodifiable([
-      OutputProperty(this, 0, data: wrapData(buildData, _argb)),
-    ]);
+    outputProps = applyPropsArgs(OutputProperty.new, getOutputPropsArgs());
 
-    inputProps = List.unmodifiable(List.generate(
-        _argb.length + 1,
-        (i) => i == 0
-            ? InputProperty(this, i)
-            : InputProperty(this, i,
-                builderName: "slider",
-                builderOptions: [0, 255],
-                data: _argb[i - 1])));
+    inputProps = applyPropsArgs(InputProperty.new, getInputPropsArgs());
   }
 
   ContainerNode.fromJson(Map<String, dynamic> json)
-      : _argb = json["argb"].map((e) => ValueNotifier(e)).toList(),
+      : _argb = List.from(json["argb"].map((e) => ValueNotifier<double>(e))),
         super.fromJson(json) {
-    outputProps = List.unmodifiable([
-      OutputProperty.fromJson(json, this, data: wrapData(() => null, _argb))
-    ]);
+    outputProps = applyPropsArgs(
+        OutputProperty.fromJson, getOutputPropsArgs(json['outputProps']));
 
-    inputProps = List.unmodifiable(List.generate(_argb.length,
-        (i) => InputProperty.fromJson(json, this, data: _argb[i])));
+    inputProps = applyPropsArgs(
+        InputProperty.fromJson, getInputPropsArgs(json['inputProps']));
   }
 
   @override
   Map<String, dynamic> toJson() =>
-      super.toJson()..addAll({"argb": _argb.map((e) => e.value)});
+      super.toJson()..addAll({"argb": _argb.map((e) => e.value).toList()});
+
+  @override
+  List<FunctionArgs> getInputPropsArgs([List? json]) => [
+        FunctionArgs(json != null ? [json[0], this] : [this, 0],
+            json == null ? {#builderOptions: []} : {}),
+        ...List.generate(
+            _argb.length,
+            (i) => FunctionArgs(
+                json != null ? [json[i + 1], this] : [this, i],
+                {
+                  #data: _argb[i],
+                }..addAll(json == null
+                    ? {
+                        #data: _argb[i],
+                        #builderName: "slider",
+                        #builderOptions: [0, 255],
+                      }
+                    : {})))
+      ];
+
+  @override
+  List<FunctionArgs> getOutputPropsArgs([List? json]) => [
+        FunctionArgs(json != null ? [json[0], this] : [this, 0], {
+          #data: wrapData(buildData, _argb),
+        })
+      ];
 
   final List<ValueNotifier<double>> _argb;
 
@@ -192,6 +219,18 @@ class InputGroup extends InputNode {
     outputProps = List.unmodifiable(
         json["outputProps"].map((e) => OutputProperty.fromJson(e, this)));
   }
+
+  @override
+  List<FunctionArgs> getInputPropsArgs([List? json]) {
+    // TODO: implement getInputPropsArgs
+    throw UnimplementedError();
+  }
+
+  @override
+  List<FunctionArgs> getOutputPropsArgs([List? json]) {
+    // TODO: implement getOutputPropsArgs
+    throw UnimplementedError();
+  }
 }
 
 class OutputGroup extends Node {
@@ -205,15 +244,32 @@ class OutputGroup extends Node {
   OutputGroup.fromJson(Map<String, dynamic> json, {this.dataChanged})
       : super.fromJson(json) {
     outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable(
-        json['inputProps'].map((e) => InputProperty.fromJson(e, this)));
+    inputProps = List.unmodifiable(json['inputProps'].map((e) =>
+        InputProperty.fromJson(e, this, onNotifierChanged: _notifierChanged)));
+
+    dataChanged ??= dataChangedPlaceHolder;
   }
+
+  @override
+  List<FunctionArgs> getInputPropsArgs([List? json]) {
+    // TODO: implement getInputPropsArgs
+    throw UnimplementedError();
+  }
+
+  @override
+  List<FunctionArgs> getOutputPropsArgs([List? json]) {
+    // TODO: implement getOutputPropsArgs
+    throw UnimplementedError();
+  }
+
+  static void Function(dynamic)? dataChangedPlaceHolder;
 
   ValueNotifier<dynamic> output = ValueNotifier(null);
   void Function(dynamic)? dataChanged;
 
   void _notifierChanged(notifier) {
     output = notifier;
+    print('notif changed');
     _dataChanged();
     _dataRegisterListener();
   }
@@ -239,6 +295,18 @@ class DummyNode extends Node {
       InputProperty(this, 1,
           data: inputData2, onNotifierChanged: (n) => inputData2 = n)
     ];
+  }
+
+  @override
+  List<FunctionArgs> getInputPropsArgs([List? json]) {
+    // TODO: implement getInputPropsArgs
+    throw UnimplementedError();
+  }
+
+  @override
+  List<FunctionArgs> getOutputPropsArgs([List? json]) {
+    // TODO: implement getOutputPropsArgs
+    throw UnimplementedError();
   }
 
   var inputData = ValueNotifier<dynamic>(null);
