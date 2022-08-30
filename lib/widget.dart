@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:animations/animations.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:matrix_gesture_detector/matrix_gesture_detector.dart';
-import 'package:nanoid/nanoid.dart';
 import 'package:provider/provider.dart';
 
 class Selectable extends StatefulWidget {
@@ -822,12 +822,96 @@ class _ContextMenuManager extends State<ContextMenuManager> {
         value: (Future Function() showMenu) {
           if (_showMenu == null) {
             setState(() {});
-            WidgetsBinding.instance?.addPostFrameCallback(test);
+            WidgetsBinding.instance.addPostFrameCallback(test);
           }
 
           _showMenu = showMenu;
         },
         builder: widget.builder,
         child: widget.child);
+  }
+}
+
+abstract class SerializableState<T extends StatefulWidget> extends State<T> {
+  final List<Map<String, dynamic> Function()> toJsonCallbacks = [];
+  List? nextJson;
+  bool isFromJson = false;
+
+  static SerializableState _of(BuildContext context) {
+    final result = context.findAncestorStateOfType<SerializableState>();
+
+    if (result != null) return result;
+
+    throw FlutterError.fromParts([
+      ErrorSummary(
+          'SerializableState.of() called with a context that does not contain a SerializableState.'),
+      context.describeElement('The context used was'),
+    ]);
+  }
+
+  void fromJson(Map<String, dynamic> json);
+  Map<String, dynamic> toJson();
+
+  void deserialize([Map<String, dynamic>? json]) {
+    late final Map<String, dynamic>? data;
+
+    if (json == null) {
+      try {
+        data = _of(context).nextJson!.removeAt(0);
+      } catch (e) {
+        data = null;
+      }
+    } else if (json.isNotEmpty) {
+      data = json;
+    }
+
+    if (data == null) {
+      isFromJson = false;
+      return;
+    }
+
+    isFromJson = true;
+    nextJson = data.remove('jsonChildren');
+
+    fromJson(data);
+  }
+
+  Map<String, dynamic> serialize() {
+    return toJson()
+      ..['jsonChildren'] = toJsonCallbacks.map((e) => e()).toList();
+  }
+
+  Widget serializableBuild(BuildContext context);
+
+  void _setJsonCallbacks() {
+    try {
+      _of(context).toJsonCallbacks.add(serialize);
+    } catch (e) {}
+  }
+
+  void _unsetJsonCallbacks() {
+    try {
+      _of(context).toJsonCallbacks.remove(serialize);
+    } catch (e) {}
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    deserialize();
+    _setJsonCallbacks();
+  }
+
+  @override
+  void dispose() {
+    _unsetJsonCallbacks();
+    super.dispose();
+  }
+
+  @override
+  @nonVirtual
+  Widget build(BuildContext context) {
+    return serializableBuild(context);
   }
 }
