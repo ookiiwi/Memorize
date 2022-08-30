@@ -34,16 +34,44 @@ class FunctionArgs {
       Function.apply(function, positionalArguments, namedArguments);
 }
 
-abstract class Node {
+abstract class JsonExtendable {
+  JsonExtendable() : fromJsonExtensions = null;
+  JsonExtendable.fromJson(Map<String, dynamic> json)
+      : fromJsonExtensions = json["extensions"];
+
+  final List<Map<String, dynamic> Function()> _jsonExtensionCallbacks = [];
+  final Map<String, dynamic>? fromJsonExtensions;
+
+  Map<String, dynamic> get jsonExtension {
+    final Map<String, dynamic> ret = {};
+
+    for (var toJson in _jsonExtensionCallbacks) {
+      ret.addAll(toJson());
+    }
+
+    return ret;
+  }
+
+  void addJsonExtensionCallback(Map<String, dynamic> Function() toJson) =>
+      _jsonExtensionCallbacks.add(toJson);
+
+  void removeJsonExtensionCallback(Map<String, dynamic> Function() toJson) =>
+      _jsonExtensionCallbacks.remove(toJson);
+}
+
+abstract class Node extends JsonExtendable {
   Node() : id = nanoid();
 
-  Node.fromJson(Map<String, dynamic> json) : id = json['id'];
+  Node.fromJson(Map<String, dynamic> json)
+      : id = json['id'],
+        super.fromJson(json);
 
   Map<String, dynamic> toJson() => {
         "runtimeType": runtimeType.toString(),
         "id": id,
         "inputProps": inputProps.map((e) => e.toJson()).toList(),
         "outputProps": outputProps.map((e) => e.toJson()).toList(),
+        "extensions": jsonExtension
       };
 
   List<FunctionArgs> getInputPropsArgs([List? json]);
@@ -55,6 +83,7 @@ abstract class Node {
   final String id;
   late final List<InputProperty> inputProps;
   late final List<OutputProperty> outputProps;
+
   List<Property> get properties => List.from(outputProps)..addAll(inputProps);
   final ValueNotifier<bool> _canEmit = ValueNotifier(false);
   final ValueNotifier<bool> _isCyclic = ValueNotifier(false);
@@ -95,7 +124,7 @@ abstract class InputNode extends Node {
   }
 }
 
-abstract class Property {
+abstract class Property extends JsonExtendable {
   Property(
     this.parent,
     this.port, {
@@ -110,16 +139,16 @@ abstract class Property {
       : _dataNotifier = data ?? ValueNotifier(null),
         port = json['port'],
         builderName = json["builderName"],
-        builderOptions = List.from(json["builderOptions"]);
+        builderOptions = List.from(json["builderOptions"]),
+        super.fromJson(json);
 
-  Map<String, dynamic> toJson() {
-    return {
-      "port": port,
-      "type": runtimeType.toString(),
-      "builderName": builderName,
-      "builderOptions": builderOptions
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        "port": port,
+        "type": runtimeType.toString(),
+        "builderName": builderName,
+        "builderOptions": builderOptions,
+        "extensions": jsonExtension
+      };
 
   final int port;
 
@@ -149,7 +178,6 @@ class InputProperty extends Property {
       : super.fromJson(json, parent, data: data);
 
   set dataNotifier(ValueNotifier notifier) {
-    print('new notifier');
     if (onNotifierChanged != null) onNotifierChanged!(notifier);
     _dataNotifier = notifier;
     notifier.addListener(() => parent.updateEmission());
