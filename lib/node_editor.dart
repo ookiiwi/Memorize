@@ -1,16 +1,16 @@
 import 'dart:convert';
 import 'dart:html' as html;
-import 'package:js/js_util.dart' as js;
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:js/js_util.dart' as js;
 import 'package:flutter/material.dart';
 import 'package:js/js.dart';
-//import 'package:import_js_library/import_js_library.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/node.dart';
+import 'package:memorize/visual_node.dart';
 import 'package:memorize/web/file_picker.dart';
 import 'package:memorize/widget.dart';
 import 'package:provider/provider.dart';
-//import 'package:universal_io/io.dart';
 
 @JS("JSON.stringify")
 external String stringify(object);
@@ -25,7 +25,7 @@ class NodeEditor extends StatefulWidget with ATab {
   State<NodeEditor> createState() => _NodeEditor();
 }
 
-class _NodeEditor extends State<NodeEditor> {
+class _NodeEditor extends SerializableState<NodeEditor> {
   double dHeight = 0;
   double dWidth = 0;
   final TransformationController _controller = TransformationController();
@@ -35,6 +35,7 @@ class _NodeEditor extends State<NodeEditor> {
   final List _layerBuilders = [];
   final _viewerKey = GlobalKey();
   late final RenderBox _viewerRenderBox;
+  var _rootKey = UniqueKey();
 
   @override
   void initState() {
@@ -53,18 +54,6 @@ class _NodeEditor extends State<NodeEditor> {
 
       _viewerRenderBox = tmp;
     });
-
-    _addNode(VisualNode(
-      node: InputGroup(),
-      key: UniqueKey(),
-      offset: const Offset(100, 100),
-    ));
-
-    _addNode(VisualNode(
-      node: OutputGroup(),
-      key: UniqueKey(),
-      offset: const Offset(300, 100),
-    ));
   }
 
   @override
@@ -75,20 +64,45 @@ class _NodeEditor extends State<NodeEditor> {
     setState(() {});
   }
 
+  @override
+  void fromJson(Map<String, dynamic> json) {}
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {};
+  }
+
   void _saveAs() async {
-    //final json = jsonEncode(
-    //    _nodes.map((e) => {e.runtimeType.toString(): e.toJson()}).toList());
-//
-    //saveAs(js.jsify({"suggestedName": "test_file.txt"}), json);
-//
-    //print('json: $json');
+    final json = kDebugMode
+        ? const JsonEncoder.withIndent("    ").convert(serialize())
+        : jsonEncode(serialize());
+
+    saveAs(js.jsify({"suggestedName": "test_file.txt"}), json);
   }
 
-  void _loadEditor() {}
+  void _loadEditor() async {
+    var result = await FilePicker.platform.pickFiles();
 
-  void _addNode(VisualNode node) {
-    layers[1].insert(node);
+    if (result?.files.first.bytes != null) {
+      Map<String, dynamic> json =
+          jsonDecode(String.fromCharCodes(result!.files.first.bytes!));
+
+      outputWidget.value = null;
+
+      // TODO: clear in SerialableState
+      toJsonCallbacks.clear();
+
+      OutputGroup.dataChangedPlaceHolder = _dataCallback;
+      deserialize(json);
+      setState(() {
+        _rootKey = UniqueKey();
+      });
+    }
   }
+
+  void _dataCallback(data) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => outputWidget.value =
+          data); // post frame callback because conflict when loading from json
 
   Widget _buildLinkLayer(Layer layer) {
     return RepaintBoundary(child: Stack(children: List.from(layer)));
@@ -102,44 +116,16 @@ class _NodeEditor extends State<NodeEditor> {
       _controller.toScene(_viewerRenderBox.globalToLocal(offset));
 
   @override
-  Widget build(BuildContext context) {
+  Widget serializableBuild(BuildContext context) {
     return Column(children: [
-      Container(
-          margin: const EdgeInsets.all(10),
-          height: 50,
-          child: Row(
-            children: [
-              Container(
-                  decoration:
-                      BoxDecoration(borderRadius: BorderRadius.circular(10)),
-                  child: DropdownButton(
-                    value: 'save',
-                    items: [
-                      DropdownMenuItem<String>(
-                        value: 'save',
-                        child: const Padding(
-                          padding: EdgeInsets.all(5),
-                          child: Text('Save'),
-                        ),
-                        onTap: _saveAs,
-                      ),
-                      DropdownMenuItem<String>(
-                        value: 'load',
-                        child: const Padding(
-                          padding: EdgeInsets.all(5),
-                          child: Text('Load'),
-                        ),
-                        onTap: _loadEditor,
-                      )
-                    ],
-                    onChanged: (value) {
-                      print('dave');
-                    },
-                    underline: const SizedBox(),
-                  )),
-            ],
-          )),
-      FloatingActionButton(onPressed: _saveAs, child: const Icon(Icons.save)),
+      Row(
+        children: [
+          FloatingActionButton(
+              onPressed: _saveAs, child: const Icon(Icons.save)),
+          FloatingActionButton(
+              onPressed: _loadEditor, child: const Icon(Icons.restore_page)),
+        ],
+      ),
       Expanded(
           child: ContextMenuManager(
               builder: (context, child) => Row(children: [
@@ -155,54 +141,69 @@ class _NodeEditor extends State<NodeEditor> {
                                       Provider.value(value: layers),
                                       Provider.value(value: _toScene),
                                     ],
-                                    child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onSecondaryTap: () {
-                                          if (_rightClickDetails == null) {
-                                            return;
-                                          }
-                                          final Offset pos = _rightClickDetails!
-                                              .globalPosition;
-                                          final Offset localPos =
-                                              _rightClickDetails!.localPosition;
-
-                                          showContextMenu(
-                                              context,
-                                              RelativeRect.fromLTRB(
-                                                  pos.dx,
-                                                  pos.dy,
-                                                  pos.dx + 100,
-                                                  pos.dy + 150),
-                                              [
-                                                ContextMenuItem(
-                                                    onTap: () {
-                                                      _addNode(VisualNode(
-                                                        offset: localPos,
-                                                        key: UniqueKey(),
-                                                        node: ContainerNode(),
-                                                      ));
-                                                      Navigator.of(context)
-                                                          .pop();
-                                                    },
-                                                    child:
-                                                        const Text('Container'))
-                                              ]);
-
-                                          _rightClickDetails = null;
+                                    child: VisualRootNode(
+                                        key: _rootKey,
+                                        nodes: {
+                                          InputGroup(): const Offset(100, 100),
+                                          OutputGroup(
+                                                  dataChanged: _dataCallback):
+                                              const Offset(600, 100)
                                         },
+                                        builder: (context) => GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onSecondaryTap: () {
+                                                if (_rightClickDetails ==
+                                                    null) {
+                                                  return;
+                                                }
+                                                final Offset pos =
+                                                    _rightClickDetails!
+                                                        .globalPosition;
+                                                final Offset localPos =
+                                                    _rightClickDetails!
+                                                        .localPosition;
 
-                                        //logic in OnSecondaryTap to prevent winning gesture arena over child
-                                        onSecondaryTapDown: (details) =>
-                                            _rightClickDetails = details,
-                                        child: Container(
-                                            height: dHeight,
-                                            width: dWidth,
-                                            color: Colors.transparent,
-                                            child: LayerWidget(
-                                              layers: layers,
-                                              builder: (context, i) =>
-                                                  _layerBuilders[i](layers[i]),
-                                            ))))))),
+                                                showContextMenu(
+                                                    context,
+                                                    RelativeRect.fromLTRB(
+                                                        pos.dx,
+                                                        pos.dy,
+                                                        pos.dx + 100,
+                                                        pos.dy + 150),
+                                                    [
+                                                      ContextMenuItem(
+                                                          onTap: () {
+                                                            ContainerNode()
+                                                                .render(context,
+                                                                    offset:
+                                                                        localPos);
+                                                            Navigator.of(
+                                                                    context)
+                                                                .pop();
+                                                          },
+                                                          child: const Text(
+                                                              'Container')),
+                                                      ContextMenuItem(
+                                                          onTap: () {
+                                                            DummyNode().render(
+                                                                context,
+                                                                offset:
+                                                                    localPos);
+                                                            Navigator.of(
+                                                                    context)
+                                                                .pop();
+                                                          },
+                                                          child: const Text(
+                                                              'Dummy'))
+                                                    ]);
+
+                                                _rightClickDetails = null;
+                                              },
+
+                                              //logic in OnSecondaryTap to prevent winning gesture arena over child
+                                              onSecondaryTapDown: (details) =>
+                                                  _rightClickDetails = details,
+                                            )))))),
                     ValueListenableBuilder(
                         valueListenable: outputWidget,
                         builder: (context, cnt, child) {
