@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/node.dart';
 import 'package:memorize/widget.dart';
@@ -16,7 +17,11 @@ extension RenderedNode on Node {
 }
 
 class VisualRootNode extends StatefulWidget {
-  const VisualRootNode({super.key, this.builder, this.nodes = const {}});
+  const VisualRootNode({
+    super.key,
+    this.builder,
+    this.nodes = const {},
+  });
 
   final WidgetBuilder? builder;
   final Map<Node, Offset> nodes;
@@ -37,15 +42,14 @@ class VisualRootNode extends StatefulWidget {
   State<VisualRootNode> createState() => VisualRootNodeState();
 }
 
-class VisualRootNodeState extends State<VisualRootNode> {
-  final _root = RootNode();
-  final _nodeOffsets = <String, Offset>{};
-  final List<Link> _links = [];
+class VisualRootNodeState extends SerializableState<VisualRootNode> {
+  late final RootNode _root;
+  late final Map<String, ValueNotifier<Offset>> _nodeOffsets;
 
   void registerNode(Node node, Offset offset) {
     setState(() {
       _root.addNode(node);
-      _nodeOffsets[node.id] = offset;
+      _nodeOffsets[node.id] = ValueNotifier(offset);
     });
   }
 
@@ -56,21 +60,48 @@ class VisualRootNodeState extends State<VisualRootNode> {
     });
   }
 
-  void addLink(Link link) => setState(() => _links.add(link));
-  void removeLink(Link link) => setState(() => _links.remove(link));
-  void removeLastLink() => setState(() => _links.removeLast());
-
   @override
   void initState() {
     super.initState();
 
-    for (var e in widget.nodes.entries) {
-      registerNode(e.key, e.value);
+    if (!isFromJson) {
+      _root = RootNode();
+      _nodeOffsets = <String, ValueNotifier<Offset>>{};
+
+      for (var e in widget.nodes.entries) {
+        registerNode(e.key, e.value);
+      }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  void deactivate() {
+    _root.dispose();
+    super.deactivate();
+  }
+
+  @override
+  void fromJson(Map<String, dynamic> json) {
+    _root = RootNode.fromJson(json["root"]);
+    _nodeOffsets = Map.from(json["offsets"]
+        .map((id, off) => MapEntry(id, ValueNotifier(Offset(off[0], off[1])))));
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> ret = {
+      "offsets": _nodeOffsets
+          .map((id, off) => MapEntry(id, [off.value.dx, off.value.dy])),
+      "root": _root.toJson()
+    };
+
+    assert(ret["offsets"]!.length == _nodeOffsets.length);
+
+    return ret;
+  }
+
+  @override
+  Widget serializableBuild(BuildContext context) {
     return LinkRenderer(
         primaryBuilder: (context) =>
             (widget.builder != null) ? widget.builder!(context) : const Nil(),
@@ -90,8 +121,7 @@ class VisualRootNodeState extends State<VisualRootNode> {
 }
 
 class VisualNode extends StatefulWidget {
-  const VisualNode(
-      {Key? key, required this.node, this.onDelete, this.offset = Offset.zero})
+  const VisualNode({Key? key, required this.node, this.onDelete, this.offset})
       : super(key: key);
 
   @override
@@ -99,23 +129,21 @@ class VisualNode extends StatefulWidget {
 
   final Node node;
   final bool Function()? onDelete;
-  final Offset offset;
+  final ValueNotifier<Offset>? offset;
 }
 
 class _VisualNode extends State<VisualNode> {
   late final Matrix4 _matrix;
-  final _offset = ValueNotifier(Offset.zero);
+  late final ValueNotifier<Offset> _offset;
 
   TapDownDetails? _rightClickDetails;
-  late final List<Layer> layers;
 
   @override
   void initState() {
     super.initState();
 
-    _matrix = Matrix4.identity()..translate(widget.offset.dx, widget.offset.dy);
-    _offset.value = widget.offset;
-    layers = Provider.of(context, listen: false) ?? [];
+    _offset = widget.offset ?? ValueNotifier(Offset.zero);
+    _matrix = Matrix4.identity()..translate(_offset.value.dx, _offset.value.dy);
   }
 
   @override
@@ -143,7 +171,6 @@ class _VisualNode extends State<VisualNode> {
                           if (widget.onDelete == null || widget.onDelete!()) {
                             // deletion
                             _offset.value = Offset.infinite;
-                            layers[1].remove(widget);
                           }
                         },
                         child: const Text('Delete'))
@@ -247,8 +274,7 @@ class _VisualProperty extends State<VisualProperty> {
 }
 
 class NodeIO extends StatefulWidget {
-  const NodeIO({Key? key, this.dimension = 10, this.dummy = false})
-      : super(key: key);
+  const NodeIO({super.key, this.dimension = 10, this.dummy = false});
 
   final double dimension;
   final bool dummy;
@@ -258,14 +284,20 @@ class NodeIO extends StatefulWidget {
 }
 
 class _NodeIO extends State<NodeIO> {
+  static final Map<String, _NodeIO> _ios = {};
   static IOConnCallback? _ioConnCallback;
-  late final List<Layer> layers;
-  late final Offset Function(Offset) toScene;
+
+  late final Set<String> _connections;
+
+  late final String id;
+
   late final Property property;
+  late final Offset Function(Offset) toScene;
+
   late final ValueNotifier<Offset> _nodeOffset;
   Offset _posdiff = Offset.zero;
-
   ValueNotifier<Offset>? _offset;
+
   final double dimension = 10;
   final _anchorKey = GlobalKey();
   final anchor = ValueNotifier(Offset.zero);
@@ -284,7 +316,6 @@ class _NodeIO extends State<NodeIO> {
   void initState() {
     super.initState();
 
-    layers = Provider.of(context, listen: false) ?? [];
     toScene = Provider.of(context, listen: false) ?? (off) => off;
     property = Provider.of(context, listen: false);
     _nodeOffset = Provider.of(context, listen: false)..addListener(_nodeMoved);
@@ -293,26 +324,69 @@ class _NodeIO extends State<NodeIO> {
       anchor.value = _computeAnchor;
       _posdiff = _nodeOffset.value;
     });
+
+    if (property.fromJsonExtensions == null) {
+      id = nanoid();
+      _connections = {};
+    } else {
+      fromJson(property.fromJsonExtensions!);
+    }
+
+    property.addJsonExtensionCallback(toJson);
   }
+
+  void fromJson(Map<String, dynamic> json) {
+    id = json['id'];
+    _connections = Set.from(json['connections']);
+    print('connections: $_connections');
+    _registerIO();
+
+    Future.delayed(const Duration(milliseconds: 10), () {
+      for (var conn in _connections) {
+        print(
+            'fromJson: $json from $id as ${property.runtimeType} with parent ${property.parent.runtimeType}');
+        _currIOConn = _ios[conn];
+
+        if (kDebugMode) {
+          assert(
+              property.parent.runtimeType.toString() == json['propParentType'],
+              "Property parent type not matching original type. '${property.parent.runtimeType}' is not '${json['propParentType']}'");
+        }
+        assert(_currIOConn != null);
+
+        LinkRenderer.of(context).add(Link(
+          anchor,
+          _currIOConn!.anchor,
+          color: _linkColor,
+          onDelete: _getlinkDisconnectionCallBack(),
+        ));
+
+        _connect(true);
+
+        _currIOConn = null;
+      }
+    });
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (kDebugMode)
+          'propParentType': property.parent.runtimeType.toString(),
+        'id': id,
+        'connections': _connections.toList()
+      };
+
+  void _registerIO() => _ios[id] = this;
 
   @override
   void dispose() {
     _nodeOffset.removeListener(_nodeMoved);
+    property.removeJsonExtensionCallback(toJson);
+
     super.dispose();
   }
 
   void _nodeMoved() {
     Offset off = _nodeOffset.value;
-    //if (off == Offset.infinite && property is OutputProperty) {
-    //  layers.first.removeWhere((e) {
-    //    if ((property as OutputProperty).connections.contains(e.id)) {
-    //      e.connState = ConnectionState.none;
-    //      return true;
-    //    }
-    //    return false;
-    //  });
-    //  return;
-    //}
 
     anchor.value += off - _posdiff;
     _posdiff = off;
@@ -332,25 +406,31 @@ class _NodeIO extends State<NodeIO> {
 
   List _processIO() {
     assert(_currIOConn != null);
+    assert(_currIOConn!.property.runtimeType != property.runtimeType);
 
     final InputProperty input;
     final OutputProperty output;
 
-    if (_currIOConn!.property is InputProperty) {
+    if (property is OutputProperty) {
       input = _currIOConn!.property as InputProperty;
       output = property as OutputProperty;
-    } else {
+    } else if (property is InputProperty) {
       input = property as InputProperty;
       output = _currIOConn!.property as OutputProperty;
+    } else {
+      throw FlutterError(
+          'Connection can only happen between input and output IO');
     }
 
     return [input, output];
   }
 
-  void _connect() {
+  void _connect([bool skipRootConnection = false]) {
     final tmp = _processIO();
     final InputProperty input = tmp.first;
     final OutputProperty output = tmp.last;
+
+    _connections.add(_currIOConn!.id);
 
     output.cyclesNotifier.addListener(() {
       output.cycles.contains(input.connId)
@@ -358,7 +438,9 @@ class _NodeIO extends State<NodeIO> {
           : _linkColor.value = Colors.red;
     });
 
-    VisualRootNode.of(context)._root.connect(output, {input});
+    if (!skipRootConnection) {
+      VisualRootNode.of(context)._root.connect(output, {input});
+    }
   }
 
   _getlinkDisconnectionCallBack() {
@@ -366,7 +448,10 @@ class _NodeIO extends State<NodeIO> {
     final InputProperty input = tmp.first;
     final OutputProperty output = tmp.last;
 
+    final id = _currIOConn!.id;
+
     return (link) {
+      _connections.remove(id);
       LinkRenderer.of(context).remove(link);
       VisualRootNode.of(context)._root.disconnect(output, {input});
     };
@@ -437,12 +522,12 @@ class Link extends StatelessWidget {
 
   final String id;
   final ValueNotifier<ValueNotifier<Offset>> _start;
-  ValueNotifier<Offset> get start => _start.value;
-  set start(ValueNotifier<Offset> notifier) => _start.value = notifier;
-
   final ValueNotifier<ValueNotifier<Offset>> _end;
+  ValueNotifier<Offset> get start => _start.value;
   ValueNotifier<Offset> get end => _end.value;
+  set start(ValueNotifier<Offset> notifier) => _start.value = notifier;
   set end(ValueNotifier<Offset> notifier) => _end.value = notifier;
+
   final ValueNotifier<Color>? color;
   final double? stroke;
   void Function(Link)? onDelete;
@@ -469,7 +554,6 @@ class Link extends StatelessWidget {
         child: MultiValueListenableBuilder(
             valueListenables: [_start, _end],
             builder: (context, value, child) => GestureDetector(
-                onTap: () => print('tap $id'),
                 onSecondaryTap: () =>
                     _showContextMenu(context, _rightClickDetails),
                 onSecondaryTapDown: (details) => _rightClickDetails = details,
@@ -527,8 +611,11 @@ class LinkPainter extends CustomPainter {
 }
 
 class LinkRenderer extends StatefulWidget {
-  const LinkRenderer(
-      {super.key, required this.primaryBuilder, this.secondaryBuilder});
+  const LinkRenderer({
+    super.key,
+    required this.primaryBuilder,
+    this.secondaryBuilder,
+  });
 
   /// Rendered behind of the link layer
   final WidgetBuilder primaryBuilder;
@@ -560,6 +647,7 @@ class LinkRendererState extends State<LinkRenderer> {
   bool get isNotEmpty => _links.isNotEmpty;
 
   void add(Link link) => setState(() => _links.add(link));
+
   void remove(Link link) => setState(() => _links.remove(link));
   void removeLast() => setState(() => _links.removeLast());
 
