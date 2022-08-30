@@ -46,12 +46,20 @@ class RootNode {
 
   RootNode.fromJson(Map<String, dynamic> json) {
     _registerSingletonInstance();
+    final Set<String> blackList = {};
 
     final Map<String, dynamic> nodes = Map.from(json['nodes']);
     final Map<String, List> graphOfIds = Map.from(json['graph']);
 
+    Node getNode(id) => blackList.contains(id)
+        ? graph.firstWhere((e) => e.id == id)
+        : NodeUtil.fromJson(nodes[id]);
+
     for (MapEntry<String, List> entry in graphOfIds.entries) {
-      final node = NodeUtil.fromJson(nodes[entry.key]);
+      // DO NOT INSTANCIATE IF ALREADY IN GRAPH
+      final node = getNode(entry.key);
+
+      blackList.add(node.id);
 
       if (entry.value.isEmpty) {
         addNode(node);
@@ -63,13 +71,18 @@ class RootNode {
           final nodeId = splitId(port)[0];
           final propId = splitId(port)[1];
 
-          connect(
-              node.outputProps[i],
-              Set.from(entry.value.map(
-                  (e) => NodeUtil.fromJson(nodes[nodeId]).inputProps[propId])));
+          connect(node.outputProps[i], Set.from(entry.value.map((e) {
+            Node input = getNode(nodeId);
+
+            blackList.add(nodeId);
+            return input.inputProps[propId];
+          })));
         }
       }
     }
+
+    assert(graph.length == nodes.length,
+        "Graph must contain ${nodes.length} instead of ${graph.length}.");
   }
 
   void _registerSingletonInstance() {
@@ -84,11 +97,7 @@ class RootNode {
     final Map nodes = {};
     final Map graphOfIds = graph.data.map((key, value) {
       nodes[key.id] = key.toJson();
-      return MapEntry(
-          key.id,
-          value.map((e) {
-            return e.id;
-          }).toList());
+      return MapEntry(key.id, value.map((e) => e.id).toList());
     });
 
     return {'nodes': nodes, 'graph': graphOfIds};
@@ -269,7 +278,6 @@ class OutputGroup extends Node {
 
   void _notifierChanged(notifier) {
     output = notifier;
-    print('notif changed');
     _dataChanged();
     _dataRegisterListener();
   }
