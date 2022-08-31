@@ -60,9 +60,9 @@ abstract class JsonExtendable {
 }
 
 abstract class Node extends JsonExtendable {
-  Node() : id = nanoid();
+  Node([this.isStatic = false]) : id = nanoid();
 
-  Node.fromJson(Map<String, dynamic> json)
+  Node.fromJson(Map<String, dynamic> json, [this.isStatic = false])
       : id = json['id'],
         super.fromJson(json);
 
@@ -81,6 +81,7 @@ abstract class Node extends JsonExtendable {
       List.unmodifiable(args.map((e) => e.apply(function)));
 
   final String id;
+  final isStatic;
   late final List<InputProperty> inputProps;
   late final List<OutputProperty> outputProps;
 
@@ -110,11 +111,12 @@ abstract class Node extends JsonExtendable {
 }
 
 abstract class InputNode extends Node {
-  InputNode() {
+  InputNode([super.isStatic]) {
     _init();
   }
 
-  InputNode.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
+  InputNode.fromJson(Map<String, dynamic> json, [bool isStatic = false])
+      : super.fromJson(json, isStatic) {
     _init();
   }
 
