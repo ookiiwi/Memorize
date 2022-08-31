@@ -338,13 +338,10 @@ class _NodeIO extends State<NodeIO> {
   void fromJson(Map<String, dynamic> json) {
     id = json['id'];
     _connections = Set.from(json['connections']);
-    print('connections: $_connections');
     _registerIO();
 
     Future.delayed(const Duration(milliseconds: 10), () {
       for (var conn in _connections) {
-        print(
-            'fromJson: $json from $id as ${property.runtimeType} with parent ${property.parent.runtimeType}');
         _currIOConn = _ios[conn];
 
         if (kDebugMode) {
@@ -493,7 +490,9 @@ class _NodeIO extends State<NodeIO> {
                   _offset!.value = toScene(details.globalPosition);
                 },
                 onPanEnd: (details) {
-                  if (_currIOConn != null) {
+                  if (_currIOConn != null &&
+                      _currIOConn!.property.runtimeType !=
+                          property.runtimeType) {
                     _connect();
                     LinkRenderer.of(context).last.onDelete =
                         _getlinkDisconnectionCallBack();
