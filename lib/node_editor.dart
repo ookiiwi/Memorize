@@ -31,8 +31,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   final TransformationController _controller = TransformationController();
   ValueNotifier<Widget?> outputWidget = ValueNotifier(null);
   TapDownDetails? _rightClickDetails;
-  final List<Layer> layers = [Layer(), Layer()];
-  final List _layerBuilders = [];
   final _viewerKey = GlobalKey();
   late final RenderBox _viewerRenderBox;
   var _rootKey = UniqueKey();
@@ -42,8 +40,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     super.initState();
 
     html.document.onContextMenu.listen((event) => event.preventDefault());
-
-    _layerBuilders.addAll([_buildLinkLayer, _buildNodeLayer]);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final tmp = _viewerKey.currentContext?.findRenderObject() as RenderBox?;
@@ -104,14 +100,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
       WidgetsBinding.instance.addPostFrameCallback((_) => outputWidget.value =
           data); // post frame callback because conflict when loading from json
 
-  Widget _buildLinkLayer(Layer layer) {
-    return RepaintBoundary(child: Stack(children: List.from(layer)));
-  }
-
-  Widget _buildNodeLayer(Layer layer) => Stack(
-        children: List.from(layer),
-      );
-
   Offset _toScene(Offset offset) =>
       _controller.toScene(_viewerRenderBox.globalToLocal(offset));
 
@@ -138,7 +126,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
                                 transformationController: _controller,
                                 child: MultiProvider(
                                     providers: [
-                                      Provider.value(value: layers),
                                       Provider.value(value: _toScene),
                                     ],
                                     child: VisualRootNode(
