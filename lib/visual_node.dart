@@ -137,7 +137,10 @@ class _VisualNode extends State<VisualNode> {
   late final Matrix4 _matrix;
   late final ValueNotifier<Offset> _offset;
 
+  late final List<Widget> _contextItems;
+
   TapDownDetails? _rightClickDetails;
+  bool _hover = false;
 
   @override
   void initState() {
@@ -145,73 +148,88 @@ class _VisualNode extends State<VisualNode> {
 
     _offset = widget.offset ?? ValueNotifier(Offset.zero);
     _matrix = Matrix4.identity()..translate(_offset.value.dx, _offset.value.dy);
+
+    _contextItems = [
+      if (!widget.node.isStatic)
+        ContextMenuItem(
+            onTap: () {
+              Navigator.of(context).pop();
+              NodeUtil.copy(widget.node).render(context,
+                  offset: _offset.value + const Offset(100, 100));
+            },
+            child: const Text('Duplicate')),
+      if (!widget.node.isStatic)
+        ContextMenuItem(
+            onTap: () {
+              Navigator.of(context).pop();
+
+              if (widget.onDelete != null) widget.onDelete!();
+              _offset.value = Offset.infinite; // notify children
+            },
+            child: const Text('Delete')),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     return Transform(
         transform: _matrix,
-        child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onSecondaryTapDown: (details) => _rightClickDetails = details,
-            onSecondaryTap: () {
-              if (_rightClickDetails == null) return;
+        child: MouseRegion(
+            onEnter: (event) => setState(() => _hover = true),
+            onExit: (event) => setState(() => _hover = false),
+            child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onSecondaryTapDown: (details) => _rightClickDetails = details,
+                onSecondaryTap: () {
+                  if (_rightClickDetails == null || _contextItems.isEmpty)
+                    return;
 
-              final pos = _rightClickDetails!.globalPosition;
+                  final pos = _rightClickDetails!.globalPosition;
 
-              // TODO: call user callback instead
-              showContextMenu(
-                  context,
-                  RelativeRect.fromLTRB(
-                      pos.dx, pos.dy, pos.dx + 100, pos.dy + 150),
-                  [
-                    ContextMenuItem(
-                        onTap: () {
-                          Navigator.of(context).pop();
-
-                          if (widget.onDelete == null || widget.onDelete!()) {
-                            // deletion
-                            _offset.value = Offset.infinite;
-                          }
-                        },
-                        child: const Text('Delete'))
-                  ]);
-            },
-            onPanUpdate: (details) {
-              setState(() {
-                _matrix.translate(details.delta.dx, details.delta.dy);
-                _offset.value =
-                    _offset.value.translate(details.delta.dx, details.delta.dy);
-              });
-            },
-            child: Provider.value(
-                updateShouldNotify: (_, __) => false,
-                value: _offset,
-                builder: (context, child) => ValueListenableBuilder<bool>(
-                    valueListenable: widget.node.canEmitNotifier,
-                    builder: (context, canEmit, child) => Container(
-                        padding: const EdgeInsets.symmetric(vertical: 5),
-                        decoration: BoxDecoration(
-                            color: Colors.blueGrey,
-                            border: canEmit
-                                ? null
-                                : const Border.fromBorderSide(
-                                    BorderSide(color: Colors.red)),
-                            borderRadius: BorderRadius.circular(20)),
-                        child: IntrinsicWidth(
-                            child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                              Container(
-                                  margin: const EdgeInsets.all(5),
-                                  child: Text(
-                                      '${widget.node.runtimeType}${widget.node.hashCode}'
-                                          .toString()
-                                          .replaceFirst('Node', ''))),
-                              ...widget.node.properties
-                                  .map((e) => VisualProperty(property: e))
-                                  .toList(),
-                            ])))))));
+                  // TODO: call user callback instead
+                  showContextMenu(
+                      context,
+                      RelativeRect.fromLTRB(
+                          pos.dx, pos.dy, pos.dx + 100, pos.dy + 150),
+                      _contextItems);
+                },
+                onPanUpdate: (details) {
+                  setState(() {
+                    _matrix.translate(details.delta.dx, details.delta.dy);
+                    _offset.value = _offset.value
+                        .translate(details.delta.dx, details.delta.dy);
+                  });
+                },
+                child: Provider.value(
+                    updateShouldNotify: (_, __) => false,
+                    value: _offset,
+                    builder: (context, child) => ValueListenableBuilder<bool>(
+                        valueListenable: widget.node.canEmitNotifier,
+                        builder: (context, canEmit, child) => Container(
+                            padding: const EdgeInsets.symmetric(vertical: 5),
+                            decoration: BoxDecoration(
+                                color: _hover
+                                    ? lighten(Colors.blueGrey, .03)
+                                    : Colors.blueGrey,
+                                border: canEmit
+                                    ? null
+                                    : const Border.fromBorderSide(
+                                        BorderSide(color: Colors.red)),
+                                borderRadius: BorderRadius.circular(20)),
+                            child: IntrinsicWidth(
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                  Container(
+                                      margin: const EdgeInsets.all(5),
+                                      child: Text(
+                                          '${widget.node.runtimeType}${widget.node.hashCode}'
+                                              .toString()
+                                              .replaceFirst('Node', ''))),
+                                  ...widget.node.properties
+                                      .map((e) => VisualProperty(property: e))
+                                      .toList(),
+                                ]))))))));
   }
 }
 
@@ -524,10 +542,11 @@ class _NodeIO extends State<NodeIO> {
 
 class Link extends StatelessWidget {
   Link(ValueNotifier<Offset> start, ValueNotifier<Offset> end,
-      {Key? key, this.color, this.stroke, this.onDelete})
+      {Key? key, ValueNotifier<Color>? color, this.stroke, this.onDelete})
       : id = nanoid(),
         _start = ValueNotifier(start),
         _end = ValueNotifier(end),
+        color = color ?? ValueNotifier(Colors.red),
         super(key: key);
 
   final String id;
@@ -538,7 +557,7 @@ class Link extends StatelessWidget {
   set start(ValueNotifier<Offset> notifier) => _start.value = notifier;
   set end(ValueNotifier<Offset> notifier) => _end.value = notifier;
 
-  final ValueNotifier<Color>? color;
+  final ValueNotifier<Color> color;
   final double? stroke;
   void Function(Link)? onDelete;
   final List _deletionNotifiers = [];
@@ -570,7 +589,9 @@ class Link extends StatelessWidget {
       _deletionNotifiers.remove(notifier..removeListener(_deletionCallback));
 
   void dispose() {
-    _deletionNotifiers.forEach((e) => e.removeListener(_deletionCallback));
+    for (var notifier in _deletionNotifiers) {
+      notifier.removeListener(_deletionCallback);
+    }
     _deletionNotifiers.clear();
   }
 
@@ -578,7 +599,7 @@ class Link extends StatelessWidget {
   Widget build(BuildContext context) {
     return RepaintBoundary(
         child: MultiValueListenableBuilder(
-            valueListenables: [_start, _end],
+            valueListenables: [_start, _end, color],
             builder: (context, value, child) => GestureDetector(
                 onSecondaryTap: () =>
                     _showContextMenu(context, _rightClickDetails),
@@ -688,4 +709,22 @@ class LinkRendererState extends State<LinkRenderer> {
       ],
     );
   }
+}
+
+Color darken(Color color, [double amount = .1]) {
+  assert(amount >= 0 && amount <= 1);
+
+  final hsl = HSLColor.fromColor(color);
+  final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+
+  return hslDark.toColor();
+}
+
+Color lighten(Color color, [double amount = .1]) {
+  assert(amount >= 0 && amount <= 1);
+
+  final hsl = HSLColor.fromColor(color);
+  final hslDark = hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0));
+
+  return hslDark.toColor();
 }
