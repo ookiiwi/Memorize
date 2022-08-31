@@ -8,6 +8,19 @@ export 'package:memorize/node_base.dart'
 enum IOType { input, output, none }
 
 class NodeUtil {
+  static Node copy(Node node) {
+    switch (node.runtimeType) {
+      case InputGroup:
+        return InputGroup();
+      case OutputGroup:
+        return OutputGroup();
+      case ContainerNode:
+        return ContainerNode();
+      default:
+        throw FlutterError("Unsupported node '${node.runtimeType}'");
+    }
+  }
+
   static Node fromJson(Map<String, dynamic> json) {
     switch (json['runtimeType']) {
       case 'ContainerNode':
@@ -219,12 +232,12 @@ class ContainerNode extends Node {
 }
 
 class InputGroup extends InputNode {
-  InputGroup() {
+  InputGroup() : super(true) {
     outputProps = List.unmodifiable(
         [OutputProperty(this, 0, data: wrapData(() => 10, []))]);
   }
 
-  InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
+  InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json, true) {
     outputProps = List.unmodifiable(
         json["outputProps"].map((e) => OutputProperty.fromJson(e, this)));
   }
@@ -243,7 +256,7 @@ class InputGroup extends InputNode {
 }
 
 class OutputGroup extends Node {
-  OutputGroup({this.dataChanged}) {
+  OutputGroup({this.dataChanged}) : super(true) {
     outputProps = List.unmodifiable([]);
     inputProps = List.unmodifiable([
       InputProperty(this, 0, data: output, onNotifierChanged: _notifierChanged)
@@ -251,7 +264,7 @@ class OutputGroup extends Node {
   }
 
   OutputGroup.fromJson(Map<String, dynamic> json, {this.dataChanged})
-      : super.fromJson(json) {
+      : super.fromJson(json, true) {
     outputProps = List.unmodifiable([]);
     inputProps = List.unmodifiable(json['inputProps'].map((e) =>
         InputProperty.fromJson(e, this, onNotifierChanged: _notifierChanged)));
