@@ -108,6 +108,7 @@ class VisualRootNodeState extends SerializableState<VisualRootNode> {
         secondaryBuilder: (context) => Stack(children: [
               ..._root.graph
                   .map((e) => VisualNode(
+                        key: ValueKey(e.id),
                         node: e,
                         offset: _nodeOffsets[e.id]!,
                         onDelete: () {
@@ -288,6 +289,7 @@ class _NodeIO extends State<NodeIO> {
   static IOConnCallback? _ioConnCallback;
 
   late final Set<String> _connections;
+  final _disconnetionNotifier = ValueNotifier(false);
 
   late final String id;
 
@@ -376,14 +378,19 @@ class _NodeIO extends State<NodeIO> {
 
   @override
   void dispose() {
-    _nodeOffset.removeListener(_nodeMoved);
     property.removeJsonExtensionCallback(toJson);
+    _nodeOffset.removeListener(_nodeMoved);
 
     super.dispose();
   }
 
   void _nodeMoved() {
     Offset off = _nodeOffset.value;
+
+    if (off == Offset.infinite) {
+      _disconnetionNotifier.value = true;
+      return;
+    }
 
     anchor.value += off - _posdiff;
     _posdiff = off;
@@ -438,18 +445,22 @@ class _NodeIO extends State<NodeIO> {
     if (!skipRootConnection) {
       VisualRootNode.of(context)._root.connect(output, {input});
     }
+
+    LinkRenderer.of(context).last.addDeletionNotifier(_disconnetionNotifier);
+    LinkRenderer.of(context)
+        .last
+        .addDeletionNotifier(_currIOConn!._disconnetionNotifier);
   }
 
   _getlinkDisconnectionCallBack() {
+    final id = _currIOConn!.id;
     final tmp = _processIO();
     final InputProperty input = tmp.first;
     final OutputProperty output = tmp.last;
 
-    final id = _currIOConn!.id;
-
-    return (link) {
+    return (Link link) {
       _connections.remove(id);
-      LinkRenderer.of(context).remove(link);
+      LinkRenderer.of(context).remove(link..dispose());
       VisualRootNode.of(context)._root.disconnect(output, {input});
     };
   }
@@ -530,6 +541,7 @@ class Link extends StatelessWidget {
   final ValueNotifier<Color>? color;
   final double? stroke;
   void Function(Link)? onDelete;
+  final List _deletionNotifiers = [];
 
   late TapDownDetails _rightClickDetails;
 
@@ -540,11 +552,26 @@ class Link extends StatelessWidget {
         RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 100, pos.dy + 150), [
       ContextMenuItem(
           onTap: () {
-            onDelete != null ? onDelete!(this) : null;
+            _deletionCallback();
             Navigator.of(context).pop();
           },
           child: const Text('Delete')),
     ]);
+  }
+
+  void _deletionCallback() {
+    if (onDelete != null) onDelete!(this);
+  }
+
+  void addDeletionNotifier(Listenable notifier) =>
+      _deletionNotifiers.add(notifier..addListener(_deletionCallback));
+
+  void removeDeletionNotifier(Listenable notifier) =>
+      _deletionNotifiers.remove(notifier..removeListener(_deletionCallback));
+
+  void dispose() {
+    _deletionNotifiers.forEach((e) => e.removeListener(_deletionCallback));
+    _deletionNotifiers.clear();
   }
 
   @override
