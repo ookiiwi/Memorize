@@ -6,10 +6,10 @@ import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/db.dart';
+//import 'package:memorize/db.dart';
 import 'package:memorize/file_explorer.dart';
 import 'package:memorize/quiz.dart';
-import 'package:memorize/stats.dart';
+//import 'package:memorize/stats.dart';
 import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
@@ -626,10 +626,7 @@ class _ListPage extends State<ListPage> {
         Expanded(
             child: RefreshIndicator(
                 onRefresh: (() async {
-                  for (var entry in _list.entries) {
-                    List out = await fetch(entry['word']);
-                    entry = out.where((e) => e['id'] == entry['id']).first;
-                  }
+                  // TODO: refresh entries
                   setState(() {});
                   return;
                 }),
@@ -787,10 +784,7 @@ class _ListPage extends State<ListPage> {
                                         ));
                               }))
                 ]),
-                StatsPage(
-                    points: _list.stats.stats
-                        .map((e) => [e.time, e.score])
-                        .toList())
+                // TODO: Implement stats page
               ],
             );
           }
@@ -835,11 +829,9 @@ class _ListSearchPage extends State<ListSearchPage> {
                 margin: const EdgeInsets.symmetric(vertical: 10),
                 child: TextField(
                   controller: _controller,
-                  onChanged: (value) => fetch(value).then((ret) => setState(() {
-                        _results.clear();
-                        if (ret.isEmpty) return;
-                        _results.addAll(ret);
-                      })),
+                  onChanged: (value) {
+                    // TODO: clear results and set to new results
+                  },
                   decoration: InputDecoration(
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30)),
@@ -1042,7 +1034,7 @@ class _ProfilePage extends State<ProfilePage> {
       children: [
         GestureDetector(
             onTap: () {
-              Auth.logout(currentUser!);
+              Auth.logout();
               widget.onLogout();
             },
             child: Align(
