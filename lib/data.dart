@@ -1,14 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/auth.dart';
 import 'package:memorize/reminder.dart';
-import 'package:memorize/web/login.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 import 'package:nanoid/nanoid.dart';
-import 'package:http/http.dart' as http;
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -203,16 +197,10 @@ class DataLoader {
   static bool _isDataLoaded = false;
 
   static load({bool force = false}) async {
-    print('r: $_isDataLoaded');
     if (_isDataLoaded && !force) return;
-    print('rr');
-    currentUser = await UserInfo.retrieve();
-    print('curr: $currentUser');
-    //await FileExplorer.init(
-    //    kIsWeb ? CloudFileExplorer() : MobileFileExplorer());
-    print('rrr');
+    // TODO: check if user logged here
+
     if (!kIsWeb) await ReminderNotification.init();
     _isDataLoaded = true;
-    //await Future.delayed(const Duration(seconds: 2));
   }
 }
