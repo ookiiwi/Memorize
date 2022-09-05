@@ -48,3 +48,6 @@ app.*.map.json
 #Platform related
 /web
 /windows
+
+#node modules
+node_modules
