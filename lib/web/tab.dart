@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/db.dart';
+import 'package:memorize/node_editor.dart';
 import 'package:memorize/tab.dart';
 import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
@@ -158,7 +158,7 @@ class HomePage extends StatelessWidget with ATab {
                 width: MediaQuery.of(context).size.width * 0.8,
                 height: 50,
                 builder: (context, data) => addon.buildListEntryPreview(data),
-                fetchData: (value) async => fetch(value),
+                // TODO: set fetch callback
               )),
         ]));
   }
@@ -194,9 +194,9 @@ class NavigationMenu extends StatefulWidget {
 
 class _NavigationMenu extends State<NavigationMenu>
     with SingleTickerProviderStateMixin {
-  bool get _isLogged =>
-      currentUser != null &&
-      currentUser!.status == UserConnectionStatus.loggedIn;
+  bool _isLogged = false;
+  //currentUser != null &&
+  //currentUser!.status == UserConnectionStatus.loggedIn;
 
   @override
   void initState() {
@@ -206,6 +206,8 @@ class _NavigationMenu extends State<NavigationMenu>
   @override
   void didUpdateWidget(NavigationMenu oldWidget) {
     super.didUpdateWidget(oldWidget);
+    Auth.retrieveState().then((value) =>
+        setState(() => _isLogged = value == UserConnectionStatus.loggedIn));
   }
 
   @override
@@ -256,15 +258,23 @@ class _NavigationMenu extends State<NavigationMenu>
                             )
                           : null);
                     }),
-                if (_isLogged)
-                  NavigationMenuItem(
-                      child: const Text(
-                        'Explorer',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onTap: () {
-                        widget.pageBuilderCallback(ListExplorer());
-                      }),
+                //if (_isLogged)
+                //  NavigationMenuItem(
+                //      child: const Text(
+                //        'Explorer',
+                //        style: TextStyle(fontWeight: FontWeight.bold),
+                //      ),
+                //      onTap: () {
+                //        widget.pageBuilderCallback(ListExplorer());
+                //      }),
+                NavigationMenuItem(
+                    child: const Text(
+                      'Editor',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onTap: () {
+                      widget.pageBuilderCallback(NodeEditor());
+                    }),
                 if (_isLogged)
                   NavigationMenuItem(
                       child: const Text(
