@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/tab.dart';
 import 'package:memorize/addon.dart';
 
 class QuizLauncher extends StatefulWidget {
@@ -17,14 +15,11 @@ class QuizLauncher extends StatefulWidget {
 
 class _QuizLauncher extends State<QuizLauncher> {
   bool _hostSession = false;
-  late final RouteController _routeController;
   late final Addon _addon;
 
   @override
   void initState() {
     super.initState();
-
-    _routeController = RouteController(canPop: () async => true);
 
     assert(addons.containsKey(widget.list.addon));
     _addon = addons[widget.list.addon]!;
@@ -33,7 +28,6 @@ class _QuizLauncher extends State<QuizLauncher> {
   @override
   void dispose() {
     super.dispose();
-    _routeController.dispose();
   }
 
   @override
