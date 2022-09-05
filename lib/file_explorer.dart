@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/web/login.dart';
 import 'package:http/http.dart' as http;
@@ -12,7 +11,6 @@ enum FileType { dir, list, unknown }
 class FileInfo {
   FileInfo(this.type, this.name);
   FileInfo.guess(String type, this.name) {
-    print("type: $type");
     if (type == 'dir' || type == 'directory') {
       this.type = FileType.dir;
     } else if (type == 'file') {
@@ -46,10 +44,8 @@ class CloudFileExplorer extends FileExplorer {
   String get wd => _wd.replaceFirst(_root, '');
 
   void _check() {
-    assert(
-        currentUser != null &&
-            currentUser!.status == UserConnectionStatus.loggedIn,
-        'User must be logged in order to save lists.');
+    // TODO: Implement check
+    throw UnimplementedError("Check not yet implemented");
   }
 
   String _absolutePath(String path) {
@@ -72,99 +68,32 @@ class CloudFileExplorer extends FileExplorer {
 
   @override
   dynamic fetch(String listname) async {
-    _check();
-    AList? ret;
-
-    try {
-      var response =
-          await http.post(Uri.parse("$_serverUrl/front_end_api/data.php"),
-              body: jsonEncode({
-                'action': 'get',
-                'username': currentUser!.username,
-                'pwd': currentUser!.password,
-                'filename': "$_wd/$listname"
-              }));
-
-      if (response.statusCode == 200) {
-        ret = AList.fromJson(
-            '', listname.split('/').last, response.body, listname);
-      } else {
-        print('notfound: ${response.statusCode}');
-        print('notfound body: ${response.body}');
-      }
-    } catch (e) {
-      print('fetch error: $e');
-    }
-    return ret;
+    // TODO: Implement fetch
+    throw UnimplementedError("Fetch not yet implemented");
   }
 
   @override
   dynamic write(AList list) async {
-    _check();
-
-    try {
-      var response = await http.post(
-          Uri.parse("$_serverUrl/front_end_api/data.php?dbg=true"),
-          body: jsonEncode({
-            'action': 'upload',
-            'username': currentUser!.username,
-            'pwd': currentUser!.password,
-            'filename': "$_wd/${list.path}",
-            'data': jsonEncode(list.toJson())
-          }));
-
-      return response.body;
-    } catch (e) {
-      print('write error: $e');
-    }
-
-    return null;
+    // TODO: Implement write
+    throw UnimplementedError("Write not yet implemented");
   }
 
   @override
-  dynamic move(String src, String dest) {}
+  dynamic move(String src, String dest) {
+    // TODO: Implement move
+    throw UnimplementedError("Move not yet implemented");
+  }
+
   @override
   dynamic remove(String filename) async {
-    try {
-      var response = await http.post(
-          Uri.parse("$_serverUrl/front_end_api/data.php?dbg=true"),
-          body: jsonEncode({
-            'action': 'rm',
-            'username': currentUser!.username,
-            'pwd': currentUser!.password,
-            'filename': _absolutePath(filename)
-          }),
-          encoding: Encoding.getByName('utf-8'));
-
-      return response.body;
-    } catch (e) {
-      print('ls error: $e');
-    }
-
-    return null;
+    // TODO: Implement Remove
+    throw UnimplementedError("Remove not yet implemented");
   }
 
   @override
   Future<List<FileInfo>> ls({String dir = '.'}) async {
-    print("ls ${_absolutePath(dir)}");
-    try {
-      var response = await http.post(
-          Uri.parse("$_serverUrl/front_end_api/data.php?dbg=true"),
-          body: jsonEncode({
-            'action': 'ls',
-            'username': currentUser!.username,
-            'pwd': currentUser!.password,
-            'filename': _absolutePath(dir)
-          }),
-          encoding: Encoding.getByName('utf-8'));
-      return List.from(jsonDecode(response.body))
-          .map((e) => FileInfo.guess(e["type"], e["name"]))
-          .toList();
-    } catch (e) {
-      print('ls error: $e');
-    }
-
-    return [];
+    // TODO: Implement ls
+    throw UnimplementedError("ls not yet implemented");
   }
 
   @override
@@ -190,20 +119,8 @@ class CloudFileExplorer extends FileExplorer {
 
   @override
   dynamic mkdir(String path) async {
-    try {
-      var response = await http.post(
-          Uri.parse("$_serverUrl/front_end_api/data.php?dbg=true"),
-          body: jsonEncode({
-            'action': 'mkdir',
-            'username': currentUser!.username,
-            'pwd': currentUser!.password,
-            'filename': _absolutePath(path)
-          }),
-          encoding: Encoding.getByName('utf-8'));
-      //print('response : ${response.body}');
-    } catch (e) {
-      print('ls error: $e');
-    }
+    // TODO: Implement mkdir
+    throw UnimplementedError("mkdir not yet implemented");
   }
 }
 
