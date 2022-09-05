@@ -3,9 +3,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:memorize/ad_state.dart';
 import 'package:memorize/widget.dart';
 import 'package:provider/provider.dart';
-import 'package:swipe_cards/swipe_cards.dart';
-import 'package:memorize/stats.dart';
-import 'package:memorize/tab.dart';
 import 'package:memorize/data.dart';
 
 Map<String, Addon> addons = {'JpnAddon': JpnAddon()};
@@ -23,27 +20,6 @@ abstract class Addon {
   Widget buildListEntryPreview(Map entry);
   Widget buildQuizEntry(Map entry, bool isAnswer);
 }
-
-//class GraphicAddon extends Addon {
-//  @override
-//  List get modes => [];
-//
-//  @override
-//  Widget buildListEntryPreview(Map entry) {
-//    return RecursiveDescentParser.parse('a-(b|c)',
-//        (t) => Container(margin: const EdgeInsets.all(5), child: Text(t)));
-//  }
-//
-//  @override
-//  Widget buildListEntryPage(Map entry) {
-//    return Container();
-//  }
-//
-//  @override
-//  Widget buildQuizPage(AList list, {bool showWord = true}) {
-//    return Container();
-//  }
-//}
 
 class JpnAddon extends Addon {
   static const EdgeInsets _margin =
@@ -201,20 +177,17 @@ class _JpnEntryPage extends State<JpnEntryPage> {
 
   late final List<bool> _isExpanded;
   late final Map entry;
-  late final RouteController _routeController;
 
   @override
   void initState() {
     super.initState();
     entry = widget.entry;
 
-    _routeController = RouteController(canPop: () async => true);
     _isExpanded = entry['tag'] == 'kanji' ? [true, true] : [true];
   }
 
   @override
   void dispose() {
-    _routeController.dispose();
     super.dispose();
   }
 
@@ -485,9 +458,7 @@ class ListInstance {
 
   void newStats(QuizStats stats) => _list.newStats(stats);
   void addStat(String word, bool isGood) => _list.addStat(word, isGood);
-  void writeToDisk() {
-    FileExplorer.writeList(_list);
-  }
+  void writeToDisk() {}
 }
 
 class DefaultMode extends StatefulWidget {
@@ -504,7 +475,6 @@ class DefaultMode extends StatefulWidget {
 class _DefaultMode extends State<DefaultMode> {
   late final ListInstance list;
   PageController pageController = PageController(keepPage: false);
-  late final RouteController routeController;
 
   bool _showBtn = true;
   late int _pages;
@@ -513,8 +483,6 @@ class _DefaultMode extends State<DefaultMode> {
   @override
   void initState() {
     super.initState();
-
-    routeController = RouteController(canPop: () async => true);
 
     list = widget.list;
     _pages = list.length + 1;
@@ -535,7 +503,6 @@ class _DefaultMode extends State<DefaultMode> {
   @override
   void dispose() {
     pageController.dispose();
-    routeController.dispose();
     super.dispose();
   }
 
