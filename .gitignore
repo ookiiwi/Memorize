@@ -51,3 +51,6 @@ app.*.map.json
 
 #node modules
 node_modules
+
+#lists
+lists
