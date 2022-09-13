@@ -37,8 +37,7 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.loggedOut;
 
     try {
-      var response = await dio.get(
-        "http://localhost:3000/isLoggedIn",
+      var response = await dio.get("http://localhost:3000/isLoggedIn");
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
