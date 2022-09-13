@@ -6,11 +6,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-//import 'package:memorize/db.dart';
 import 'package:memorize/file_explorer.dart';
 import 'package:memorize/quiz.dart';
-//import 'package:memorize/stats.dart';
-import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
@@ -117,19 +114,16 @@ class _ListExplorer extends State<ListExplorer>
   void initState() {
     super.initState();
 
-    SchedulerBinding? instance = SchedulerBinding.instance;
-    if (instance != null) {
-      instance.addPostFrameCallback((_) {
-        if (widget.listPath != null) {
-          Navigator.of(_navCtx).push(MaterialPageRoute(
-              builder: (context) => Provider.value(
-                  value: _fe,
-                  child: ListPage(
-                    listPath: widget.listPath,
-                  ))));
-        }
-      });
-    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (widget.listPath != null) {
+        Navigator.of(_navCtx).push(MaterialPageRoute(
+            builder: (context) => Provider.value(
+                value: _fe,
+                child: ListPage(
+                  listPath: widget.listPath,
+                ))));
+      }
+    });
 
     widget._reload = () async {
       setState(() {
@@ -293,10 +287,11 @@ class _ListExplorer extends State<ListExplorer>
           setState(() {
             _openSelection = false;
             for (var item in _selectedItems) {
-              _fe.remove(item.name);
+              _fe.remove(_fe.wd + '/' + (item.id ?? item.name));
             }
-            _updateData();
           });
+
+          _updateData();
         },
         child: const Icon(Icons.delete),
       ),
@@ -310,7 +305,9 @@ class _ListExplorer extends State<ListExplorer>
           ? null
           : BoxDecoration(
               borderRadius: BorderRadius.circular(20), color: Colors.indigo),
-      child: Center(child: Text(AList.extractName(stripPath(name).last))),
+      child: Center(child: Text(
+          //AList.extractName(stripPath(name).last)
+          name)),
     );
   }
 
@@ -465,7 +462,7 @@ class _ListExplorer extends State<ListExplorer>
                                                                                 _fe,
                                                                             child:
                                                                                 ListPage(
-                                                                              listPath: _items[i].name,
+                                                                              listPath: _items[i].id, //_items[i].name,
                                                                               createIfDontExists: false,
                                                                             ));
                                                                   },
@@ -618,6 +615,9 @@ class _ListPage extends State<ListPage> {
               onChanged: (value) {
                 //TODO: check if name valid
                 _list.name = _nameController.text;
+                _fe
+                    .write(_fe.wd, _list)
+                    .then((value) => print('serverId: ${_list.serverId}'));
               },
               decoration: InputDecoration(
                   border: OutlineInputBorder(
@@ -754,7 +754,7 @@ class _ListPage extends State<ListPage> {
                                 for (int i in _selectedItems) {
                                   _list.entries.removeAt(i);
                                 }
-                                _fe.write(_list);
+                                _fe.write(_fe.wd, _list);
                               }),
                               child: const Icon(Icons.delete),
                             )
@@ -779,7 +779,7 @@ class _ListPage extends State<ListPage> {
                                     onConfirm: (values) => setState(
                                           () {
                                             _list.entries.addAll(values);
-                                            _fe.write(_list);
+                                            _fe.write(_fe.wd, _list);
                                           },
                                         ));
                               }))
