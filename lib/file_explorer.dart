@@ -1,16 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
+import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/web/login.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 enum FileType { dir, list, unknown }
 
 class FileInfo {
-  FileInfo(this.type, this.name);
-  FileInfo.guess(String type, this.name) {
+  FileInfo(this.type, this.name, [this.id]);
+  FileInfo.guess(String type, this.name, [this.id]) {
     if (type == 'dir' || type == 'directory') {
       this.type = FileType.dir;
     } else if (type == 'file') {
@@ -21,13 +22,14 @@ class FileInfo {
   }
   late final FileType type;
   final String name;
+  final String? id;
 }
 
 abstract class FileExplorer {
   String get wd;
 
   dynamic fetch(String listname);
-  dynamic write(AList list);
+  dynamic write(String path, AList list);
   dynamic move(String src, String dest);
   dynamic remove(String filename);
   Future<List<FileInfo>> ls({String dir = '.'});
@@ -36,12 +38,12 @@ abstract class FileExplorer {
 }
 
 class CloudFileExplorer extends FileExplorer {
-  static const _serverUrl = "http://192.168.1.12";
-  static const _root = '/fe';
+  static const _serverUrl = "http://localhost:3000";
+  static const _root = '/';
   String _wd = _root;
 
   @override
-  String get wd => _wd.replaceFirst(_root, '');
+  String get wd => _wd;
 
   void _check() {
     // TODO: Implement check
@@ -49,33 +51,66 @@ class CloudFileExplorer extends FileExplorer {
   }
 
   String _absolutePath(String path) {
-    if (path.startsWith(RegExp(r"\.$|\./"))) {
-      path = path.replaceFirst(RegExp(r"\."), _wd);
-    } else if (path.startsWith(RegExp(r"(\.\.)$|(\.\./)"))) {
-      if (_wd != _root) {
-        String rpDir =
-            _wd.split('/').reversed.skip(1).toList().reversed.join('/');
-        path = path.replaceFirst(RegExp(r"\.\."), rpDir);
-      } else {
-        path = _wd;
-      }
-    } else if (!path.startsWith(_root)) {
-      path = _root + (path.startsWith('/') ? '' : '/') + path;
+    final parentDirRe = RegExp(r'(\.\.(\/.*)*)+');
+
+    if (path.startsWith(RegExp(r'\.[^\.](\/.*)*'))) {
+      path = path.replaceFirst('.', wd);
     }
+    path = path.replaceAllMapped(
+        parentDirRe,
+        (match) => match.group(0)!.replaceFirst(
+            RegExp(r'..\/|..'), '/' + (wd.split('/')..removeLast()).join('/')));
 
     return path;
   }
 
   @override
   dynamic fetch(String listname) async {
-    // TODO: Implement fetch
-    throw UnimplementedError("Fetch not yet implemented");
+    try {
+      final response = await dio.get(_serverUrl + '/list/' + listname);
+      final data = jsonDecode(response.data);
+      return AList.fromJson(data);
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('error: $e');
+    }
   }
 
   @override
-  dynamic write(AList list) async {
-    // TODO: Implement write
-    throw UnimplementedError("Write not yet implemented");
+  dynamic write(String path, AList list) async {
+    try {
+      final formData = FormData.fromMap({
+        'status': 'private',
+        'path': path,
+        'list': MultipartFile.fromString(jsonEncode(list),
+            filename: list.name, contentType: MediaType("application", "json"))
+      });
+
+      final response = list.serverId != null
+          ? await dio.put(_serverUrl + '/list/' + list.serverId!,
+              data: formData)
+          : await dio.post(_serverUrl + '/list', data: formData);
+
+      final String? listId = response.data["listId"];
+      print('serv: $listId');
+
+      assert(listId != list.serverId);
+
+      if (listId != null) list.serverId = listId;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('error: $e');
+    }
   }
 
   @override
@@ -85,15 +120,48 @@ class CloudFileExplorer extends FileExplorer {
   }
 
   @override
-  dynamic remove(String filename) async {
-    // TODO: Implement Remove
-    throw UnimplementedError("Remove not yet implemented");
+  dynamic remove(String path) async {
+    try {
+      final response =
+          await dio.delete(_serverUrl + '/file', data: {'path': path});
+
+      return response.data;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('error: $e');
+    }
   }
 
   @override
   Future<List<FileInfo>> ls({String dir = '.'}) async {
-    // TODO: Implement ls
-    throw UnimplementedError("ls not yet implemented");
+    final ret = <FileInfo>[];
+    try {
+      final response = await dio.post(_serverUrl + '/directory/ls',
+          data: {'path': _absolutePath(dir)});
+      final content = response.data is Map ? response.data : {};
+
+      for (var e in content.entries) {
+        final name = e.value is String ? e.value : e.key;
+        final id = e.value is String ? e.key : null;
+
+        ret.add(FileInfo(id != null ? FileType.list : FileType.dir, name, id));
+      }
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('error: $e');
+    }
+
+    return ret;
   }
 
   @override
@@ -114,13 +182,26 @@ class CloudFileExplorer extends FileExplorer {
       }
     }
 
-    _wd = absPath;
+    _wd = _absolutePath(path);
+    print('cd: $_wd');
   }
 
   @override
   dynamic mkdir(String path) async {
-    // TODO: Implement mkdir
-    throw UnimplementedError("mkdir not yet implemented");
+    try {
+      final response =
+          await dio.post(_serverUrl + '/directory', data: {'path': '/' + path});
+
+      return response.data;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('error: $e');
+    }
   }
 }
 
@@ -167,15 +248,16 @@ class MobileFileExplorer extends FileExplorer {
     File file = File("./$listname");
 
     if (file.existsSync()) {
-      return AList.fromJson(
-          '', listname.split('/').last, file.readAsStringSync(), listname);
+      final json = jsonDecode(file.readAsStringSync());
+      return AList.fromJson(json);
     }
 
     return null;
   }
 
+  // TODO: refactor path logic
   @override
-  dynamic write(AList list) async {
+  dynamic write(String path, AList list) async {
     _check();
 
     //TODO: use listname not name
