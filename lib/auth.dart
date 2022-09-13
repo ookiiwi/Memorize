@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+
+final dio = Dio();
 
 enum UserConnectionStatus { loggedIn, loggedOut, failed }
 
@@ -22,19 +24,21 @@ class UserInfo {
 class Auth extends ChangeNotifier {
   static const storage = FlutterSecureStorage();
 
+  static void init() async {
+    resetHeaders();
+  }
+
+  static resetHeaders() async {
+    final token = await storage.read(key: 'jwt');
+    dio.options.headers['authorization'] = "Bearer $token";
+  }
+
   static Future<UserConnectionStatus> retrieveState() async {
     UserConnectionStatus ret = UserConnectionStatus.loggedOut;
 
     try {
-      final token = await storage.read(key: 'jwt');
-
-      var response = await http.get(
-          Uri.parse("http://localhost:3000/isLoggedIn"),
-          headers: {'Authorization': 'Bearer $token'});
-
-      print(response.statusCode);
-      print(response.reasonPhrase);
-      print(response.body);
+      var response = await dio.get(
+        "http://localhost:3000/isLoggedIn",
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
@@ -44,7 +48,7 @@ class Auth extends ChangeNotifier {
     } on FormatException {
       print("Bad response format 👎");
     } catch (e) {
-      print('auth error: $e');
+      //print('auth error: $e');
     }
 
     return ret;
@@ -54,14 +58,10 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.failed;
 
     try {
-      var response = await http.post(
-          Uri.parse("http://localhost:3000/auth/signup"),
-          headers: {'Content-Type': 'application/json; charset=UTF-8'},
-          body: jsonEncode(userInfo));
-
-      print(response.statusCode);
-      print(response.reasonPhrase);
-      print(response.body);
+      var response = await dio.post("http://localhost:3000/auth/signup",
+          options: Options(
+              headers: {'Content-Type': 'application/json; charset=UTF-8'}),
+          data: jsonEncode(userInfo));
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
@@ -81,21 +81,17 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.failed;
 
     try {
-      var response = await http.post(
-          Uri.parse("http://localhost:3000/auth/login"),
-          headers: {'Content-Type': 'application/json; charset=UTF-8'},
-          body: jsonEncode(userInfo));
-
-      print(response.statusCode);
-      print(response.reasonPhrase);
-      print(response.body);
-      print(response.headers);
+      var response = await dio.post("http://localhost:3000/auth/login",
+          options: Options(
+              headers: {'Content-Type': 'application/json; charset=UTF-8'}),
+          data: jsonEncode(userInfo));
 
       if (response.statusCode == 200) {
         ret = UserConnectionStatus.loggedIn;
-        final token = jsonDecode(response.body)['token'];
+        final token = response.data['token'];
         print('token extracted: $token');
-        storage.write(key: 'jwt', value: token);
+        await storage.write(key: 'jwt', value: token);
+        resetHeaders();
       }
     } on SocketException {
       print('No Internet connection 😑');
@@ -112,5 +108,6 @@ class Auth extends ChangeNotifier {
 
   static void logout() {
     storage.delete(key: 'jwt');
+    dio.options.headers.remove('authorization');
   }
 }
