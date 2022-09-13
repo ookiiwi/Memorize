@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/auth.dart';
 import 'package:memorize/reminder.dart';
-import 'package:nanoid/nanoid.dart';
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -11,40 +11,30 @@ int daysBetween(DateTime from, DateTime to) {
 }
 
 class AList {
-  AList(this.name)
-      : _entries = [],
+  AList(this.name, {String? serverId})
+      : _serverId = serverId,
+        _entries = [],
         _tags = {},
         _stats = AListStats() {
-    genId();
     _initReminder();
   }
 
   AList.from(AList list)
-      : name = list.name,
-        _dirPath = list._dirPath,
+      : _serverId = list.serverId,
+        name = list.name,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
         _stats = AListStats() {
-    genId();
     _initReminder();
   }
 
-  AList._(List<Map> entries, Set<String> tags, String path, AListStats stats)
-      : _entries = List.from(entries),
-        _tags = Set.from(tags),
-        _stats = stats {
-    _readPath(path);
-
-    _initReminder();
-  }
-
-  factory AList.fromJson(String id, String name, String rawData, String path) {
-    Map data = jsonDecode(rawData);
-    AList list = AList._(List.from(data['entries']), Set.from(data['tags']),
-        path, AListStats.fromJson(data["listStats"]));
-
+  AList.fromJson(Map<String, dynamic> json, {String? serverId})
+      : _serverId = serverId,
+        _entries = List.from(json['entries']),
+        _tags = Set.from(json['tags']),
+        _stats = AListStats.fromJson(json["listStats"]) {
     //ReminderNotification.add(list._reminder);
-    return list;
+    _initReminder();
   }
 
   Map<String, dynamic> toJson() => {
@@ -53,21 +43,24 @@ class AList {
         "listStats": _stats.toJson()
       };
 
-  String _id = '';
+  String? _serverId;
+  String? get serverId => _serverId;
+  set serverId(id) {
+    assert(_serverId == null);
+    _serverId = id;
+  }
+
   String name = '';
   final List<Map> _entries;
   final Set<String> _tags;
   final AListStats _stats;
-  String _dirPath = '';
   String addon = "JpnAddon";
   late final Reminder _reminder;
 
   AListStats get stats => _stats;
 
-  String get uniqueName => name; //"$_id?$name";
+  String get uniqueName => name;;
 
-  String get path => "$_dirPath$uniqueName";
-  set path(String p) => _readPath(p);
 
   List<Map> get entries => _entries;
 
@@ -76,27 +69,7 @@ class AList {
   bool get isNotEmpty => _entries.isNotEmpty;
 
   void _initReminder() {
-    _reminder = Reminder(DateTime.now(), path);
-  }
-
-  void _readPath(String path) {
-    String rawName = stripPath(path).last;
-    var tmp = _splitName(rawName);
-    _id = tmp.key;
-    name = tmp.value;
-    _dirPath = path.substring(0, path.length - rawName.length);
-  }
-
-  static MapEntry<String, String> _splitName(String name) {
-    String id = name.replaceAll(RegExp(r"\?.*"), '');
-    String rname = name.replaceFirst(id + '?', '');
-    return MapEntry(id, rname);
-  }
-
-  static String extractName(String name) => _splitName(name).value;
-
-  void genId() {
-    _id = nanoid(10);
+    _reminder = Reminder(DateTime.now(), '');
   }
 
   void newStats(QuizStats stats) => _stats.add(stats);
@@ -200,6 +173,7 @@ class DataLoader {
     if (_isDataLoaded && !force) return;
     // TODO: check if user logged here
 
+    Auth.init();
     if (!kIsWeb) await ReminderNotification.init();
     _isDataLoaded = true;
   }
