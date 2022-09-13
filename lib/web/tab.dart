@@ -195,19 +195,18 @@ class NavigationMenu extends StatefulWidget {
 class _NavigationMenu extends State<NavigationMenu>
     with SingleTickerProviderStateMixin {
   bool _isLogged = false;
-  //currentUser != null &&
-  //currentUser!.status == UserConnectionStatus.loggedIn;
+  bool get isLogged {
+    Auth.retrieveState().then((value) {
+      final ret = value == UserConnectionStatus.loggedIn;
+      if (_isLogged != ret) setState(() => _isLogged = ret);
+    });
+
+    return _isLogged;
+  }
 
   @override
   void initState() {
     super.initState();
-  }
-
-  @override
-  void didUpdateWidget(NavigationMenu oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    Auth.retrieveState().then((value) =>
-        setState(() => _isLogged = value == UserConnectionStatus.loggedIn));
   }
 
   @override
@@ -234,11 +233,11 @@ class _NavigationMenu extends State<NavigationMenu>
                     onTap: () => widget.pageBuilderCallback(HomePage())),
                 NavigationMenuItem(
                     child: Text(
-                      _isLogged ? 'Profile' : 'Login',
+                      isLogged ? 'Profile' : 'Login',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     onTap: () {
-                      if (!_isLogged) {
+                      if (!isLogged) {
                         showDialog(
                             context: context,
                             builder: (context) => Dialog(
@@ -251,31 +250,31 @@ class _NavigationMenu extends State<NavigationMenu>
                                   }
                                 })));
                       }
-                      widget.pageBuilderCallback(_isLogged
+                      widget.pageBuilderCallback(isLogged
                           ? ProfilePage(
                               onLogout: () =>
                                   widget.pageBuilderCallback(HomePage()),
                             )
                           : null);
                     }),
-                //if (_isLogged)
-                //  NavigationMenuItem(
-                //      child: const Text(
-                //        'Explorer',
-                //        style: TextStyle(fontWeight: FontWeight.bold),
-                //      ),
-                //      onTap: () {
-                //        widget.pageBuilderCallback(ListExplorer());
-                //      }),
+                if (isLogged)
+                  NavigationMenuItem(
+                      child: const Text(
+                        'Explorer',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onTap: () {
+                        widget.pageBuilderCallback(ListExplorer());
+                      }),
                 NavigationMenuItem(
                     child: const Text(
                       'Editor',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     onTap: () {
-                      widget.pageBuilderCallback(NodeEditor());
+                      widget.pageBuilderCallback(const NodeEditor());
                     }),
-                if (_isLogged)
+                if (isLogged)
                   NavigationMenuItem(
                       child: const Text(
                         'Settings',
