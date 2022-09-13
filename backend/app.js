@@ -2,6 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const userRoutes = require('./routes/user');
+const listRoutes = require('./routes/list');
+const fileRoutes = require('./routes/file');
+const directoryRoutes = require('./routes/directory');
 const auth = require('./middleware/auth');
 const app = express();
 const port = 3000;
@@ -21,12 +24,14 @@ app.use((req, res, next) => {
 });
 
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
 app.use('/auth', userRoutes);
+app.use('/list', listRoutes);
+app.use('/directory', directoryRoutes);
+app.use('/file', fileRoutes);
 app.get('/isLoggedIn', auth, (req, res) => {
   res.send('check if logged');
-});
-app.get('/test_get', auth, (req, res) => {
-  res.send('test get booboom');
 });
 
 app.listen(port, () => {
