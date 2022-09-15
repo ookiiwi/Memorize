@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/node_editor.dart';
+import 'package:memorize/web/node_editor.dart';
 import 'package:memorize/tab.dart';
 import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';

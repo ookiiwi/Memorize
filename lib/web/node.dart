@@ -1,8 +1,8 @@
 import 'package:directed_graph/directed_graph.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/node_base.dart';
+import 'package:memorize/web/node_base.dart';
 
-export 'package:memorize/node_base.dart'
+export 'package:memorize/web/node_base.dart'
     show Node, Property, OutputProperty, InputProperty;
 
 enum IOType { input, output, none }

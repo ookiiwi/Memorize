@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
-import 'package:memorize/node.dart';
+import 'package:memorize/web/node.dart';
 import 'package:nanoid/nanoid.dart';
 
 GetIt getIt = GetIt.instance;

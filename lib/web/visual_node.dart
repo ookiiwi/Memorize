@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/node.dart';
+import 'package:memorize/web/node.dart';
 import 'package:memorize/widget.dart';
 import 'package:multi_value_listenable_builder/multi_value_listenable_builder.dart';
 import 'package:nanoid/nanoid.dart';
 import 'package:nil/nil.dart';
 import 'package:provider/provider.dart';
 
-export 'package:memorize/node.dart';
+export 'package:memorize/web/node.dart';
 
 typedef IOConnCallback = void Function(_NodeIO? ioState);
 

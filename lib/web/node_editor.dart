@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:js/js.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/menu.dart' as menu;
-import 'package:memorize/visual_node.dart';
+import 'package:memorize/web/visual_node.dart';
 import 'package:memorize/web/file_picker.dart';
 import 'package:memorize/widget.dart';
 import 'package:provider/provider.dart';
@@ -108,7 +108,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
 
   void _exportAddon() {
     _releaseExport.value = true;
-    print('export');
     _saveAs();
     _releaseExport.value = false;
   }
