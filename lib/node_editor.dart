@@ -7,6 +7,7 @@ import 'package:js/js_util.dart' as js;
 import 'package:flutter/material.dart';
 import 'package:js/js.dart';
 import 'package:memorize/data.dart';
+import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/visual_node.dart';
 import 'package:memorize/web/file_picker.dart';
 import 'package:memorize/widget.dart';
@@ -34,6 +35,8 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   final _viewerKey = GlobalKey();
   late final RenderBox _viewerRenderBox;
   var _rootKey = UniqueKey();
+  final _releaseExport = ValueNotifier(false);
+  final _menuFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -68,7 +71,14 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     return {};
   }
 
+  void _save() {
+    // TODO: check if file has already been saved before
+    // yes => use previous path
+    // no => call _saveAs
+  }
+
   void _saveAs() async {
+
     final json = kDebugMode
         ? const JsonEncoder.withIndent("    ").convert(serialize())
         : jsonEncode(serialize());
@@ -96,6 +106,13 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     }
   }
 
+  void _exportAddon() {
+    _releaseExport.value = true;
+    print('export');
+    _saveAs();
+    _releaseExport.value = false;
+  }
+
   void _dataCallback(data) =>
       WidgetsBinding.instance.addPostFrameCallback((_) => outputWidget.value =
           data); // post frame callback because conflict when loading from json
@@ -106,14 +123,40 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   @override
   Widget serializableBuild(BuildContext context) {
     return Column(children: [
-      Row(
+      menu.DropDownMenuManager(
+          child: Row(
         children: [
-          FloatingActionButton(
-              onPressed: _saveAs, child: const Icon(Icons.save)),
-          FloatingActionButton(
-              onPressed: _loadEditor, child: const Icon(Icons.restore_page)),
+          menu.DropDownMenu(
+            items: [
+              [
+                menu.MenuItem(
+                    text: 'Open', icon: Icons.ramen_dining, onTap: _loadEditor),
+                menu.MenuItem(text: 'Save', icon: Icons.save, onTap: _save),
+                menu.MenuItem(
+                    text: 'Save as', icon: Icons.save_as, onTap: _saveAs),
+              ],
+              [
+                menu.MenuItem(
+                    text: 'Export', icon: Icons.settings, onTap: _exportAddon)
+              ],
+              [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
+            ],
+            child: const Text('File'),
+          ),
+          menu.DropDownMenu(
+            items: [
+              [
+                menu.MenuItem(text: 'Home', icon: Icons.home, onTap: () {}),
+                menu.MenuItem(text: 'Share', icon: Icons.share, onTap: () {}),
+                menu.MenuItem(
+                    text: 'Settings', icon: Icons.settings, onTap: () {}),
+              ],
+              [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
+            ],
+            child: const Text('File'),
+          ),
         ],
-      ),
+      )),
       Expanded(
           child: ContextMenuManager(
               builder: (context, child) => Row(children: [
@@ -126,9 +169,10 @@ class _NodeEditor extends SerializableState<NodeEditor> {
                                 transformationController: _controller,
                                 child: MultiProvider(
                                     providers: [
+                                      Provider.value(value: _releaseExport),
                                       Provider.value(value: _toScene),
                                     ],
-                                    child: VisualRootNode(
+                                    builder: (context, child) => VisualRootNode(
                                         key: _rootKey,
                                         nodes: {
                                           InputGroup(): const Offset(100, 100),
