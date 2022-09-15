@@ -45,6 +45,7 @@ class VisualRootNode extends StatefulWidget {
 class VisualRootNodeState extends SerializableState<VisualRootNode> {
   late final RootNode _root;
   late final Map<String, ValueNotifier<Offset>> _nodeOffsets;
+  late final ValueNotifier<bool>_releaseMode;
 
   void registerNode(Node node, Offset offset) {
     setState(() {
@@ -72,6 +73,13 @@ class VisualRootNodeState extends SerializableState<VisualRootNode> {
         registerNode(e.key, e.value);
       }
     }
+
+    _releaseMode = Provider.of(context, listen:false);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
   }
 
   @override
@@ -90,12 +98,15 @@ class VisualRootNodeState extends SerializableState<VisualRootNode> {
   @override
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> ret = {
-      "offsets": _nodeOffsets
-          .map((id, off) => MapEntry(id, [off.value.dx, off.value.dy])),
+      if (!_releaseMode.value)
+        "offsets": _nodeOffsets
+            .map((id, off) => MapEntry(id, [off.value.dx, off.value.dy])),
       "root": _root.toJson()
     };
 
-    assert(ret["offsets"]!.length == _nodeOffsets.length);
+    if (!_releaseMode.value) {
+      assert(ret["offsets"]!.length == _nodeOffsets.length);
+    }
 
     return ret;
   }
@@ -181,8 +192,9 @@ class _VisualNode extends State<VisualNode> {
                 behavior: HitTestBehavior.opaque,
                 onSecondaryTapDown: (details) => _rightClickDetails = details,
                 onSecondaryTap: () {
-                  if (_rightClickDetails == null || _contextItems.isEmpty)
+                  if (_rightClickDetails == null || _contextItems.isEmpty) {
                     return;
+                  }
 
                   final pos = _rightClickDetails!.globalPosition;
 
@@ -324,6 +336,8 @@ class _NodeIO extends State<NodeIO> {
   _NodeIO? _currIOConn;
   final ValueNotifier<Color> _linkColor = ValueNotifier(Colors.red);
 
+  late final ValueNotifier<bool> _releaseMode;
+
   Link? get _lastLink {
     final linkRenderer = LinkRenderer.of(context);
     if (linkRenderer.isNotEmpty) {
@@ -339,6 +353,8 @@ class _NodeIO extends State<NodeIO> {
     toScene = Provider.of(context, listen: false) ?? (off) => off;
     property = Provider.of(context, listen: false);
     _nodeOffset = Provider.of(context, listen: false)..addListener(_nodeMoved);
+    _releaseMode = Provider.of(context, listen: false);
+    
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       anchor.value = _computeAnchor;
@@ -385,12 +401,14 @@ class _NodeIO extends State<NodeIO> {
     });
   }
 
-  Map<String, dynamic> toJson() => {
-        if (kDebugMode)
-          'propParentType': property.parent.runtimeType.toString(),
-        'id': id,
-        'connections': _connections.toList()
-      };
+  Map<String, dynamic> toJson() => _releaseMode.value
+      ? {}
+      : {
+          if (kDebugMode)
+            'propParentType': property.parent.runtimeType.toString(),
+          'id': id,
+          'connections': _connections.toList()
+        };
 
   void _registerIO() => _ios[id] = this;
 
