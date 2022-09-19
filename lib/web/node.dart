@@ -98,6 +98,12 @@ class RootNode {
         "Graph must contain ${nodes.length} instead of ${graph.length}.");
   }
 
+  getData() {
+    final OutputGroup dataNode =
+        graph.firstWhere((e) => e is OutputGroup) as OutputGroup;
+    return dataNode.output;
+  }
+
   void _registerSingletonInstance() {
     getIt.registerSingleton<RootNode>(this);
   }
@@ -173,14 +179,16 @@ class RootNode {
 
 class ContainerNode extends Node {
   ContainerNode()
-      : _argb = List.generate(4, (i) => ValueNotifier(255), growable: false) {
+      : _argb =
+            List.generate(4, (i) => InputPropertyData(255), growable: false) {
     outputProps = applyPropsArgs(OutputProperty.new, getOutputPropsArgs());
 
     inputProps = applyPropsArgs(InputProperty.new, getInputPropsArgs());
   }
 
   ContainerNode.fromJson(Map<String, dynamic> json)
-      : _argb = List.from(json["argb"].map((e) => ValueNotifier<double>(e))),
+      : _argb =
+            List.from(json["argb"].map((e) => InputPropertyData<double>(e))),
         super.fromJson(json) {
     outputProps = applyPropsArgs(
         OutputProperty.fromJson, getOutputPropsArgs(json['outputProps']));
@@ -195,8 +203,11 @@ class ContainerNode extends Node {
 
   @override
   List<FunctionArgs> getInputPropsArgs([List? json]) => [
-        FunctionArgs(json != null ? [json[0], this] : [this, 0],
-            json == null ? {#builderOptions: []} : {}),
+        FunctionArgs(
+            json != null ? [json[0], this] : [this, 0],
+            json == null
+                ? {#data: InputPropertyData<dynamic>(null), #builderOptions: []}
+                : {}),
         ...List.generate(
             _argb.length,
             (i) => FunctionArgs(
@@ -219,7 +230,7 @@ class ContainerNode extends Node {
         })
       ];
 
-  final List<ValueNotifier<double>> _argb;
+  final List<InputPropertyData<double>> _argb;
 
   List<int> _extractArgb() => _argb.map((e) => e.value.toInt()).toList();
 
@@ -238,8 +249,8 @@ class InputGroup extends InputNode {
   }
 
   InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json, true) {
-    outputProps = List.unmodifiable(
-        json["outputProps"].map((e) => OutputProperty.fromJson(e, this)));
+    outputProps = List.unmodifiable(json["outputProps"].map((e) =>
+        OutputProperty.fromJson(e, this, data: wrapData(() => null, []))));
   }
 
   @override
@@ -258,18 +269,30 @@ class InputGroup extends InputNode {
 class OutputGroup extends Node {
   OutputGroup({this.dataChanged}) : super(true) {
     outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable([
-      InputProperty(this, 0, data: output, onNotifierChanged: _notifierChanged)
-    ]);
+    inputProps = List.unmodifiable([InputProperty(this, 0, data: output)]);
+
+    output.addListener(() {
+      _dataChanged();
+      _dataRegisterListener();
+    });
   }
 
   OutputGroup.fromJson(Map<String, dynamic> json, {this.dataChanged})
       : super.fromJson(json, true) {
     outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable(json['inputProps'].map((e) =>
-        InputProperty.fromJson(e, this, onNotifierChanged: _notifierChanged)));
+    inputProps =
+        List.unmodifiable(json['inputProps'].map((e) => InputProperty.fromJson(
+              e,
+              this,
+              data: output,
+            )));
 
     dataChanged ??= dataChangedPlaceHolder;
+
+    output.addListener(() {
+      _dataChanged();
+      _dataRegisterListener();
+    });
   }
 
   @override
@@ -286,14 +309,8 @@ class OutputGroup extends Node {
 
   static void Function(dynamic)? dataChangedPlaceHolder;
 
-  ValueNotifier<dynamic> output = ValueNotifier(null);
+  final output = InputPropertyData<dynamic>(null);
   void Function(dynamic)? dataChanged;
-
-  void _notifierChanged(notifier) {
-    output = notifier;
-    _dataChanged();
-    _dataRegisterListener();
-  }
 
   void _dataRegisterListener() {
     output.addListener(_dataChanged);
@@ -311,10 +328,8 @@ class DummyNode extends Node {
           data: wrapData(() => DateTime.now(), [inputData, inputData2])),
     ];
     inputProps = [
-      InputProperty(this, 0,
-          data: inputData, onNotifierChanged: (n) => inputData = n),
-      InputProperty(this, 1,
-          data: inputData2, onNotifierChanged: (n) => inputData2 = n)
+      InputProperty(this, 0, data: inputData),
+      InputProperty(this, 1, data: inputData2),
     ];
   }
 
@@ -330,6 +345,76 @@ class DummyNode extends Node {
     throw UnimplementedError();
   }
 
-  var inputData = ValueNotifier<dynamic>(null);
-  var inputData2 = ValueNotifier<dynamic>(null);
+  final inputData = InputPropertyData<dynamic>(null);
+  final inputData2 = InputPropertyData<dynamic>(null);
+}
+
+class RoundedNode extends Node {
+  RoundedNode() {
+    inputData2.value = 0.0;
+    outputProps = [
+      OutputProperty(this, 0,
+          data: wrapData(buildData, [inputData, inputData2])),
+    ];
+    inputProps = [
+      InputProperty(
+        this,
+        0,
+        data: inputData,
+      ),
+      InputProperty(
+        this,
+        1,
+        data: inputData2,
+        builderName: 'slider',
+        builderOptions: [0, 360],
+      )
+    ];
+  }
+
+  void _resetProps() {
+    outputProps
+      ..clear()
+      ..addAll([
+        OutputProperty(this, 0,
+            data: wrapData(buildData, [inputData, inputData2])),
+      ]);
+    inputProps
+      ..clear()
+      ..addAll([
+        InputProperty(
+          this,
+          0,
+          data: inputData,
+        ),
+        InputProperty(
+          this,
+          1,
+          data: inputData2,
+          builderName: 'slider',
+          builderOptions: [0, 360],
+        )
+      ]);
+  }
+
+  @override
+  List<FunctionArgs> getInputPropsArgs([List? json]) {
+    // TODO: implement getInputPropsArgs
+    throw UnimplementedError();
+  }
+
+  @override
+  List<FunctionArgs> getOutputPropsArgs([List? json]) {
+    // TODO: implement getOutputPropsArgs
+    throw UnimplementedError();
+  }
+
+  final inputData = InputPropertyData<dynamic>(null);
+  final inputData2 = InputPropertyData<dynamic>(null);
+
+  Widget buildData() {
+    return ClipRRect(
+        borderRadius: BorderRadius.circular(inputData2.value),
+        child: inputData.value);
+  }
 }
