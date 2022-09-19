@@ -5,6 +5,30 @@ import 'package:nanoid/nanoid.dart';
 
 GetIt getIt = GetIt.instance;
 
+class InputPropertyData<T> extends ValueNotifier<T> {
+  InputPropertyData(T value) : super(value) {
+    notifier = ValueNotifier(value);
+  }
+
+  late ValueNotifier<T> _notifier;
+  ValueNotifier<T> get notifier => _notifier;
+  set notifier(ValueNotifier<T> notifier) {
+    _notifier = notifier;
+    _notifier.addListener(_listener);
+    notifyListeners();
+  }
+
+  @override
+  T get value => notifier.value;
+
+  @override
+  set value(T newVal) => notifier.value = newVal;
+
+  void _listener() {
+    notifyListeners();
+  }
+}
+
 class _OutputPropertyData<T> extends ValueNotifier<T?> {
   _OutputPropertyData(
       {required this.canEmit,
@@ -81,7 +105,7 @@ abstract class Node extends JsonExtendable {
       List.unmodifiable(args.map((e) => e.apply(function)));
 
   final String id;
-  final isStatic;
+  final bool isStatic;
   late final List<InputProperty> inputProps;
   late final List<OutputProperty> outputProps;
 
@@ -126,19 +150,18 @@ abstract class InputNode extends Node {
   }
 }
 
-abstract class Property extends JsonExtendable {
+abstract class Property<T extends ValueNotifier> extends JsonExtendable {
   Property(
     this.parent,
     this.port, {
-    ValueNotifier? data,
+    required T data,
     this.builderName,
     this.builderOptions = const [],
   })  : assert(builderOptions != null),
-        _dataNotifier = data ?? ValueNotifier(null);
+        _dataNotifier = data;
 
-  Property.fromJson(Map<String, dynamic> json, this.parent,
-      {ValueNotifier? data})
-      : _dataNotifier = data ?? ValueNotifier(null),
+  Property.fromJson(Map<String, dynamic> json, this.parent, {required T data})
+      : _dataNotifier = data,
         port = json['port'],
         builderName = json["builderName"],
         builderOptions = List.from(json["builderOptions"]),
@@ -159,7 +182,7 @@ abstract class Property extends JsonExtendable {
   final Node parent;
   String get connId => getConnId(this);
 
-  ValueNotifier _dataNotifier;
+  T _dataNotifier;
   get data => _dataNotifier.value;
 
   ValueNotifier get dataNotifier => _dataNotifier;
@@ -167,22 +190,21 @@ abstract class Property extends JsonExtendable {
   String getConnId(Property prop) => '${prop.parent.id}.${prop.port}';
 }
 
-class InputProperty extends Property {
+class InputProperty extends Property<InputPropertyData> {
   InputProperty(super.parent, super.port,
       {this.onNotifierChanged,
-      super.data,
+      required InputPropertyData data,
       super.builderName,
       List builderOptions = const []})
-      : super(builderOptions: builderOptions);
+      : super(builderOptions: builderOptions, data: data);
 
   InputProperty.fromJson(Map<String, dynamic> json, Node parent,
-      {ValueNotifier? data, this.onNotifierChanged})
+      {required InputPropertyData data, this.onNotifierChanged})
       : super.fromJson(json, parent, data: data);
 
   set dataNotifier(ValueNotifier notifier) {
-    if (onNotifierChanged != null) onNotifierChanged!(notifier);
-    _dataNotifier = notifier;
-    notifier.addListener(() => parent.updateEmission());
+    _dataNotifier.notifier = notifier;
+    _dataNotifier.addListener(() => parent.updateEmission());
     parent.updateEmission();
   }
 
@@ -196,7 +218,7 @@ class InputProperty extends Property {
 
 class OutputProperty extends Property with ChangeNotifier {
   OutputProperty(super.parent, super.port,
-      {_OutputPropertyData? data,
+      {required _OutputPropertyData data,
       super.builderName,
       List builderOptions =
           const [] // super.builderOptions is not working well with constructor tearoff e.g Function.apply(__.new, ...),
@@ -207,7 +229,7 @@ class OutputProperty extends Property with ChangeNotifier {
   }
 
   OutputProperty.fromJson(Map<String, dynamic> json, Node parent,
-      {_OutputPropertyData? data})
+      {required _OutputPropertyData data})
       : _connections = Set.from(json['connections']),
         super.fromJson(json, parent, data: data) {
     _init();
