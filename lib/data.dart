@@ -59,8 +59,7 @@ class AList {
 
   AListStats get stats => _stats;
 
-  String get uniqueName => name;;
-
+  String get uniqueName => name;
 
   List<Map> get entries => _entries;
 
