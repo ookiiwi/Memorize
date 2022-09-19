@@ -10,8 +10,11 @@ import 'package:memorize/ad_state.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
   final AdState? adState =
       kIsWeb ? null : AdState(MobileAds.instance.initialize());
+
+  Provider.debugCheckInvalidValueType = null;
 
   runApp(
       Provider.value(value: adState, builder: (context, _) => const MyApp()));
