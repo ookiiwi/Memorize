@@ -76,9 +76,13 @@ class _LoginPage extends State<LoginPage> {
 
                       _clearControllers();
 
-                      await (_register
+                      final connStatus = await (_register
                           ? Auth.register(user)
                           : Auth.login(user));
+
+                      if (connStatus == UserConnectionStatus.loggedIn) {
+                        Navigator.of(context).pop();
+                      }
 
                       await DataLoader.load();
                     },
