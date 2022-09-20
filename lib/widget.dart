@@ -183,11 +183,15 @@ class ExpandedWidget extends StatefulWidget {
   const ExpandedWidget(
       {Key? key,
       required this.child,
+      this.header,
+      this.sectionTitle,
       required this.isExpanded,
       required this.duration})
       : super(key: key);
 
   final Widget child;
+  final Widget? header;
+  final String? sectionTitle;
   final bool isExpanded;
   final Duration duration;
   @override
@@ -199,6 +203,8 @@ class _ExpandedWidget extends State<ExpandedWidget>
   late AnimationController _expandedController;
   late Animation<double> _animation;
 
+  bool _isExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -206,6 +212,8 @@ class _ExpandedWidget extends State<ExpandedWidget>
         AnimationController(vsync: this, duration: widget.duration);
     _animation = CurvedAnimation(
         parent: _expandedController, curve: Curves.fastOutSlowIn);
+
+    _isExpanded = widget.isExpanded;
 
     _expandCheck();
   }
@@ -222,20 +230,38 @@ class _ExpandedWidget extends State<ExpandedWidget>
     super.dispose();
   }
 
-  void _expandCheck() {
-    //print(_expandedController.status.toString());
-
-    widget.isExpanded
-        ? _expandedController.forward()
-        : _expandedController.reverse();
-  }
+  void _expandCheck() => _isExpanded
+      ? _expandedController.forward()
+      : _expandedController.reverse();
 
   @override
   Widget build(BuildContext context) {
-    return SizeTransition(
-      sizeFactor: _animation,
-      axisAlignment: 1.0,
-      child: widget.child,
+    return Column(
+      children: [
+        widget.header != null
+            ? widget.header!
+            : GestureDetector(
+                onTap: () => setState(() {
+                      _isExpanded = !_isExpanded;
+                      _expandCheck();
+                    }),
+                child: Row(
+                  children: [
+                    Icon(_isExpanded
+                        ? Icons.arrow_drop_down_rounded
+                        : Icons.arrow_right_rounded),
+                    Expanded(
+                        child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5),
+                            child: Text(widget.sectionTitle ?? '')))
+                  ],
+                )),
+        SizeTransition(
+          sizeFactor: _animation,
+          axisAlignment: 1.0,
+          child: widget.child,
+        )
+      ],
     );
   }
 }
@@ -913,5 +939,77 @@ abstract class SerializableState<T extends StatefulWidget> extends State<T> {
   @nonVirtual
   Widget build(BuildContext context) {
     return serializableBuild(context);
+  }
+}
+
+class AppendableListView extends StatefulWidget {
+  const AppendableListView(
+      {super.key,
+      required this.items,
+      required this.onAdd,
+      required this.onChanged});
+
+  final Iterable<String> items;
+  final VoidCallback onAdd;
+  final void Function(dynamic value, int i, dynamic oldValue) onChanged;
+
+  @override
+  State<StatefulWidget> createState() => _AppendableListView();
+}
+
+class _AppendableListView extends State<AppendableListView> {
+  final _controller = ScrollController();
+  final _textFieldController = TextEditingController();
+
+  Iterable<String> get items => widget.items;
+  int? _itemModified;
+
+  void _scrollDown() {
+    _controller.animateTo(_controller.position.maxScrollExtent,
+        duration: const Duration(seconds: 2), curve: Curves.fastOutSlowIn);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      ListView.builder(
+          shrinkWrap: true,
+          controller: _controller,
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            return GestureDetector(
+                onTap: () => setState(() => _itemModified = i),
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: Container(
+                            alignment: Alignment.center,
+                            color: Colors.amber,
+                            height: 20,
+                            child: _itemModified != i
+                                ? Text(items.elementAt(i))
+                                : TextField(
+                                    textAlign: TextAlign.center,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    autofocus: true,
+                                    controller: _textFieldController,
+                                    onSubmitted: (value) => setState(() {
+                                      widget.onChanged(
+                                          value, i, items.elementAt(i));
+                                      _itemModified = null;
+                                      _textFieldController.clear();
+                                    }),
+                                  )))
+                  ],
+                ));
+          }),
+      FloatingActionButton(
+          onPressed: () {
+            _scrollDown();
+            widget.onAdd();
+            setState(() {});
+          },
+          child: const Icon(Icons.add))
+    ]);
   }
 }
