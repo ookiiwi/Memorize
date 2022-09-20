@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:js/js_util.dart' as js;
 import 'package:flutter/material.dart';
 import 'package:js/js.dart';
+import 'package:memorize/addon.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/web/visual_node.dart';
@@ -36,7 +37,8 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   late final RenderBox _viewerRenderBox;
   var _rootKey = UniqueKey();
   final _releaseExport = ValueNotifier(false);
-  final _menuFocusNode = FocusNode();
+
+  late Addon addon;
 
   @override
   void initState() {
@@ -53,6 +55,10 @@ class _NodeEditor extends SerializableState<NodeEditor> {
 
       _viewerRenderBox = tmp;
     });
+
+    if (!isFromJson) {
+      addon = LanguageAddon('language');
+    }
   }
 
   @override
@@ -64,12 +70,12 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   }
 
   @override
-  void fromJson(Map<String, dynamic> json) {}
+  void fromJson(Map<String, dynamic> json) {
+    addon = AddonUtil.fromJson(json['addon']);
+  }
 
   @override
-  Map<String, dynamic> toJson() {
-    return {};
-  }
+  Map<String, dynamic> toJson() => {'addon': addon.toJson()};
 
   void _save() {
     // TODO: check if file has already been saved before
@@ -78,7 +84,6 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   }
 
   void _saveAs() async {
-
     final json = kDebugMode
         ? const JsonEncoder.withIndent("    ").convert(serialize())
         : jsonEncode(serialize());
@@ -112,9 +117,9 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     _releaseExport.value = false;
   }
 
-  void _dataCallback(data) =>
-      WidgetsBinding.instance.addPostFrameCallback((_) => outputWidget.value =
-          data); // post frame callback because conflict when loading from json
+  void _dataCallback(data) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => addon.node = AddonNode(child: data));
+      }); // post frame callback because conflict when loading from json
 
   Offset _toScene(Offset offset) =>
       _controller.toScene(_viewerRenderBox.globalToLocal(offset));
@@ -156,13 +161,29 @@ class _NodeEditor extends SerializableState<NodeEditor> {
           ),
         ],
       )),
+      const Divider(
+        height: 1,
+      ),
       Expanded(
           child: ContextMenuManager(
               builder: (context, child) => Row(children: [
                     FittedBox(
+                        fit: BoxFit.fitHeight,
+                        child: SizedBox(
+                            height: MediaQuery.of(context).size.height - 100,
+                            width: MediaQuery.of(context).size.width * 0.1,
+                            child: Column(
+                              children: addon.options
+                                  .map((e) => e.build(context, editMode: true))
+                                  .toList(),
+                            ))),
+                    const VerticalDivider(
+                      width: 1,
+                    ),
+                    FittedBox(
                         child: SizedBox(
                             height: dHeight,
-                            width: dWidth * 0.8,
+                            width: dWidth * 0.7,
                             child: InteractiveViewer(
                                 key: _viewerKey,
                                 transformationController: _controller,
@@ -224,7 +245,19 @@ class _NodeEditor extends SerializableState<NodeEditor> {
                                                                 .pop();
                                                           },
                                                           child: const Text(
-                                                              'Dummy'))
+                                                              'Dummy')),
+                                                      ContextMenuItem(
+                                                          onTap: () {
+                                                            RoundedNode().render(
+                                                                context,
+                                                                offset:
+                                                                    localPos);
+                                                            Navigator.of(
+                                                                    context)
+                                                                .pop();
+                                                          },
+                                                          child: const Text(
+                                                              'Rounded'))
                                                     ]);
 
                                                 _rightClickDetails = null;
@@ -234,11 +267,14 @@ class _NodeEditor extends SerializableState<NodeEditor> {
                                               onSecondaryTapDown: (details) =>
                                                   _rightClickDetails = details,
                                             )))))),
+                    const VerticalDivider(
+                      width: 1,
+                    ),
                     ValueListenableBuilder(
                         valueListenable: outputWidget,
                         builder: (context, cnt, child) {
-                          return outputWidget.value != null
-                              ? Expanded(child: outputWidget.value!)
+                          return addon.node != null
+                              ? Expanded(child: addon.build())
                               : Container();
                         })
                   ])))
