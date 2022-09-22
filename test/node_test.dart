@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:memorize/node.dart';
-import 'package:memorize/node_base.dart';
+import 'package:memorize/web/node.dart';
+import 'package:memorize/web/node_base.dart';
 
 void main() {
   group('connection', () {
@@ -120,13 +120,13 @@ void main() {
 
     tearDown(() => getIt.resetScope(dispose: false));
 
-    test('toJson', () {
+    test('toJson with connected nodes', () {
       final root = RootNode();
       root.connect(input.outputProps.first, {output.inputProps.first});
       expect(() => json = jsonEncode(root), returnsNormally);
     });
 
-    test('fromJson', () {
+    test('fromJson with connected node', () {
       late final RootNode root;
       final jsonData = jsonDecode(json);
 
@@ -139,7 +139,61 @@ void main() {
 
       expect(input.outputProps[0].connections.contains('${output.id}.0'),
           equals(true));
+
+      expect(root.graph.length, equals(2));
     });
+
+    test('fromJson without connected node', () {
+      RootNode root = RootNode()
+        ..addNode(input)
+        ..addNode(output);
+
+      final json = jsonEncode(root);
+      final jsonData = jsonDecode(json);
+
+      //print('json: $json');
+
+      expect(() {
+        root.dispose();
+        root = RootNode.fromJson(jsonData);
+      }, returnsNormally);
+
+      expect(() {
+        root.graph.firstWhere((e) => e is InputGroup);
+        root.graph.firstWhere((e) => e is OutputGroup);
+      }, returnsNormally);
+
+      expect(root.graph.vertices.length, equals(2));
+    });
+
+    test('toJson unconnected nodes', () {
+      final RootNode root = RootNode()
+        ..addNode(input)
+        ..addNode(output)
+        ..addNode(DummyNode());
+
+      //expect(, matcher)
+      print(root.toJson());
+    });
+  });
+
+  group('Root cleanup', () {
+    tearDown(() => getIt.resetScope(dispose: false));
+
+    test('remove unused nodes', () {
+      final input = InputGroup();
+      final output = OutputGroup();
+      final container = ContainerNode();
+      final root = RootNode();
+
+      root.connect(input.outputProps.first, {output.inputProps.first});
+      root.connect(input.outputProps.first, {container.inputProps.first});
+      root.removeUnusedNodes();
+
+      expect(root.graph.contains(container), equals(false));
+    });
+
+    // TODO: test with input nodes
   });
 
   group('disconnection', () {
