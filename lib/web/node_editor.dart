@@ -122,7 +122,8 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   }
 
   void _dataCallback(data) => WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() => addon.node = AddonNode(child: data));
+        setState(
+            () => addon.node = data != null ? AddonNode(child: data) : null);
       }); // post frame callback because conflict when loading from json
 
   Offset _toScene(Offset offset) =>
