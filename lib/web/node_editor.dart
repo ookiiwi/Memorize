@@ -57,7 +57,7 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     });
 
     if (!isFromJson) {
-      addon = LanguageAddon('language');
+      addon = LanguageAddon('Language');
     }
   }
 
@@ -81,6 +81,10 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     // TODO: check if file has already been saved before
     // yes => use previous path
     // no => call _saveAs
+  }
+
+  void _onAddonChanged(Addon newAddon) {
+    setState(() => addon = newAddon);
   }
 
   void _saveAs() async {
@@ -127,56 +131,17 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   @override
   Widget serializableBuild(BuildContext context) {
     return Column(children: [
-      menu.DropDownMenuManager(
-          child: Row(
-        children: [
-          menu.DropDownMenu(
-            items: [
-              [
-                menu.MenuItem(
-                    text: 'Open', icon: Icons.ramen_dining, onTap: _loadEditor),
-                menu.MenuItem(text: 'Save', icon: Icons.save, onTap: _save),
-                menu.MenuItem(
-                    text: 'Save as', icon: Icons.save_as, onTap: _saveAs),
-              ],
-              [
-                menu.MenuItem(
-                    text: 'Export', icon: Icons.settings, onTap: _exportAddon)
-              ],
-              [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
-            ],
-            child: const Text('File'),
-          ),
-          menu.DropDownMenu(
-            items: [
-              [
-                menu.MenuItem(text: 'Home', icon: Icons.home, onTap: () {}),
-                menu.MenuItem(text: 'Share', icon: Icons.share, onTap: () {}),
-                menu.MenuItem(
-                    text: 'Settings', icon: Icons.settings, onTap: () {}),
-              ],
-              [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
-            ],
-            child: const Text('File'),
-          ),
-        ],
-      )),
+      _EditorTopMenu(_loadEditor, _save, _saveAs, _exportAddon),
       const Divider(
         height: 1,
       ),
       Expanded(
           child: ContextMenuManager(
               builder: (context, child) => Row(children: [
-                    FittedBox(
-                        fit: BoxFit.fitHeight,
-                        child: SizedBox(
-                            height: MediaQuery.of(context).size.height - 100,
-                            width: MediaQuery.of(context).size.width * 0.1,
-                            child: Column(
-                              children: addon.options
-                                  .map((e) => e.build(context, editMode: true))
-                                  .toList(),
-                            ))),
+                    _AddonOptionsTab(
+                      options: addon.options,
+                      onChanged: _onAddonChanged,
+                    ),
                     const VerticalDivider(
                       width: 1,
                     ),
@@ -279,5 +244,110 @@ class _NodeEditor extends SerializableState<NodeEditor> {
                         })
                   ])))
     ]);
+  }
+}
+
+class _EditorTopMenu extends StatelessWidget {
+  const _EditorTopMenu(this.open, this.save, this.saveAs, this.export);
+
+  final VoidCallback open;
+  final VoidCallback save;
+  final VoidCallback saveAs;
+  final VoidCallback export;
+
+  @override
+  Widget build(BuildContext context) {
+    return menu.DropDownMenuManager(
+        child: Row(
+      children: [
+        menu.DropDownMenu(
+          items: [
+            [
+              menu.MenuItem(
+                  text: 'Open', icon: Icons.ramen_dining, onTap: open),
+              menu.MenuItem(text: 'Save', icon: Icons.save, onTap: save),
+              menu.MenuItem(
+                  text: 'Save as', icon: Icons.save_as, onTap: saveAs),
+            ],
+            [
+              menu.MenuItem(text: 'Export', icon: Icons.settings, onTap: export)
+            ],
+            [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
+          ],
+          child: const Text('File'),
+        ),
+        menu.DropDownMenu(
+          items: [
+            [
+              menu.MenuItem(text: 'Home', icon: Icons.home, onTap: () {}),
+              menu.MenuItem(text: 'Share', icon: Icons.share, onTap: () {}),
+              menu.MenuItem(
+                  text: 'Settings', icon: Icons.settings, onTap: () {}),
+            ],
+            [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
+          ],
+          child: const Text('File'),
+        ),
+      ],
+    ));
+  }
+}
+
+class _AddonOptionsTab extends StatefulWidget {
+  const _AddonOptionsTab(
+      {this.defaultValue, required this.options, this.onChanged});
+
+  final String? defaultValue;
+  final List<AddonOption> options;
+  final void Function(Addon value)? onChanged;
+
+  @override
+  State<StatefulWidget> createState() => _AddonOptionsTabState();
+}
+
+class _AddonOptionsTabState extends State<_AddonOptionsTab> {
+  String _selectedValue = '';
+
+  get onChanged => widget.onChanged;
+  get options => widget.options;
+
+  static final Map<String, dynamic> _addons = {
+    'Language': LanguageAddon('Language')
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValue = widget.defaultValue ?? _addons.keys.first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+        fit: BoxFit.fitHeight,
+        child: SizedBox(
+            height: MediaQuery.of(context).size.height - 100,
+            width: MediaQuery.of(context).size.width * 0.1,
+            child: Column(
+              children: [
+                menu.DropDownMenuManager(
+                    child: menu.DropDownMenu(
+                  child: Text(_selectedValue),
+                  items: [
+                    [
+                      ..._addons.keys.toList().map((e) => menu.MenuItem(
+                          text: e,
+                          onTap: () {
+                            setState(() => _selectedValue = e);
+                            if (onChanged != null) {
+                              onChanged!(_addons[e]!);
+                            }
+                          }))
+                    ]
+                  ],
+                )),
+                ...options.map((e) => e.build(context, editMode: true)).toList()
+              ],
+            )));
   }
 }
