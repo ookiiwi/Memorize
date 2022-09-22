@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 class MenuItem {
-  const MenuItem({required this.text, required this.icon, required this.onTap});
+  const MenuItem({required this.text, this.icon, required this.onTap});
 
   final String text;
-  final IconData icon;
+  final IconData? icon;
   final VoidCallback onTap;
 }
 
@@ -75,7 +75,7 @@ class _DropDownMenu extends State<DropDownMenu> {
   void _openMenu() {
     _menuOverlay = _buildMenuOverlay();
     Overlay.of(context)?.insert(_menuOverlay!);
-    
+
     DropDownMenuManager.of(context).replaceCurrentMenu(_closeMenu);
     setState(() => _isOpen = true);
   }
@@ -85,7 +85,8 @@ class _DropDownMenu extends State<DropDownMenu> {
         padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Row(
           children: [
-            Icon(item.icon, color: Colors.white, size: 22),
+            if (item.icon != null)
+              Icon(item.icon, color: Colors.white, size: 22),
             const SizedBox(
               width: 10,
             ),
