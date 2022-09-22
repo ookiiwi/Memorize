@@ -1,9 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
+import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/web/node.dart';
 import 'package:memorize/web/node_base.dart';
-import 'package:memorize/widget.dart';
 
 class AddonUtil {
   static Addon fromJson(Map<String, dynamic> json) {
@@ -12,6 +10,24 @@ class AddonUtil {
         return LanguageAddon.fromJson(json);
       default:
         throw Exception();
+    }
+  }
+}
+
+class AddonOptionUtil {
+  static AddonOption fromJson(
+      Map<String, dynamic> json, List Function(Type type) argsCallback) {
+    switch (json['type']) {
+      case 'AddonTextOption':
+        List args = argsCallback(AddonTextOption);
+        return AddonTextOption.fromJson(json, onChanged: args[0]);
+      case 'AddonCheckBoxListOption':
+        return AddonCheckBoxListOption.fromJson(json);
+      case 'AddonDropdownOption':
+        List args = argsCallback(AddonDropdownOption);
+        return AddonDropdownOption.fromJson(json, onChanged: args[0]);
+      default:
+        throw FlutterError('${json['type']} is not a valid addon option type');
     }
   }
 }
@@ -33,147 +49,145 @@ class AddonNode extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
-class AddonOption {
+abstract class AddonOption {
   AddonOption(
       {required this.title, required this.value, this.flags = EDITABLE});
   AddonOption.fromJson(Map<String, dynamic> json)
       : title = json['title'],
-        value = _valueFromJson(json['value']),
         flags = json['flags'];
 
   Map<String, dynamic> toJson() =>
-      {'title': title, 'value': value, 'flags': flags};
+      {'title': title, 'flags': flags, 'type': runtimeType.toString()};
 
   final String title;
-  final dynamic value;
+  late final dynamic value;
   int flags;
 
   static const int EDIT_MODE = (1 << 0);
   static const int EDITABLE = (1 << 1);
 
-  static dynamic _valueFromJson(value) {
-    if (value is Map) {
-      return Map<String, bool>.from(value);
-    }
+  Widget build(BuildContext context, {bool editMode = false});
+}
 
-    return value;
+class AddonDropdownOption extends AddonOption {
+  AddonDropdownOption(
+      {required super.title,
+      required List<String> items,
+      required this.onChanged})
+      : super(value: items);
+
+  AddonDropdownOption.fromJson(Map<String, dynamic> json,
+      {required this.onChanged})
+      : super.fromJson(json) {
+    value = json['value'];
   }
 
+  @override
+  Map<String, dynamic> toJson() => super.toJson()..addAll({'value': value});
+
+  final void Function(dynamic value) onChanged;
+
+  @override
   Widget build(BuildContext context, {bool editMode = false}) {
-    if (editMode) flags |= EDIT_MODE;
-
-    bool isCollection = false;
-    late final Widget widget;
-
-    if (value is Map<String, bool>) {
-      isCollection = true;
-      widget = AddonCheckBoxListOption(value: value, flags: flags);
-    } else if (value is String) {
-      widget = AddonTextOption(
-        value: value,
-        flags: flags,
-        onChanged: (newVal) {},
-      );
-    } else {
-      throw Exception();
-    }
-
-    return Padding(
-        padding: const EdgeInsets.all(5),
-        child: isCollection
-            ? ExpandedWidget(
-                child: widget,
-                isExpanded: true,
-                sectionTitle: title,
-                duration: const Duration(milliseconds: 100))
-            : widget);
+    return menu.DropDownMenuManager(
+        child: menu.DropDownMenu(items: [
+      List.from(
+          value.map((e) => menu.MenuItem(text: e, onTap: () => onChanged(e))))
+    ]));
   }
 }
 
-class AddonTextOption extends StatefulWidget {
-  const AddonTextOption(
-      {super.key,
-      required this.value,
-      required this.flags,
-      required this.onChanged});
+class AddonTextOption extends AddonOption {
+  AddonTextOption(
+      {required super.title,
+      String value = '',
+      super.flags,
+      required this.onChanged})
+      : super(value: value);
 
-  final int flags;
-  final String value;
+  AddonTextOption.fromJson(Map<String, dynamic> json, {required this.onChanged})
+      : super.fromJson(json) {
+    value = json['value'];
+  }
+
+  @override
+  Map<String, dynamic> toJson() => super.toJson()..addAll({'value': value});
+
   final void Function(String value) onChanged;
 
   @override
-  State<StatefulWidget> createState() => _AddonTextOption();
-}
-
-class _AddonTextOption extends State<AddonTextOption> {
-  @override
-  Widget build(BuildContext context) {
-    return (widget.flags & AddonOption.EDITABLE) > 0
+  Widget build(BuildContext context, {bool editMode = false}) {
+    return (flags & AddonOption.EDITABLE) > 0
         ? TextField(
-            controller: TextEditingController(text: widget.value),
-            onChanged: widget.onChanged,
+            controller: TextEditingController(text: value),
+            onChanged: onChanged,
           )
-        : Text(widget.value);
+        : Text(value);
   }
 }
 
-class AddonCheckBoxListOption extends StatefulWidget {
-  const AddonCheckBoxListOption(
-      {super.key, required this.value, required this.flags});
+class AddonCheckBoxListOption extends AddonOption {
+  AddonCheckBoxListOption(
+      {required super.title, super.flags, required Map<String, bool> value})
+      : super(value: value);
 
-  final int flags;
-  final Map<String, bool> value;
-
-  @override
-  State<StatefulWidget> createState() => _AddonCheckBoxListOption();
-}
-
-class _AddonCheckBoxListOption extends State<AddonCheckBoxListOption> {
-  Map<String, bool> get value => widget.value;
-  int get flags => widget.flags;
+  AddonCheckBoxListOption.fromJson(Map<String, dynamic> json)
+      : super.fromJson(json) {
+    value = Map<String, bool>.from(json['value']);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ListView.builder(
-            shrinkWrap: true,
-            itemCount: value.length,
-            itemBuilder: (context, i) => Container(
-                padding: const EdgeInsets.all(5),
-                child: Row(
-                  children: [
-                    if ((flags & AddonOption.EDIT_MODE) == 0)
-                      Checkbox(
-                          value: value[value.keys.elementAt(i)],
-                          onChanged: (newVal) {
-                            if (newVal == null) return;
-                            value[value.keys.elementAt(i)] = newVal;
-                            setState(() {});
-                          }),
-                    // check if text edition flag is set
-                    (flags & (AddonOption.EDIT_MODE | AddonOption.EDITABLE)) > 0
-                        ? Expanded(
-                            child: TextField(
-                            controller: TextEditingController(
-                                text: value.keys.elementAt(i)),
-                            onSubmitted: (newVal) {
-                              value[newVal] =
-                                  value.remove(value.keys.elementAt(i))!;
-                            },
-                          ))
-                        : Text(value.keys.elementAt(i))
-                  ],
-                ))),
-        FloatingActionButton(
-          onPressed: () {
-            value.addAll({'': true});
-            setState(() {});
-          },
-          child: const Icon(Icons.add),
-        )
-      ],
-    );
+  Map<String, dynamic> toJson() => super.toJson()..addAll({'value': value});
+
+  final _notifier = ValueNotifier(false);
+
+  @override
+  Widget build(BuildContext context, {bool editMode = false}) {
+    return ValueListenableBuilder(
+        valueListenable: _notifier,
+        builder: (context, _, child) => Column(
+              children: [
+                ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: value.length,
+                    itemBuilder: (context, i) => Container(
+                        padding: const EdgeInsets.all(5),
+                        child: Row(
+                          children: [
+                            if (!editMode)
+                              Checkbox(
+                                  value: value[value.keys.elementAt(i)],
+                                  onChanged: (newVal) {
+                                    if (newVal == null) return;
+                                    value[value.keys.elementAt(i)] = newVal;
+                                    _notifier.value = !_notifier.value;
+                                  }),
+                            // check if text edition flag is set
+                            (flags &
+                                        (AddonOption.EDIT_MODE |
+                                            AddonOption.EDITABLE)) >
+                                    0
+                                ? Expanded(
+                                    child: TextField(
+                                    controller: TextEditingController(
+                                        text: value.keys.elementAt(i)),
+                                    onSubmitted: (newVal) {
+                                      value[newVal] = value
+                                          .remove(value.keys.elementAt(i))!;
+                                    },
+                                  ))
+                                : Text(value.keys.elementAt(i))
+                          ],
+                        ))),
+                FloatingActionButton(
+                  onPressed: () {
+                    value.addAll({'': true});
+                    _notifier.value = !_notifier.value;
+                  },
+                  child: const Icon(Icons.add),
+                )
+              ],
+            ));
   }
 }
 
@@ -182,16 +196,15 @@ abstract class AddonBuildOptions {}
 abstract class Addon {
   Addon(this.name, {this.node, required List<AddonOption> options})
       : _options = options;
-  Addon.fromJson(Map<String, dynamic> json)
+  Addon.fromJson(Map<String, dynamic> json, List Function(Type) argsCallback)
       : name = json['name'],
         node = json['node'] != null
             ? AddonNode.fromJson(json: json['node'])
             : null,
-        _options =
-            List.from(json['options'].map((e) => AddonOption.fromJson(e)));
+        _options = List.from(json['options']
+            .map((e) => AddonOptionUtil.fromJson(e, argsCallback)));
 
   Map<String, dynamic> toJson() {
-    //assert(node != null);
     return {
       'type': runtimeType.toString(),
       'name': name,
@@ -212,11 +225,22 @@ abstract class Addon {
 class LanguageAddon extends Addon {
   LanguageAddon(super.name, {super.node})
       : super(options: [
-          AddonOption(title: 'name', value: ''),
-          AddonOption(title: 'languages', value: {'fr': true, 'en': true})
+          AddonTextOption(title: 'name', onChanged: (newVal) {}),
+          AddonCheckBoxListOption(
+              title: 'languages', value: {'fr': true, 'en': true})
         ]);
 
-  LanguageAddon.fromJson(Map<String, dynamic> json) : super.fromJson(json);
+  LanguageAddon.fromJson(Map<String, dynamic> json)
+      : super.fromJson(json, _fromJsonArgsMapper);
+
+  static List _fromJsonArgsMapper(Type type) {
+    switch (type) {
+      case AddonTextOption:
+        return [(newVal) {}];
+      default:
+        return [];
+    }
+  }
 
   @override
   Widget build([AddonBuildOptions? options]) {
