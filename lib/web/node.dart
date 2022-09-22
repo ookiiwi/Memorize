@@ -175,6 +175,24 @@ class RootNode {
     final start = graph.firstWhere((e) => e is InputGroup, orElse: () => node);
     return node is InputNode || graph.path(start, node).isNotEmpty;
   }
+
+  void removeUnusedNodes() {
+    final input = graph.firstWhere((e) => e is InputGroup);
+    final output = graph.firstWhere((e) => e is OutputGroup);
+    final paths = graph.paths(input, output).reduce((v, e) => v + e).toSet();
+    final orphenNodes = graph.toSet().difference(paths);
+
+    // no element other than input and output group nodes
+    if (graph.length == 2) return;
+
+    for (var node in orphenNodes) {
+      if (node is InputNode) {
+        if (graph.shortestPath(node, output).isNotEmpty) continue;
+      }
+
+      graph.remove(node);
+    }
+  }
 }
 
 class ContainerNode extends Node {
