@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/web/node_editor.dart';
 import 'package:memorize/tab.dart';
 import 'package:memorize/web/login.dart';
 import 'package:memorize/widget.dart';
+import 'package:nil/nil.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key, required this.title, String? listPath})
@@ -141,26 +141,49 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
 
 class HomePage extends StatelessWidget with ATab {
   HomePage({Key? key}) : super(key: key);
-  final Addon addon = JpnAddon();
+  final _navKey = GlobalKey<NavigatorState>();
+  //final Addon addon = JpnAddon();
 
   @override
   void reload() {}
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: PageView(children: [
-          Align(
-              alignment: Alignment.topCenter,
-              child: SearchWidget(
-                key: UniqueKey(),
-                width: MediaQuery.of(context).size.width * 0.8,
-                height: 50,
-                builder: (context, data) => addon.buildListEntryPreview(data),
-                // TODO: set fetch callback
-              )),
-        ]));
+    return TabNavigator(
+        navigatorKey: _navKey,
+        builder: (context) => Container(
+            alignment: Alignment.topCenter,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    height: 55,
+                    width: 55,
+                  ),
+                  SearchWidget(
+                      key: UniqueKey(),
+                      width: MediaQuery.of(context).size.width * 0.8,
+                      height: 50,
+                      builder: (context, data) =>
+                          Container() //addon.buildListEntryPreview(data),
+                      // TODO: set fetch callback
+                      ),
+                  SizedBox(
+                      height: 55,
+                      width: 55,
+                      child: FloatingActionButton(
+                        onPressed: () {
+                          // push upload overlay
+                          // let user choose what file and which one
+                          Navigator.of(context).push(MaterialPageRoute(
+                              builder: (context) =>
+                                  const SafeArea(child: UploadPage())));
+                        },
+                        child: const Icon(Icons.add),
+                      ))
+                ])));
   }
 }
 

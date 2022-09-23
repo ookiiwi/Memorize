@@ -87,14 +87,14 @@ class CloudFileExplorer extends FileExplorer {
       final formData = FormData.fromMap({
         'status': 'private',
         'path': path,
-        'list': MultipartFile.fromString(jsonEncode(list),
+        'file': MultipartFile.fromString(jsonEncode(list),
             filename: list.name, contentType: MediaType("application", "json"))
       });
 
       final response = list.serverId != null
-          ? await dio.put(_serverUrl + '/list/' + list.serverId!,
+          ? await dio.put(_serverUrl + '/file/list' + list.serverId!,
               data: formData)
-          : await dio.post(_serverUrl + '/list', data: formData);
+          : await dio.post(_serverUrl + '/file/list', data: formData);
 
       final String? listId = response.data["listId"];
       print('serv: $listId');

@@ -1,17 +1,23 @@
+import 'dart:convert';
 import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/file_explorer.dart';
+import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/quiz.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
+import 'package:overlayment/overlayment.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_io/io.dart';
 
 const String listPage = 'listPage';
 
@@ -545,7 +551,7 @@ class ListPage extends StatefulWidget with ATab {
 }
 
 class _ListPage extends State<ListPage> {
-  final Addon _addon = JpnAddon();
+  //final Addon _addon = JpnAddon();
   late final TextEditingController _nameController;
   AList _list = AList('');
   bool _nameIsValid = false;
@@ -646,23 +652,24 @@ class _ListPage extends State<ListPage> {
                               },
                               selectable: _openSelection,
                               child: GestureDetector(
-                                  onLongPress: () =>
-                                      setState(() => _openSelection = true),
-                                  onTap: () => Navigator.push(context,
-                                          MaterialPageRoute(builder: (context) {
-                                        return JpnEntryPage(
-                                            entry: _list.entries[i]);
-                                      })),
-                                  child: Container(
-                                      padding: const EdgeInsets.all(5),
-                                      margin: const EdgeInsets.symmetric(
-                                          horizontal: 10),
-                                      decoration: BoxDecoration(
-                                          color: Colors.amber,
-                                          borderRadius:
-                                              BorderRadius.circular(30)),
-                                      child: _addon.buildListEntryPreview(
-                                          _list.entries[i])))));
+                                onLongPress: () =>
+                                    setState(() => _openSelection = true),
+                                //onTap: () => Navigator.push(context,
+                                //        MaterialPageRoute(builder: (context) {
+                                //      return JpnEntryPage(
+                                //          entry: _list.entries[i]);
+                                //    })),
+                                //child: Container(
+                                //    padding: const EdgeInsets.all(5),
+                                //    margin: const EdgeInsets.symmetric(
+                                //        horizontal: 10),
+                                //    decoration: BoxDecoration(
+                                //        color: Colors.amber,
+                                //        borderRadius:
+                                //            BorderRadius.circular(30)),
+                                //    child: _addon.buildListEntryPreview(
+                                //        _list.entries[i]))
+                              )));
                     })))
       ],
     );
@@ -741,6 +748,8 @@ class _ListPage extends State<ListPage> {
                           openBuilder: (context, _) {
                             return QuizLauncher(
                               list: _list,
+                              addon: _fe.fetch(
+                                  'addon'), // fetch addon folder and load addons
                             );
                           })),
                   Positioned(
@@ -774,14 +783,15 @@ class _ListPage extends State<ListPage> {
                                     color: Colors.white,
                                   )),
                               openBuilder: (context, _) {
-                                return ListSearchPage(
-                                    addon: _addon,
-                                    onConfirm: (values) => setState(
-                                          () {
-                                            _list.entries.addAll(values);
-                                            _fe.write(_fe.wd, _list);
-                                          },
-                                        ));
+                                return Container();
+                                //return ListSearchPage(
+                                //    addon: _addon,
+                                //    onConfirm: (values) => setState(
+                                //          () {
+                                //            _list.entries.addAll(values);
+                                //            _fe.write(_fe.wd, _list);
+                                //          },
+                                //        ));
                               }))
                 ]),
                 // TODO: Implement stats page
@@ -850,15 +860,16 @@ class _ListSearchPage extends State<ListSearchPage> {
                                       ? _selectedItems.remove(i)
                                       : _selectedItems.add(i)),
                               child: Container(
-                                  margin:
-                                      const EdgeInsets.symmetric(vertical: 10),
-                                  decoration: BoxDecoration(
-                                      color: _selectedItems.contains(i)
-                                          ? Colors.amberAccent
-                                          : Colors.amber,
-                                      borderRadius: BorderRadius.circular(30)),
-                                  child: widget.addon
-                                      .buildListEntryPreview(_results[i]))));
+                                margin:
+                                    const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                    color: _selectedItems.contains(i)
+                                        ? Colors.amberAccent
+                                        : Colors.amber,
+                                    borderRadius: BorderRadius.circular(30)),
+                                //child: widget.addon
+                                //    .buildListEntryPreview(_results[i])
+                              )));
                     })),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               ConfirmationButton(
@@ -1048,5 +1059,160 @@ class _ProfilePage extends State<ProfilePage> {
                         borderRadius: BorderRadius.circular(20)))))
       ],
     );
+  }
+}
+
+class UploadPage extends StatefulWidget {
+  const UploadPage({super.key});
+
+  @override
+  State<StatefulWidget> createState() => _UploadPage();
+}
+
+class _UploadPage extends State<UploadPage> {
+  static final List<String> _types = ['List', 'Addon'];
+  static final List<String> _listUploadStatus = ['Private', 'Shared'];
+
+  String _selectedType = _types.first;
+  String _selectedFile = '';
+  List<bool> _selectedListUploadStatus = [true, false];
+
+  final String _overlayExpanderName = 'TypeDropdown';
+
+  List<Widget> _buildListOptions() => [
+        Padding(
+            padding: const EdgeInsets.all(10),
+            child: ToggleButtons(
+              borderRadius: BorderRadius.circular(10),
+              children: _listUploadStatus
+                  .map((e) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      child: Text(e)))
+                  .toList(),
+              isSelected: _selectedListUploadStatus,
+              onPressed: (i) {
+                setState(() {
+                  _selectedListUploadStatus.fillRange(
+                      0, _selectedListUploadStatus.length, false);
+                  _selectedListUploadStatus[i] = true;
+                });
+              },
+            ))
+      ];
+
+  List<Widget> _buildAddonOptions() => [];
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+        child: Column(
+      children: [
+        OverExpander<String>(
+          name: _overlayExpanderName,
+          fitParentWidth: false,
+          alignment: Alignment.bottomCenter,
+          backgroundSettings:
+              const BackgroundSettings(color: Colors.transparent),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              _selectedType,
+            ),
+          ),
+          onSelect: (value) {
+            if (value != null) {
+              setState(() {
+                _selectedType = value;
+              });
+            }
+          },
+          expandChild: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: _types
+                  .map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Overlayment.dismissName<String>(_overlayExpanderName,
+                              result: e);
+                        },
+                        child: Text(e),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
+        const SizedBox(
+          height: 10,
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+                margin: const EdgeInsets.symmetric(horizontal: 5),
+                constraints: BoxConstraints(
+                    minWidth: MediaQuery.of(context).size.width * 0.05),
+                decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Colors.blue))),
+                child: Text(_selectedFile)),
+            MaterialButton(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30)),
+              color: Colors.amber,
+              onPressed: () {},
+              child: const Text('Choose'),
+            )
+          ],
+        ),
+        const SizedBox(
+          height: 10,
+        ),
+        ...(_selectedType == _types.first
+            ? _buildListOptions()
+            : _buildAddonOptions()),
+        const SizedBox(
+          height: 50,
+        ),
+        MaterialButton(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            onPressed: () {
+              final jsonData =
+                  jsonDecode(File(_selectedFile).readAsStringSync());
+
+              if (_selectedType == _types.first) {
+                CloudFileExplorer()
+                    .write(_selectedFile, AList.fromJson(jsonData));
+              }
+
+              try {
+                final addon = AddonUtil.fromJson(jsonData);
+                final formData = FormData.fromMap({
+                  'file': MultipartFile.fromString(jsonEncode(addon),
+                      filename: addon.name,
+                      contentType: MediaType("application", "json"))
+                });
+
+                final response =
+                    dio.post('http://localhost:3000/addon', data: formData);
+              } on SocketException {
+                print('No Internet connection 😑');
+              } on HttpException {
+                print("Couldn't find the post 😱");
+              } on FormatException {
+                print("Bad response format 👎");
+              } catch (e) {
+                print('An error occured during addon upload: $e');
+              }
+            },
+            child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [Text('Upload'), Icon(Icons.upload_rounded)]))
+      ],
+    ));
   }
 }

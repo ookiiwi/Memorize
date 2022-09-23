@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:memorize/widget.dart';
 
 class MenuItem {
   const MenuItem({required this.text, this.icon, required this.onTap});
@@ -66,6 +67,8 @@ class _DropDownMenu extends State<DropDownMenu> {
   List<List<MenuItem>> get items => widget.items;
   get itemBuilder => widget.itemBuilder;
 
+  final _btnKey = GlobalKey();
+
   void _closeMenu() {
     _menuOverlay?.remove();
     DropDownMenuManager.of(context).noMenu();
@@ -127,9 +130,8 @@ class _DropDownMenu extends State<DropDownMenu> {
   }
 
   OverlayEntry _buildMenuOverlay() {
-    final renderBox = context.findRenderObject() as RenderBox?;
-    final size = renderBox!.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = getWidgetSize(_btnKey)!;
+    final offset = getWidgetPosition(_btnKey)!;
 
     return OverlayEntry(
         builder: (context) => Stack(children: [
@@ -160,6 +162,7 @@ class _DropDownMenu extends State<DropDownMenu> {
               }
             },
       child: MaterialButton(
+          key: _btnKey,
           splashColor: Colors.transparent,
           mouseCursor: MouseCursor.uncontrolled,
           onPressed: () {
