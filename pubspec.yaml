@@ -77,6 +77,8 @@ dependencies:
   dio: ^4.0.6
   http_parser: ^4.0.1
   dropdown_button2: ^1.8.1
+  appinio_swiper: ^1.1.0
+  overlayment: ^0.1.2
 
 dev_dependencies:
   flutter_test:
