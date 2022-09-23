@@ -3,9 +3,9 @@ const mongoose = require('mongoose');
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'lists/' + req.params.folder);
+        cb(null, '/storage/' + req.params.status + '/' + req.params.dest);
     },
-    filename: (req, file, cb) => {
+    filename: (req, _, cb) => {
         cb(null, req.params.id);
     }
 });
@@ -13,24 +13,21 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
     
     if (req.body.status === 'private'){
-        req.params.folder = 'private';
-    } else {
         // TODO: check if allowed
-        req.params.folder = 'public';
+        req.params.status = 'private';
+    } else {
+        req.params.status = 'public';
     }
 
     if (!req.params.id) 
     {
-        console.log('set param');
         req.params.id = String(mongoose.Types.ObjectId());
     }
     
     cb(null, true);
-
-    console.log(req.body.status);
 };
 
 module.exports = multer({
         storage: storage, 
         fileFilter: fileFilter
-    }).single('list');
+    }).single('file');
