@@ -4,8 +4,6 @@ import 'package:memorize/data.dart';
 import 'package:memorize/web/node_editor.dart';
 import 'package:memorize/tab.dart';
 import 'package:memorize/web/login.dart';
-import 'package:memorize/widget.dart';
-import 'package:nil/nil.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key, required this.title, String? listPath})
@@ -25,7 +23,7 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey();
   final UniqueKey _navMenuKey = UniqueKey();
   final double _appBarHeight = 40;
-  ATab _currentPage = HomePage();
+  ATab _currentPage = const HomePage();
 
   @override
   void initState() {
@@ -74,7 +72,7 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
                   children: [
                     GestureDetector(
                         onTap: () => setState(() {
-                              _currentPage = HomePage();
+                              _currentPage = const HomePage();
                             }),
                         child: FittedBox(
                             fit: BoxFit.fitHeight,
@@ -140,51 +138,13 @@ class _MainPage extends State<MainPage> with SingleTickerProviderStateMixin {
 }
 
 class HomePage extends StatelessWidget with ATab {
-  HomePage({Key? key}) : super(key: key);
-  final _navKey = GlobalKey<NavigatorState>();
-  //final Addon addon = JpnAddon();
+  const HomePage({super.key});
 
   @override
   void reload() {}
 
   @override
-  Widget build(BuildContext context) {
-    return TabNavigator(
-        navigatorKey: _navKey,
-        builder: (context) => Container(
-            alignment: Alignment.topCenter,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                    height: 55,
-                    width: 55,
-                  ),
-                  SearchWidget(
-                      key: UniqueKey(),
-                      width: MediaQuery.of(context).size.width * 0.8,
-                      height: 50,
-                      builder: (context, data) =>
-                          Container() //addon.buildListEntryPreview(data),
-                      // TODO: set fetch callback
-                      ),
-                  SizedBox(
-                      height: 55,
-                      width: 55,
-                      child: FloatingActionButton(
-                        onPressed: () {
-                          // push upload overlay
-                          // let user choose what file and which one
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (context) =>
-                                  const SafeArea(child: UploadPage())));
-                        },
-                        child: const Icon(Icons.add),
-                      ))
-                ])));
-  }
+  Widget build(BuildContext context) => SearchPage();
 }
 
 class NavigationMenu extends StatefulWidget {
@@ -215,8 +175,7 @@ class NavigationMenu extends StatefulWidget {
   State<NavigationMenu> createState() => _NavigationMenu();
 }
 
-class _NavigationMenu extends State<NavigationMenu>
-    with SingleTickerProviderStateMixin {
+class _NavigationMenu extends State<NavigationMenu> {
   bool _isLogged = false;
   bool get isLogged {
     Auth.retrieveState().then((value) {
@@ -253,7 +212,7 @@ class _NavigationMenu extends State<NavigationMenu>
                       'Home',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    onTap: () => widget.pageBuilderCallback(HomePage())),
+                    onTap: () => widget.pageBuilderCallback(const HomePage())),
                 NavigationMenuItem(
                     child: Text(
                       isLogged ? 'Profile' : 'Login',
@@ -276,7 +235,7 @@ class _NavigationMenu extends State<NavigationMenu>
                       widget.pageBuilderCallback(isLogged
                           ? ProfilePage(
                               onLogout: () =>
-                                  widget.pageBuilderCallback(HomePage()),
+                                  widget.pageBuilderCallback(const HomePage()),
                             )
                           : null);
                     }),
