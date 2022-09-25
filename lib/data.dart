@@ -1,8 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/auth.dart';
+import 'package:memorize/file_explorer.dart';
 import 'package:memorize/reminder.dart';
+
+final FileExplorer fe = kIsWeb ? CloudFileExplorer() : MobileFileExplorer();
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -174,6 +176,7 @@ class DataLoader {
 
     Auth.init();
     if (!kIsWeb) await ReminderNotification.init();
+
     _isDataLoaded = true;
   }
 }
