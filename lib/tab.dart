@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -10,7 +11,6 @@ import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/file_explorer.dart';
-import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/quiz.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
@@ -94,8 +94,6 @@ class _ListExplorer extends State<ListExplorer>
   bool _showAddBtn = true;
   bool _pop = false;
   final int _listBtnAnimDuration = 1000;
-  static final FileExplorer _fe =
-      kIsWeb ? CloudFileExplorer() : MobileFileExplorer();
 
   final NavigationHistoryObserver _navHistory = NavigationHistoryObserver();
   ModalRoute? _route;
@@ -123,11 +121,9 @@ class _ListExplorer extends State<ListExplorer>
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (widget.listPath != null) {
         Navigator.of(_navCtx).push(MaterialPageRoute(
-            builder: (context) => Provider.value(
-                value: _fe,
-                child: ListPage(
-                  listPath: widget.listPath,
-                ))));
+            builder: (context) => ListPage.fromFile(
+                  path: widget.listPath,
+                )));
       }
     });
 
@@ -178,7 +174,7 @@ class _ListExplorer extends State<ListExplorer>
   }
 
   void _updateData() {
-    _fItems = _fe.ls()
+    _fItems = fe.ls()
       ..then((value) => setState(() {
             _items = value;
           }));
@@ -189,7 +185,7 @@ class _ListExplorer extends State<ListExplorer>
     if (Navigator.of(_navCtx).canPop()) {
       return true;
     } else {
-      _fe.cd('..');
+      fe.cd('..');
       _updateData();
     }
     return false;
@@ -238,7 +234,7 @@ class _ListExplorer extends State<ListExplorer>
                               setState(() {
                                 _openBtnMenu = !_openBtnMenu;
                                 if (value) {
-                                  _fe.mkdir(_controller.text);
+                                  fe.mkdir(_controller.text);
                                   _updateData();
                                 }
                               });
@@ -279,8 +275,7 @@ class _ListExplorer extends State<ListExplorer>
                     );
                   },
                   openBuilder: (context, _) {
-                    return Scaffold(
-                        body: Provider.value(value: _fe, child: ListPage()));
+                    return Scaffold(body: ListPage());
                   })),
         ]));
   }
@@ -293,7 +288,7 @@ class _ListExplorer extends State<ListExplorer>
           setState(() {
             _openSelection = false;
             for (var item in _selectedItems) {
-              _fe.remove(_fe.wd + '/' + (item.id ?? item.name));
+              fe.remove(fe.wd + '/' + (item.id ?? item.name));
             }
           });
 
@@ -343,7 +338,7 @@ class _ListExplorer extends State<ListExplorer>
                           borderRadius: BorderRadius.circular(20),
                           color: Colors.grey,
                         ),
-                        child: Text(_fe.wd),
+                        child: Text(fe.wd),
                       )),
                       Container(
                         margin: const EdgeInsets.only(left: 10),
@@ -440,7 +435,7 @@ class _ListExplorer extends State<ListExplorer>
                                                             if (_items[i]
                                                                     .type ==
                                                                 FileType.dir) {
-                                                              _fe.cd(_items[i]
+                                                              fe.cd(_items[i]
                                                                   .name);
                                                               _updateData();
                                                             }
@@ -465,10 +460,10 @@ class _ListExplorer extends State<ListExplorer>
                                                                     return Provider
                                                                         .value(
                                                                             value:
-                                                                                _fe,
+                                                                                fe,
                                                                             child:
-                                                                                ListPage(
-                                                                              listPath: _items[i].id, //_items[i].name,
+                                                                                ListPage.fromFile(
+                                                                              path: _items[i].id, //_items[i].name,
                                                                               createIfDontExists: false,
                                                                             ));
                                                                   },
@@ -534,10 +529,15 @@ class _ListExplorer extends State<ListExplorer>
 }
 
 class ListPage extends StatefulWidget with ATab {
-  ListPage({Key? key, this.listPath, this.createIfDontExists = true})
-      : super(key: key);
+  ListPage({Key? key, this.list, this.createIfDontExists = true})
+      : path = null,
+        super(key: key);
 
-  final String? listPath;
+  ListPage.fromFile({super.key, this.path, this.createIfDontExists = true})
+      : list = null;
+
+  final String? path;
+  final AList? list;
   final bool createIfDontExists;
   void Function() _reload = () {};
 
@@ -551,7 +551,6 @@ class ListPage extends StatefulWidget with ATab {
 }
 
 class _ListPage extends State<ListPage> {
-  //final Addon _addon = JpnAddon();
   late final TextEditingController _nameController;
   AList _list = AList('');
   bool _nameIsValid = false;
@@ -559,8 +558,6 @@ class _ListPage extends State<ListPage> {
   bool _openSelection = false;
   final List _selectedItems = [];
   late Future _fList;
-  late final FileExplorer _fe;
-  bool _feInit = false;
   bool _listSet = false;
   ModalRoute? _route;
 
@@ -582,20 +579,15 @@ class _ListPage extends State<ListPage> {
     _route = ModalRoute.of(context);
     _route?.addScopedWillPopCallback(canPop);
 
-    if (!_feInit) {
-      _fe = Provider.of<FileExplorer>(context);
-      _feInit = true;
-    }
-
-    if (!_listSet && _feInit) {
-      if (widget.listPath != null) {
-        _fList = _fe.fetch(widget.listPath!).then((value) {
+    if (!_listSet) {
+      if (widget.path != null) {
+        _fList = fe.fetch(widget.path!).then((value) {
           assert(!(value == null && !widget.createIfDontExists));
           _list = value ?? AList("List not found");
           _nameController.text = _list.name;
         });
       } else {
-        _fList = Future.value();
+        _fList = Future.value(widget.list);
       }
 
       _listSet = true;
@@ -621,8 +613,8 @@ class _ListPage extends State<ListPage> {
               onChanged: (value) {
                 //TODO: check if name valid
                 _list.name = _nameController.text;
-                _fe
-                    .write(_fe.wd, _list)
+                fe
+                    .write(fe.wd, _list)
                     .then((value) => print('serverId: ${_list.serverId}'));
               },
               decoration: InputDecoration(
@@ -654,21 +646,6 @@ class _ListPage extends State<ListPage> {
                               child: GestureDetector(
                                 onLongPress: () =>
                                     setState(() => _openSelection = true),
-                                //onTap: () => Navigator.push(context,
-                                //        MaterialPageRoute(builder: (context) {
-                                //      return JpnEntryPage(
-                                //          entry: _list.entries[i]);
-                                //    })),
-                                //child: Container(
-                                //    padding: const EdgeInsets.all(5),
-                                //    margin: const EdgeInsets.symmetric(
-                                //        horizontal: 10),
-                                //    decoration: BoxDecoration(
-                                //        color: Colors.amber,
-                                //        borderRadius:
-                                //            BorderRadius.circular(30)),
-                                //    child: _addon.buildListEntryPreview(
-                                //        _list.entries[i]))
                               )));
                     })))
       ],
@@ -748,7 +725,7 @@ class _ListPage extends State<ListPage> {
                           openBuilder: (context, _) {
                             return QuizLauncher(
                               list: _list,
-                              addon: _fe.fetch(
+                              addon: fe.fetch(
                                   'addon'), // fetch addon folder and load addons
                             );
                           })),
@@ -763,7 +740,7 @@ class _ListPage extends State<ListPage> {
                                 for (int i in _selectedItems) {
                                   _list.entries.removeAt(i);
                                 }
-                                _fe.write(_fe.wd, _list);
+                                fe.write(fe.wd, _list);
                               }),
                               child: const Icon(Icons.delete),
                             )
@@ -783,15 +760,7 @@ class _ListPage extends State<ListPage> {
                                     color: Colors.white,
                                   )),
                               openBuilder: (context, _) {
-                                return Container();
-                                //return ListSearchPage(
-                                //    addon: _addon,
-                                //    onConfirm: (values) => setState(
-                                //          () {
-                                //            _list.entries.addAll(values);
-                                //            _fe.write(_fe.wd, _list);
-                                //          },
-                                //        ));
+                                return Container(); // list search page
                               }))
                 ]),
                 // TODO: Implement stats page
@@ -1062,157 +1031,220 @@ class _ProfilePage extends State<ProfilePage> {
   }
 }
 
-class UploadPage extends StatefulWidget {
-  const UploadPage({super.key});
+class SearchPage extends StatefulWidget with ATab {
+  SearchPage({Key? key}) : super(key: key);
 
   @override
-  State<StatefulWidget> createState() => _UploadPage();
+  void reload() {}
+
+  @override
+  State<StatefulWidget> createState() => _SearchPage();
 }
 
-class _UploadPage extends State<UploadPage> {
-  static final List<String> _types = ['List', 'Addon'];
-  static final List<String> _listUploadStatus = ['Private', 'Shared'];
+class _SearchPage extends State<SearchPage> {
+  final _navKey = GlobalKey<NavigatorState>();
+  String _selectedTab = _tabs.keys.first;
+  List _data = [];
+  String _lastSearch = '';
+  Future? _previewData;
 
-  String _selectedType = _types.first;
-  String _selectedFile = '';
-  List<bool> _selectedListUploadStatus = [true, false];
+  static final Map<String, dynamic> _tabs = {
+    'Lists': _fetchLists,
+    'Addons': _fetchAddons
+  };
 
-  final String _overlayExpanderName = 'TypeDropdown';
+  static Future<List> _fetchLists(String value) async {
+    try {
+      print('fetch list');
+      final response = await dio.get('http://localhost:3000/list',
+          queryParameters: {'search': value});
+      return response.data;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('An error occured during addon upload: $e');
+    }
 
-  List<Widget> _buildListOptions() => [
-        Padding(
-            padding: const EdgeInsets.all(10),
-            child: ToggleButtons(
-              borderRadius: BorderRadius.circular(10),
-              children: _listUploadStatus
-                  .map((e) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      child: Text(e)))
-                  .toList(),
-              isSelected: _selectedListUploadStatus,
-              onPressed: (i) {
-                setState(() {
-                  _selectedListUploadStatus.fillRange(
-                      0, _selectedListUploadStatus.length, false);
-                  _selectedListUploadStatus[i] = true;
-                });
-              },
-            ))
-      ];
+    return [];
+  }
 
-  List<Widget> _buildAddonOptions() => [];
+  static Future<List> _fetchAddons(String value) async {
+    try {
+      print('fetch addon');
+      final response = await dio.get('http://localhost:3000/addon',
+          queryParameters: {'search': value});
+      return response.data;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('An error occured during addon upload: $e');
+    }
+
+    return [];
+  }
+
+  static Future<AList> _fetchList(String id) async {
+    final rawList = await CloudFileExplorer().fetch(id);
+    final json = jsonDecode(rawList);
+
+    return AList.fromJson(json);
+  }
+
+  static Future<Addon?> _fetchAddon(String id) async {
+    try {
+      final response = await dio.get('http://localhost:3000/addon/$id');
+
+      final json = jsonDecode(response.data);
+
+      return AddonUtil.fromJson(json);
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } catch (e) {
+      print('An error occured during addon upload: $e');
+    }
+
+    return null;
+  }
+
+  Widget _buildPreview(dynamic data) {
+    late final Widget ret;
+    final tabs = _tabs.keys.toList();
+
+    if (data == null) {
+      ret = const SizedBox();
+    } else if (_selectedTab == tabs[0]) {
+      ret = ListPage(list: data);
+    } else if (_selectedTab == tabs[1]) {
+      ret = data.build();
+    } else {
+      throw FlutterError('Cannot fetch data');
+    }
+
+    return ret;
+  }
+
+  void _fetchSearch(String value) async {
+    final tabs = _tabs.keys.toList();
+
+    _lastSearch = value;
+    if (_selectedTab == tabs[0]) {
+      _data = await _fetchLists(value);
+    } else if (_selectedTab == tabs[1]) {
+      _data = await (_fetchAddons(value));
+    }
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSearch(_lastSearch);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-        child: Column(
-      children: [
-        OverExpander<String>(
-          name: _overlayExpanderName,
-          fitParentWidth: false,
-          alignment: Alignment.bottomCenter,
-          backgroundSettings:
-              const BackgroundSettings(color: Colors.transparent),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              _selectedType,
-            ),
-          ),
-          onSelect: (value) {
-            if (value != null) {
-              setState(() {
-                _selectedType = value;
-              });
-            }
-          },
-          expandChild: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              children: _types
-                  .map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Overlayment.dismissName<String>(_overlayExpanderName,
-                              result: e);
-                        },
-                        child: Text(e),
+    return TabNavigator(
+        navigatorKey: _navKey,
+        builder: (context) => Stack(
+              children: [
+                Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Column(children: [
+                      Container(
+                        alignment: Alignment.topCenter,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 50),
+                        child: SearchWidget(
+                          height: 50,
+                          onChanged: _fetchSearch,
+                        ),
                       ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        ),
-        const SizedBox(
-          height: 10,
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-                margin: const EdgeInsets.symmetric(horizontal: 5),
-                constraints: BoxConstraints(
-                    minWidth: MediaQuery.of(context).size.width * 0.05),
-                decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.blue))),
-                child: Text(_selectedFile)),
-            MaterialButton(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30)),
-              color: Colors.amber,
-              onPressed: () {},
-              child: const Text('Choose'),
-            )
-          ],
-        ),
-        const SizedBox(
-          height: 10,
-        ),
-        ...(_selectedType == _types.first
-            ? _buildListOptions()
-            : _buildAddonOptions()),
-        const SizedBox(
-          height: 50,
-        ),
-        MaterialButton(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            onPressed: () {
-              final jsonData =
-                  jsonDecode(File(_selectedFile).readAsStringSync());
+                      Expanded(
+                          child: MultiTabPage(
+                              tabMargin:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                              borderRadius: BorderRadius.circular(20),
+                              tabs: _tabs.keys,
+                              onChanged: (tab) {
+                                setState(() => _selectedTab = tab);
+                                _fetchSearch(_lastSearch);
+                              },
+                              tabBuilder: (context, i) {
+                                return Container(
+                                  color: Colors.amber,
+                                  padding: const EdgeInsets.all(10),
+                                  child: GridView.builder(
+                                      gridDelegate:
+                                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                                        maxCrossAxisExtent: 150.0,
+                                        mainAxisSpacing: 10.0,
+                                        crossAxisSpacing: 10.0,
+                                        childAspectRatio: 1.0,
+                                      ),
+                                      itemCount: _data.length,
+                                      itemBuilder: (context, i) =>
+                                          GestureDetector(
+                                            child: MaterialButton(
+                                                padding:
+                                                    const EdgeInsets.all(10),
+                                                color: Colors.blue,
+                                                shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            20)),
+                                                onPressed: () {
+                                                  final id = _data[i];
 
-              if (_selectedType == _types.first) {
-                CloudFileExplorer()
-                    .write(_selectedFile, AList.fromJson(jsonData));
-              }
-
-              try {
-                final addon = AddonUtil.fromJson(jsonData);
-                final formData = FormData.fromMap({
-                  'file': MultipartFile.fromString(jsonEncode(addon),
-                      filename: addon.name,
-                      contentType: MediaType("application", "json"))
-                });
-
-                final response =
-                    dio.post('http://localhost:3000/addon', data: formData);
-              } on SocketException {
-                print('No Internet connection 😑');
-              } on HttpException {
-                print("Couldn't find the post 😱");
-              } on FormatException {
-                print("Bad response format 👎");
-              } catch (e) {
-                print('An error occured during addon upload: $e');
-              }
-            },
-            child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [Text('Upload'), Icon(Icons.upload_rounded)]))
-      ],
-    ));
+                                                  _previewData = _selectedTab ==
+                                                          _tabs.keys.first
+                                                      ? _fetchList(id)
+                                                      : _fetchAddon(id);
+                                                },
+                                                child: Center(
+                                                    child: Text(_data[i]))),
+                                          )),
+                                );
+                              },
+                              rightSection: MediaQuery.of(context).size.width <
+                                      1000 // window's width < n
+                                  ? null
+                                  : Container(
+                                      margin: const EdgeInsets.only(left: 10),
+                                      decoration: BoxDecoration(
+                                          color: Colors.purple,
+                                          borderRadius:
+                                              BorderRadius.circular(20)),
+                                      height: double.infinity,
+                                      width: MediaQuery.of(context).size.width *
+                                          0.3,
+                                      child: FutureBuilder(
+                                        future: _previewData,
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState ==
+                                              ConnectionState.waiting) {
+                                            return const Center(
+                                                child:
+                                                    CircularProgressIndicator());
+                                          } else {
+                                            return _buildPreview(_previewData);
+                                          }
+                                        },
+                                      ),
+                                    ))),
+                    ])),
+              ],
+            ));
   }
 }
