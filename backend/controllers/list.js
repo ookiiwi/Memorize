@@ -3,16 +3,16 @@ const User = require('../models/user');
 const fs = require('fs');
 const ramda = require('ramda');
 const path = require('path');
+const fu = require('../utils/file-utils');
 
 const { splitPath } = require('../utils/path-utils');
 
 exports.get = (req, res, next) => {
     List.findById(req.params.id)
     .then((list) => {
-        const permissions = list.users[req.auth.userId];
+        const permissions = req.auth ? list.users[req.auth.userId] : undefined;
 
-        if (list.owner != req.auth.userId && 
-            list.status != 'public' && !permissions){
+        if (list.status != 'public' || !permissions){
             res.status(403).json({ error: "Access denied" });
             return;
         }
@@ -75,3 +75,8 @@ exports.update = (req, res, next) => {
                 res.status(400).json({ error }) }
         );
 }
+
+exports.search = (req, res, next) => {
+    req.params.dir = '/public/list';
+    fu.search(req,res,next);
+};
