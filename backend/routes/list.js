@@ -11,7 +11,8 @@ router.use((req, res, next) => {
 });
 
 router.post('/', auth, upload, listCtrl.upload);
-router.get('/:id', auth, listCtrl.get);
+router.get('/', listCtrl.search); // returns all public lists or searched lists
+router.get('/:id', listCtrl.get); // TODO: require auth for private lists
 router.put('/:id', auth, upload, listCtrl.update);
 
 module.exports = router;
