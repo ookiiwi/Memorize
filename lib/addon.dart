@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/web/node.dart';
 import 'package:memorize/web/node_base.dart';
+import 'package:memorize/widget.dart';
 
 class AddonUtil {
   static Addon fromJson(Map<String, dynamic> json) {
@@ -145,7 +146,11 @@ class AddonCheckBoxListOption extends AddonOption {
   Widget build(BuildContext context, {bool editMode = false}) {
     return ValueListenableBuilder(
         valueListenable: _notifier,
-        builder: (context, _, child) => Column(
+        builder: (context, _, child) => ExpandedWidget(
+            isExpanded: true,
+            duration: const Duration(milliseconds: 100),
+            sectionTitle: title,
+            child: Column(
               children: [
                 ListView.builder(
                     shrinkWrap: true,
@@ -187,7 +192,7 @@ class AddonCheckBoxListOption extends AddonOption {
                   child: const Icon(Icons.add),
                 )
               ],
-            ));
+            )));
   }
 }
 
