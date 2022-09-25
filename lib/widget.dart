@@ -186,7 +186,8 @@ class ExpandedWidget extends StatefulWidget {
       this.header,
       this.sectionTitle,
       required this.isExpanded,
-      required this.duration})
+      required this.duration,
+      this.direction = AxisDirection.down})
       : super(key: key);
 
   final Widget child;
@@ -194,6 +195,8 @@ class ExpandedWidget extends StatefulWidget {
   final String? sectionTitle;
   final bool isExpanded;
   final Duration duration;
+  final AxisDirection direction;
+
   @override
   State<ExpandedWidget> createState() => _ExpandedWidget();
 }
@@ -221,6 +224,7 @@ class _ExpandedWidget extends State<ExpandedWidget>
   @override
   void didUpdateWidget(ExpandedWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _isExpanded = widget.isExpanded;
     _expandCheck();
   }
 
@@ -234,10 +238,17 @@ class _ExpandedWidget extends State<ExpandedWidget>
       ? _expandedController.forward()
       : _expandedController.reverse();
 
+  Widget _buildSizeTransition() => SizeTransition(
+        sizeFactor: _animation,
+        axisAlignment: 1.0,
+        child: widget.child,
+      );
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (widget.direction == AxisDirection.up) _buildSizeTransition(),
         widget.header != null
             ? widget.header!
             : GestureDetector(
@@ -246,21 +257,18 @@ class _ExpandedWidget extends State<ExpandedWidget>
                       _expandCheck();
                     }),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(_isExpanded
                         ? Icons.arrow_drop_down_rounded
                         : Icons.arrow_right_rounded),
-                    Expanded(
+                    FittedBox(
                         child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 5),
                             child: Text(widget.sectionTitle ?? '')))
                   ],
                 )),
-        SizeTransition(
-          sizeFactor: _animation,
-          axisAlignment: 1.0,
-          child: widget.child,
-        )
+        if (widget.direction == AxisDirection.down) _buildSizeTransition(),
       ],
     );
   }
