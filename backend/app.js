@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const userRoutes = require('./routes/user');
 const listRoutes = require('./routes/list');
+const addonRoutes = require('./routes/addon');
 const fileRoutes = require('./routes/file');
 const directoryRoutes = require('./routes/directory');
 const auth = require('./middleware/auth');
@@ -28,6 +29,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use('/auth', userRoutes);
 app.use('/list', listRoutes);
+app.use('/addon', addonRoutes);
 app.use('/directory', directoryRoutes);
 app.use('/file', fileRoutes);
 app.get('/isLoggedIn', auth, (req, res) => {
