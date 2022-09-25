@@ -294,13 +294,16 @@ class _Swipe extends State<Swipe> {
 }
 
 class SearchWidget extends StatefulWidget {
-  const SearchWidget(
-      {Key? key, this.height, this.width, this.builder, this.fetchData})
-      : super(key: key);
+  const SearchWidget({
+    Key? key,
+    this.height,
+    this.width,
+    required this.onChanged,
+  }) : super(key: key);
   final double? width;
   final double? height;
-  final Widget Function(BuildContext, dynamic data)? builder;
-  final Future<List> Function(String)? fetchData;
+  final void Function(String value) onChanged;
+
   @override
   State<SearchWidget> createState() => _SearchWidget();
 }
@@ -308,116 +311,12 @@ class SearchWidget extends StatefulWidget {
 class _SearchWidget extends State<SearchWidget> {
   final TextEditingController _controller = TextEditingController();
   final GlobalKey _key = GlobalKey();
-  late final OverlayEntry _overlay;
-  bool _overlayOpen = false;
-  List _searchData = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _overlay = _overlayEntry();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    //overlay setState
-    //_overlay.markNeedsBuild();
-  }
+  get onChanged => widget.onChanged;
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  void _manageOverlay() {
-    if (widget.builder != null) {
-      _controller.text.isNotEmpty
-          ? widget.fetchData!(_controller.text).then((value) {
-              _searchData = value;
-              _showOverlay(context);
-            })
-          : _hideOverlay();
-    }
-  }
-
-  void _showOverlay(BuildContext context) {
-    if (!_overlayOpen) {
-      OverlayState? state = Overlay.of(context);
-      if (state != null && _searchData.isNotEmpty) {
-        state.insert(_overlay);
-        _overlayOpen = true;
-      }
-    } else {
-      _overlay.markNeedsBuild();
-    }
-  }
-
-  void _hideOverlay() {
-    if (_overlayOpen) _overlay.remove();
-    _overlayOpen = false;
-  }
-
-  Widget _overlayBody() {
-    final RenderBox renderBox =
-        _key.currentContext!.findRenderObject() as RenderBox;
-
-    final Size size = renderBox.size;
-    final Offset position = renderBox.localToGlobal(Offset.zero);
-    double topPos = position.dy + size.height + 10;
-
-    return Positioned(
-        top: topPos,
-        left: position.dx,
-        child: Material(
-            child: LimitedBox(
-          maxWidth: size.width,
-          maxHeight: MediaQuery.of(context).size.height * 0.9 - (topPos),
-          child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: Colors.lightBlue,
-              ),
-              child: ListView.builder(
-                  itemCount: _searchData.length,
-                  shrinkWrap: true,
-                  itemBuilder: (context, i) {
-                    return Container(
-                        margin: EdgeInsets.only(
-                            top: (i > 0 ? 5 : 0),
-                            bottom: i < _searchData.length - 1 ? 5 : 0),
-                        decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20)),
-                        child: ElevatedButton(
-                            style: ButtonStyle(
-                                overlayColor: MaterialStateProperty.resolveWith(
-                                    (states) => Colors.amber),
-                                shape: MaterialStateProperty.resolveWith(
-                                    (states) => RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(20)))),
-                            onPressed: () {},
-                            child: widget.builder!(context, _searchData[i])));
-                  })),
-        )));
-  }
-
-  OverlayEntry _overlayEntry() {
-    return OverlayEntry(builder: (context) {
-      return _key.currentContext != null
-          ? _overlayBody()
-          : Positioned(
-              height: 500,
-              width: 100,
-              child: Material(
-                  child: Container(
-                height: 500,
-                width: 100,
-                color: Colors.red,
-              )));
-    });
   }
 
   @override
@@ -447,21 +346,19 @@ class _SearchWidget extends State<SearchWidget> {
                                 enableSuggestions: false,
                                 controller: _controller,
                                 onChanged: (value) {
-                                  //setState(() {});
-                                  _manageOverlay();
+                                  onChanged(value);
                                 },
                                 decoration: InputDecoration.collapsed(
                                     hintText: 'Search...',
                                     hintStyle:
                                         TextStyle(color: Colors.grey.shade400)),
                               ))),
-                      //if (_controller.text.isNotEmpty)
                       Container(
                           margin: const EdgeInsets.all(5),
                           child: GestureDetector(
                               onTap: () {
                                 setState(() => _controller.clear());
-                                _manageOverlay();
+                                onChanged('');
                               },
                               child: const Icon(Icons.cancel))),
                     ],
@@ -1011,5 +908,92 @@ class _AppendableListView extends State<AppendableListView> {
           },
           child: const Icon(Icons.add))
     ]);
+  }
+}
+
+class MultiTabPage extends StatefulWidget {
+  const MultiTabPage(
+      {super.key,
+      required this.tabs,
+      required this.tabBuilder,
+      required this.onChanged,
+      this.borderRadius = BorderRadius.zero,
+      this.tabMargin = EdgeInsets.zero,
+      this.leftSection,
+      this.rightSection,
+      this.footer});
+
+  final Iterable<String> tabs;
+  final void Function(String tab) onChanged;
+  final Widget Function(BuildContext context, int index) tabBuilder;
+  final BorderRadius borderRadius;
+  final EdgeInsets tabMargin;
+  final Widget? leftSection;
+  final Widget? rightSection;
+  final Widget? footer;
+
+  @override
+  State<StatefulWidget> createState() => _MultiTabPage();
+}
+
+class _MultiTabPage extends State<MultiTabPage> {
+  int _selectedTab = 0;
+  final _controller = PageController();
+  final _pageTransitionDuraction = const Duration(milliseconds: 500);
+  final _pageTransitionCurve = Curves.linearToEaseOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+            height: MediaQuery.of(context).size.height * 0.05,
+            child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: widget.tabs.length,
+                itemBuilder: (context, i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: MaterialButton(
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                        onPressed: () => setState(() {
+                              i > _selectedTab
+                                  ? _controller.nextPage(
+                                      duration: _pageTransitionDuraction,
+                                      curve: _pageTransitionCurve)
+                                  : _controller.previousPage(
+                                      duration: _pageTransitionDuraction,
+                                      curve: _pageTransitionCurve);
+
+                              _selectedTab = i;
+                            }),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        color: _selectedTab == i ? Colors.amber : Colors.grey,
+                        child:
+                            Center(child: Text(widget.tabs.elementAt(i))))))),
+        Expanded(
+            child: Padding(
+                padding: widget.tabMargin,
+                child: Row(
+                  children: [
+                    if (widget.leftSection != null) widget.leftSection!,
+                    Expanded(
+                        child: ClipRRect(
+                            borderRadius: widget.borderRadius,
+                            child: PageView.builder(
+                              controller: _controller,
+                              onPageChanged: (value) => setState(() {
+                                _selectedTab = value;
+                                widget.onChanged(widget.tabs.elementAt(value));
+                                print('changed');
+                              }),
+                              itemCount: widget.tabs.length,
+                              itemBuilder: widget.tabBuilder,
+                            ))),
+                    if (widget.rightSection != null) widget.rightSection!,
+                  ],
+                )))
+      ],
+    );
   }
 }
