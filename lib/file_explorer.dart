@@ -69,6 +69,7 @@ class CloudFileExplorer extends FileExplorer {
     try {
       final response = await dio.get(_serverUrl + '/list/' + listname);
       final data = jsonDecode(response.data);
+      print('data: $data');
       return AList.fromJson(data);
     } on SocketException {
       print('No Internet connection 😑');
@@ -84,17 +85,18 @@ class CloudFileExplorer extends FileExplorer {
   @override
   dynamic write(String path, AList list) async {
     try {
+      print('write');
       final formData = FormData.fromMap({
-        'status': 'private',
+        'status': list.status,
         'path': path,
         'file': MultipartFile.fromString(jsonEncode(list),
             filename: list.name, contentType: MediaType("application", "json"))
       });
 
       final response = list.serverId != null
-          ? await dio.put(_serverUrl + '/file/list' + list.serverId!,
+          ? await dio.put(_serverUrl + '/list/' + list.serverId!,
               data: formData)
-          : await dio.post(_serverUrl + '/file/list', data: formData);
+          : await dio.post(_serverUrl + '/list', data: formData);
 
       final String? listId = response.data["listId"];
       print('serv: $listId');
