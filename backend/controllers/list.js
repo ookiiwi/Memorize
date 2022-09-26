@@ -4,23 +4,33 @@ const fs = require('fs');
 const ramda = require('ramda');
 const path = require('path');
 const fu = require('../utils/file-utils');
+const auth = require('../middleware/auth');
 
 const { splitPath } = require('../utils/path-utils');
 
 exports.get = (req, res, next) => {
     List.findById(req.params.id)
     .then((list) => {
-        const permissions = req.auth ? list.users[req.auth.userId] : undefined;
+        console.log('get list');
+        function getList () {
+            const permissions = req.auth ? list.users[req.auth.userId] : undefined;
 
-        if (list.status != 'public' || !permissions){
-            res.status(403).json({ error: "Access denied" });
-            return;
+            if (list.status !== 'shared' && !permissions && list.owner != req.auth.userId){
+                res.status(403).json({ error: "Access denied" });
+                return;
+            }
+    
+            console.log('get ' + list.status + ' list');
+
+            const p = path.join(__dirname, '../storage/' + list.status + '/list/' + req.params.id);
+            const file = fs.readFileSync(p).toString();
+    
+            res.status(200).json(file);
         }
 
-        const p = path.join(__dirname, '../lists/' + list.status + '/' + req.params.id);
-        const file = fs.readFileSync(p).toString();
-
-        res.status(200).json(file);
+        if (list.status === 'private') auth(req, res, getList);
+        else getList();
+        
 
     }).catch((err) => { 
         console.log(err);
@@ -61,11 +71,19 @@ exports.update = (req, res, next) => {
     // TODO: name changes == change name
     // TODO: status changes == move list
     // TODO: path changes == change path
-
+    
     List.findById(req.params.id)
-        .then((list) => {
-            list.name = req.file.originalname;
+    .then((list) => {
+        if (req.file) list.name = req.file.originalname;
+        console.log('update to ' + req.body.status + ' status');
+        
+        if (list.status !== req.body.status) {
+            // TODO: check if user allowed to
+            const oldPath = path.join(__dirname, '../storage/' + list.status + '/list/' + list.id);
             list.status = req.body.status;
+            const newPath = path.join(__dirname, '../storage/' + list.status + '/list/' + list.id);
+            fs.renameSync(oldPath, newPath);
+        }
 
             list.save();
         })
@@ -77,6 +95,6 @@ exports.update = (req, res, next) => {
 }
 
 exports.search = (req, res, next) => {
-    req.params.dir = '/public/list';
+    req.params.dir = '/shared/list';
     fu.search(req,res,next);
 };
