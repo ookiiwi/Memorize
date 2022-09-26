@@ -85,14 +85,10 @@ class _ListExplorer extends State<ListExplorer>
   final List _selectedItems = [];
   bool _openSelection = false;
   final GlobalKey key = GlobalKey();
-  final ValueKey _addBtnKey = const ValueKey<int>(1);
-  final ValueKey _dummyListBtnKey = const ValueKey<int>(2);
   final GlobalKey anotherkey = GlobalKey();
   final GlobalKey<NavigatorState> navKey = GlobalKey<NavigatorState>();
   late final AnimationController _addBtnAnimController;
   late final Animation<double> _addBtnAnim;
-  bool _showAddBtn = true;
-  bool _pop = false;
   final int _listBtnAnimDuration = 1000;
 
   final NavigationHistoryObserver _navHistory = NavigationHistoryObserver();
@@ -102,15 +98,7 @@ class _ListExplorer extends State<ListExplorer>
 
   void _popFromAddBtn() {
     setState(() {
-      _pop = true;
-      _showAddBtn = false;
       _openBtnMenu = _openSelection = false;
-    });
-    Future.delayed(Duration(milliseconds: _listBtnAnimDuration)).then((value) {
-      setState(() {
-        _pop = false;
-        _showAddBtn = true;
-      });
     });
   }
 
@@ -175,9 +163,13 @@ class _ListExplorer extends State<ListExplorer>
 
   void _updateData() {
     _fItems = fe.ls()
-      ..then((value) => setState(() {
+      ..then((value) {
+        if (mounted) {
+          setState(() {
             _items = value;
-          }));
+          });
+        }
+      });
   }
 
   Future<bool> _canPop() async {
@@ -261,9 +253,6 @@ class _ListExplorer extends State<ListExplorer>
                     return GestureDetector(
                       onTap: () {
                         openBuilder();
-                        setState(() {
-                          _showAddBtn = false;
-                        });
                       },
                       child: const SizedBox(
                           height: 56,
@@ -275,7 +264,7 @@ class _ListExplorer extends State<ListExplorer>
                     );
                   },
                   openBuilder: (context, _) {
-                    return Scaffold(body: ListPage());
+                    return ListPage();
                   })),
         ]));
   }
@@ -429,8 +418,9 @@ class _ListExplorer extends State<ListExplorer>
                                                               setState(() =>
                                                                   _openSelection =
                                                                       true),
-                                                          behavior: HitTestBehavior
-                                                              .translucent,
+                                                          behavior:
+                                                              HitTestBehavior
+                                                                  .translucent,
                                                           onTap: () {
                                                             if (_items[i]
                                                                     .type ==
@@ -440,7 +430,8 @@ class _ListExplorer extends State<ListExplorer>
                                                               _updateData();
                                                             }
                                                           },
-                                                          child: _items[i].type ==
+                                                          child: _items[i]
+                                                                      .type ==
                                                                   FileType.dir
                                                               ? _closedBuilder(
                                                                   context,
@@ -457,15 +448,14 @@ class _ListExplorer extends State<ListExplorer>
                                                                   transitionType: ContainerTransitionType.fade,
                                                                   transitionDuration: const Duration(seconds: 1),
                                                                   openBuilder: (context, action) {
-                                                                    return Provider
-                                                                        .value(
-                                                                            value:
-                                                                                fe,
-                                                                            child:
-                                                                                ListPage.fromFile(
-                                                                              path: _items[i].id, //_items[i].name,
-                                                                              createIfDontExists: false,
-                                                                            ));
+                                                                    return ListPage
+                                                                        .fromFile(
+                                                                      path: _items[
+                                                                              i]
+                                                                          .id, //_items[i].name,
+                                                                      createIfDontExists:
+                                                                          false,
+                                                                    );
                                                                   },
                                                                   closedBuilder: (context, action) {
                                                                     return _closedBuilder(
@@ -481,47 +471,25 @@ class _ListExplorer extends State<ListExplorer>
                                   }
                                 })))),
                   ]),
-                  Stack(
-                    children: [
-                      Positioned(
-                          right: 10,
-                          bottom: _pop ? 10 : 71,
-                          child: ExpandedWidget(
-                              key: key,
-                              isExpanded: _openBtnMenu || _openSelection,
-                              duration: const Duration(milliseconds: 500),
-                              child: _openSelection
-                                  ? _buildSelectionBtns()
-                                  : _buildAddBtns(_navCtx))),
-                      Positioned(
-                          bottom: 10,
-                          right: 10,
-                          child: Offstage(
-                              key: const ValueKey<int>(20),
-                              offstage: _pop,
-                              child: AnimatedSwitcher(
-                                key: const ValueKey<int>(10),
-                                transitionBuilder: (child, animation) {
-                                  return FadeTransition(
-                                      opacity: animation, child: child);
-                                },
-                                duration: const Duration(milliseconds: 300),
-                                child: _showAddBtn
-                                    ? Container(
-                                        key: _addBtnKey, child: _buildAddBtn())
-                                    : Container(
-                                        key: _dummyListBtnKey,
-                                        margin: const EdgeInsets.all(5),
-                                        child: _openBtnMenu
-                                            ? Container()
-                                            : FloatingActionButton(
-                                                elevation: 0,
-                                                onPressed: () {},
-                                                child: const Icon(Icons.list),
-                                              )),
-                              )))
-                    ],
-                  )
+                  Positioned(
+                      right: 10,
+                      bottom: 10,
+                      child: ExpandedWidget(
+                          key: key,
+                          direction: AxisDirection.up,
+                          isExpanded: _openBtnMenu || _openSelection,
+                          duration: const Duration(milliseconds: 500),
+                          child: _openSelection
+                              ? _buildSelectionBtns()
+                              : _buildAddBtns(_navCtx),
+                          header: AnimatedSwitcher(
+                              key: const ValueKey<int>(10),
+                              transitionBuilder: (child, animation) {
+                                return FadeTransition(
+                                    opacity: animation, child: child);
+                              },
+                              duration: const Duration(milliseconds: 300),
+                              child: _buildAddBtn()))),
                 ],
               ));
         });
@@ -529,16 +497,25 @@ class _ListExplorer extends State<ListExplorer>
 }
 
 class ListPage extends StatefulWidget with ATab {
-  ListPage({Key? key, this.list, this.createIfDontExists = true})
+  ListPage(
+      {Key? key,
+      this.list,
+      this.createIfDontExists = true,
+      this.modifiable = true})
       : path = null,
         super(key: key);
 
-  ListPage.fromFile({super.key, this.path, this.createIfDontExists = true})
+  ListPage.fromFile(
+      {super.key,
+      this.path,
+      this.createIfDontExists = true,
+      this.modifiable = true})
       : list = null;
 
   final String? path;
   final AList? list;
   final bool createIfDontExists;
+  final bool modifiable;
   void Function() _reload = () {};
 
   @override
@@ -552,7 +529,7 @@ class ListPage extends StatefulWidget with ATab {
 
 class _ListPage extends State<ListPage> {
   late final TextEditingController _nameController;
-  AList _list = AList('');
+  late AList _list;
   bool _nameIsValid = false;
   bool get _canPop => _nameIsValid;
   bool _openSelection = false;
@@ -560,12 +537,15 @@ class _ListPage extends State<ListPage> {
   late Future _fList;
   bool _listSet = false;
   ModalRoute? _route;
+  final String _uploadWindowName = 'upload';
 
   @override
   void initState() {
     super.initState();
 
     widget._reload = () => setState(() {});
+
+    _list = widget.list ?? AList('');
 
     _nameIsValid = true; //TODO: check if name valid
     _nameController = TextEditingController(text: _list.name);
@@ -587,7 +567,7 @@ class _ListPage extends State<ListPage> {
           _nameController.text = _list.name;
         });
       } else {
-        _fList = Future.value(widget.list);
+        _fList = Future.value(null);
       }
 
       _listSet = true;
@@ -603,19 +583,24 @@ class _ListPage extends State<ListPage> {
     super.dispose();
   }
 
+  @override
+  void deactivate() {
+    Overlayment.dismissAll();
+    super.deactivate();
+  }
+
   Widget _buildElts() {
     return Column(
       children: [
         Container(
             margin: const EdgeInsets.all(20),
             child: TextField(
+              enabled: widget.modifiable,
               controller: _nameController,
               onChanged: (value) {
                 //TODO: check if name valid
                 _list.name = _nameController.text;
-                fe
-                    .write(fe.wd, _list)
-                    .then((value) => print('serverId: ${_list.serverId}'));
+                fe.write(fe.wd, _list);
               },
               decoration: InputDecoration(
                   border: OutlineInputBorder(
@@ -690,6 +675,18 @@ class _ListPage extends State<ListPage> {
     return _canPop;
   }
 
+  void _showUploadWindow() {
+    Overlayment.show(
+        OverWindow(
+            name: _uploadWindowName,
+            backgroundSettings: const BackgroundSettings(dismissOnClick: true),
+            alignment: Alignment.center,
+            child: ListUploadPage(
+                list: _list,
+                onUpload: () => Overlayment.dismissName(_uploadWindowName))),
+        context: context);
+  }
+
   @override
   Widget build(BuildContext ctx) {
     return FutureBuilder(
@@ -698,74 +695,93 @@ class _ListPage extends State<ListPage> {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           } else {
-            return PageView(
-              children: [
-                Stack(children: [
-                  _buildElts(),
-                  Align(
-                      alignment: Alignment.bottomCenter,
-                      child: OpenContainer(
-                          transitionType: ContainerTransitionType.fade,
-                          transitionDuration:
-                              const Duration(milliseconds: 1000),
-                          openElevation: 0,
-                          closedElevation: 0,
-                          closedColor: Colors.blue,
-                          closedShape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(360)),
-                          closedBuilder: (context, action) {
-                            return const SizedBox(
-                                height: 56.0,
-                                width: 56.0,
-                                child: Icon(
-                                  Icons.play_arrow,
-                                  color: Colors.white,
-                                ));
-                          },
-                          openBuilder: (context, _) {
-                            return QuizLauncher(
-                              list: _list,
-                              addon: fe.fetch(
-                                  'addon'), // fetch addon folder and load addons
-                            );
-                          })),
-                  Positioned(
-                      bottom: 10,
-                      right: 10,
-                      child: _openSelection
-                          ? FloatingActionButton(
-                              heroTag: "prout",
-                              onPressed: () => setState(() {
-                                _openSelection = false;
-                                for (int i in _selectedItems) {
-                                  _list.entries.removeAt(i);
-                                }
-                                fe.write(fe.wd, _list);
-                              }),
-                              child: const Icon(Icons.delete),
-                            )
-                          : OpenContainer(
-                              transitionType: ContainerTransitionType.fade,
-                              transitionDuration: const Duration(seconds: 1),
-                              openElevation: 0,
-                              closedElevation: 0,
-                              closedColor: Colors.blue,
-                              closedShape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(360)),
-                              closedBuilder: (context, _) => const SizedBox(
-                                  height: 56.0,
-                                  width: 56.0,
-                                  child: Icon(
-                                    Icons.add,
-                                    color: Colors.white,
-                                  )),
-                              openBuilder: (context, _) {
-                                return Container(); // list search page
-                              }))
-                ]),
-                // TODO: Implement stats page
-              ],
-            );
+            return Container(
+                color: Theme.of(context).backgroundColor,
+                child: PageView(
+                  children: [
+                    Stack(children: [
+                      _buildElts(),
+                      if (widget.modifiable)
+                        Positioned(
+                            left: 10,
+                            right: 10,
+                            bottom: 10,
+                            child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  FloatingActionButton(
+                                      onPressed: () {
+                                        _showUploadWindow();
+                                      },
+                                      child: const Icon(Icons.upload)),
+                                  OpenContainer(
+                                      transitionType:
+                                          ContainerTransitionType.fade,
+                                      transitionDuration:
+                                          const Duration(milliseconds: 1000),
+                                      openElevation: 0,
+                                      closedElevation: 0,
+                                      closedColor: Colors.blue,
+                                      closedShape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(360)),
+                                      closedBuilder: (context, action) {
+                                        return const SizedBox(
+                                            height: 56.0,
+                                            width: 56.0,
+                                            child: Icon(
+                                              Icons.play_arrow,
+                                              color: Colors.white,
+                                            ));
+                                      },
+                                      openBuilder: (context, _) {
+                                        return QuizLauncher(
+                                          list: _list,
+                                          addon: fe.fetch(
+                                              'addon'), // fetch addon folder and load addons
+                                        );
+                                      }),
+                                  _openSelection
+                                      ? FloatingActionButton(
+                                          heroTag: "prout",
+                                          onPressed: () => setState(() {
+                                            _openSelection = false;
+                                            for (int i in _selectedItems) {
+                                              _list.entries.removeAt(i);
+                                            }
+                                            fe.write(fe.wd, _list);
+                                          }),
+                                          child: const Icon(Icons.delete),
+                                        )
+                                      : OpenContainer(
+                                          transitionType:
+                                              ContainerTransitionType.fade,
+                                          transitionDuration:
+                                              const Duration(seconds: 1),
+                                          openElevation: 0,
+                                          closedElevation: 0,
+                                          closedColor: Colors.blue,
+                                          closedShape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(360)),
+                                          closedBuilder: (context, _) =>
+                                              const SizedBox(
+                                                  height: 56.0,
+                                                  width: 56.0,
+                                                  child: Icon(
+                                                    Icons.add,
+                                                    color: Colors.white,
+                                                  )),
+                                          openBuilder: (context, _) {
+                                            return Container(); // list search page
+                                          })
+                                  //)
+                                ]))
+                    ]),
+                    // TODO: Implement stats page
+                  ],
+                ));
           }
         }));
   }
@@ -1046,7 +1062,8 @@ class _SearchPage extends State<SearchPage> {
   String _selectedTab = _tabs.keys.first;
   List _data = [];
   String _lastSearch = '';
-  Future? _previewData;
+  Future _previewData = Future.value(null);
+  bool get _displayPreviewOverlay => MediaQuery.of(context).size.width < 1000;
 
   static final Map<String, dynamic> _tabs = {
     'Lists': _fetchLists,
@@ -1055,7 +1072,7 @@ class _SearchPage extends State<SearchPage> {
 
   static Future<List> _fetchLists(String value) async {
     try {
-      print('fetch list');
+      print('fetch lists');
       final response = await dio.get('http://localhost:3000/list',
           queryParameters: {'search': value});
       return response.data;
@@ -1074,7 +1091,7 @@ class _SearchPage extends State<SearchPage> {
 
   static Future<List> _fetchAddons(String value) async {
     try {
-      print('fetch addon');
+      print('fetch addons');
       final response = await dio.get('http://localhost:3000/addon',
           queryParameters: {'search': value});
       return response.data;
@@ -1092,10 +1109,7 @@ class _SearchPage extends State<SearchPage> {
   }
 
   static Future<AList> _fetchList(String id) async {
-    final rawList = await CloudFileExplorer().fetch(id);
-    final json = jsonDecode(rawList);
-
-    return AList.fromJson(json);
+    return await CloudFileExplorer().fetch(id);
   }
 
   static Future<Addon?> _fetchAddon(String id) async {
@@ -1118,14 +1132,41 @@ class _SearchPage extends State<SearchPage> {
     return null;
   }
 
-  Widget _buildPreview(dynamic data) {
+  Widget _buildPreviewTab() {
+    return Container(
+      margin: _displayPreviewOverlay ? null : const EdgeInsets.only(left: 10),
+      decoration: BoxDecoration(
+          color: Colors.transparent, borderRadius: BorderRadius.circular(20)),
+      height: double.infinity,
+      width: MediaQuery.of(context).size.width * 0.3,
+      child: FutureBuilder(
+        future: _previewData,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else {
+            return ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: _buildPreviewContent(snapshot.data));
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildPreviewContent(dynamic data) {
     late final Widget ret;
     final tabs = _tabs.keys.toList();
 
     if (data == null) {
-      ret = const SizedBox();
+      ret = Container(
+        color: Colors.purple,
+      );
     } else if (_selectedTab == tabs[0]) {
-      ret = ListPage(list: data);
+      ret = ListPage(
+        list: data,
+        modifiable: false,
+      );
     } else if (_selectedTab == tabs[1]) {
       ret = data.build();
     } else {
@@ -1139,10 +1180,13 @@ class _SearchPage extends State<SearchPage> {
     final tabs = _tabs.keys.toList();
 
     _lastSearch = value;
+    print('fetch search $value');
     if (_selectedTab == tabs[0]) {
       _data = await _fetchLists(value);
     } else if (_selectedTab == tabs[1]) {
       _data = await (_fetchAddons(value));
+    } else {
+      throw FlutterError('Unknown tab \'$_selectedTab\'');
     }
     setState(() {});
   }
@@ -1153,8 +1197,24 @@ class _SearchPage extends State<SearchPage> {
     _fetchSearch(_lastSearch);
   }
 
+  void _showPreviewOverlay() {
+    Overlayment.show(
+        OverWindow(
+            backgroundSettings: const BackgroundSettings(dismissOnClick: true),
+            alignment: Alignment.center,
+            color: Colors.transparent,
+            child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.5,
+                child: _buildPreviewTab())),
+        context: context);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_displayPreviewOverlay) {
+      Overlayment.dismissAll();
+    }
+
     return TabNavigator(
         navigatorKey: _navKey,
         builder: (context) => Stack(
@@ -1178,6 +1238,7 @@ class _SearchPage extends State<SearchPage> {
                               borderRadius: BorderRadius.circular(20),
                               tabs: _tabs.keys,
                               onChanged: (tab) {
+                                _previewData = Future.value(null);
                                 setState(() => _selectedTab = tab);
                                 _fetchSearch(_lastSearch);
                               },
@@ -1206,45 +1267,97 @@ class _SearchPage extends State<SearchPage> {
                                                             20)),
                                                 onPressed: () {
                                                   final id = _data[i];
+                                                  print('get data ');
+                                                  setState(() {
+                                                    _previewData =
+                                                        _selectedTab ==
+                                                                _tabs.keys.first
+                                                            ? _fetchList(id)
+                                                            : _fetchAddon(id);
 
-                                                  _previewData = _selectedTab ==
-                                                          _tabs.keys.first
-                                                      ? _fetchList(id)
-                                                      : _fetchAddon(id);
+                                                    if (_displayPreviewOverlay) {
+                                                      _showPreviewOverlay();
+                                                    }
+                                                  });
                                                 },
                                                 child: Center(
                                                     child: Text(_data[i]))),
                                           )),
                                 );
                               },
-                              rightSection: MediaQuery.of(context).size.width <
-                                      1000 // window's width < n
-                                  ? null
-                                  : Container(
-                                      margin: const EdgeInsets.only(left: 10),
-                                      decoration: BoxDecoration(
-                                          color: Colors.purple,
-                                          borderRadius:
-                                              BorderRadius.circular(20)),
-                                      height: double.infinity,
-                                      width: MediaQuery.of(context).size.width *
-                                          0.3,
-                                      child: FutureBuilder(
-                                        future: _previewData,
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState ==
-                                              ConnectionState.waiting) {
-                                            return const Center(
-                                                child:
-                                                    CircularProgressIndicator());
-                                          } else {
-                                            return _buildPreview(_previewData);
-                                          }
-                                        },
-                                      ),
-                                    ))),
+                              rightSection:
+                                  _displayPreviewOverlay // window's width < n
+                                      ? null
+                                      : _buildPreviewTab())),
                     ])),
               ],
             ));
+  }
+}
+
+class ListUploadPage extends StatefulWidget {
+  const ListUploadPage({super.key, required this.list, this.onUpload});
+
+  final AList list;
+  final VoidCallback? onUpload;
+
+  @override
+  State<StatefulWidget> createState() => _ListUploadPage();
+}
+
+class _ListUploadPage extends State<ListUploadPage> {
+  Map<String, bool> _selectedStatus = {'Private': true, 'Shared': false};
+  Future _writeResponse = Future.value();
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStatus = _selectedStatus
+        .map((k, v) => MapEntry(k, widget.list.status == k.toLowerCase()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        margin: const EdgeInsets.all(10),
+        child: Column(
+          children: [
+            ToggleButtons(
+              borderRadius: BorderRadius.circular(20),
+              children: _selectedStatus.keys.map((e) => Text(e)).toList(),
+              isSelected: _selectedStatus.values.toList(),
+              onPressed: (i) {
+                final key = _selectedStatus.keys.elementAt(i);
+                _selectedStatus =
+                    _selectedStatus.map((k, v) => MapEntry(k, false));
+                _selectedStatus[key] = true;
+                widget.list.status = key.toLowerCase();
+                setState(() {});
+              },
+            ),
+            Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: FutureBuilder(
+                    future: _writeResponse,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const CircularProgressIndicator();
+                      } else {
+                        return FloatingActionButton(
+                            onPressed: () {
+                              print('list id: ${widget.list.serverId}');
+                              _writeResponse =
+                                  CloudFileExplorer().write(fe.wd, widget.list)
+                                    ..then((value) {
+                                      if (widget.onUpload != null) {
+                                        widget.onUpload!();
+                                      }
+                                    });
+                            },
+                            child: const Icon(Icons.send_rounded));
+                      }
+                    }))
+          ],
+        ));
   }
 }
