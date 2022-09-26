@@ -16,17 +16,14 @@ class AddonUtil {
 }
 
 class AddonOptionUtil {
-  static AddonOption fromJson(
-      Map<String, dynamic> json, List Function(Type type) argsCallback) {
+  static AddonOption fromJson(Map<String, dynamic> json) {
     switch (json['type']) {
       case 'AddonTextOption':
-        List args = argsCallback(AddonTextOption);
-        return AddonTextOption.fromJson(json, onChanged: args[0]);
+        return AddonTextOption.fromJson(json);
       case 'AddonCheckBoxListOption':
         return AddonCheckBoxListOption.fromJson(json);
       case 'AddonDropdownOption':
-        List args = argsCallback(AddonDropdownOption);
-        return AddonDropdownOption.fromJson(json, onChanged: args[0]);
+        return AddonDropdownOption.fromJson(json);
       default:
         throw FlutterError('${json['type']} is not a valid addon option type');
     }
@@ -61,7 +58,7 @@ abstract class AddonOption {
       {'title': title, 'flags': flags, 'type': runtimeType.toString()};
 
   final String title;
-  late final dynamic value;
+  dynamic value;
   int flags;
 
   static const int EDIT_MODE = (1 << 0);
@@ -71,57 +68,55 @@ abstract class AddonOption {
 }
 
 class AddonDropdownOption extends AddonOption {
-  AddonDropdownOption(
-      {required super.title,
-      required List<String> items,
-      required this.onChanged})
-      : super(value: items);
+  AddonDropdownOption({
+    required super.title,
+    required List<String> items,
+  }) : super(value: items);
 
-  AddonDropdownOption.fromJson(Map<String, dynamic> json,
-      {required this.onChanged})
-      : super.fromJson(json) {
+  AddonDropdownOption.fromJson(
+    Map<String, dynamic> json,
+  ) : super.fromJson(json) {
     value = json['value'];
   }
 
   @override
   Map<String, dynamic> toJson() => super.toJson()..addAll({'value': value});
-
-  final void Function(dynamic value) onChanged;
 
   @override
   Widget build(BuildContext context, {bool editMode = false}) {
     return menu.DropDownMenuManager(
         child: menu.DropDownMenu(items: [
-      List.from(
-          value.map((e) => menu.MenuItem(text: e, onTap: () => onChanged(e))))
+      List.from(value.map((e) => menu.MenuItem(
+          text: e,
+          onTap: () {
+            throw UnimplementedError();
+          })))
     ]));
   }
 }
 
 class AddonTextOption extends AddonOption {
-  AddonTextOption(
-      {required super.title,
-      String value = '',
-      super.flags,
-      required this.onChanged})
-      : super(value: value);
+  AddonTextOption({
+    required super.title,
+    String value = '',
+    super.flags,
+  }) : super(value: value);
 
-  AddonTextOption.fromJson(Map<String, dynamic> json, {required this.onChanged})
-      : super.fromJson(json) {
+  AddonTextOption.fromJson(Map<String, dynamic> json) : super.fromJson(json) {
     value = json['value'];
   }
 
   @override
   Map<String, dynamic> toJson() => super.toJson()..addAll({'value': value});
-
-  final void Function(String value) onChanged;
 
   @override
   Widget build(BuildContext context, {bool editMode = false}) {
     return (flags & AddonOption.EDITABLE) > 0
         ? TextField(
             controller: TextEditingController(text: value),
-            onChanged: onChanged,
+            onChanged: (newVal) {
+              value = newVal;
+            },
           )
         : Text(value);
   }
@@ -201,24 +196,24 @@ abstract class AddonBuildOptions {}
 abstract class Addon {
   Addon(this.name, {this.node, required List<AddonOption> options})
       : _options = options;
-  Addon.fromJson(Map<String, dynamic> json, List Function(Type) argsCallback)
+  Addon.fromJson(Map<String, dynamic> json)
       : name = json['name'],
         node = json['node'] != null
             ? AddonNode.fromJson(json: json['node'])
             : null,
-        _options = List.from(json['options']
-            .map((e) => AddonOptionUtil.fromJson(e, argsCallback)));
+        _options =
+            List.from(json['options'].map((e) => AddonOptionUtil.fromJson(e)));
 
   Map<String, dynamic> toJson() {
     return {
       'type': runtimeType.toString(),
       'name': name,
-      'node': node?.toJson(),
-      'options': _options.map((e) => e.toJson()).toList()
+      'options': _options.map((e) => e.toJson()).toList(),
+      'node': node?.toJson()
     };
   }
 
-  final String name;
+  String name;
   AddonNode? node;
 
   final List<AddonOption> _options;
@@ -230,22 +225,12 @@ abstract class Addon {
 class LanguageAddon extends Addon {
   LanguageAddon(super.name, {super.node})
       : super(options: [
-          AddonTextOption(title: 'name', onChanged: (newVal) {}),
+          AddonTextOption(title: 'name', value: name),
           AddonCheckBoxListOption(
               title: 'languages', value: {'fr': true, 'en': true})
         ]);
 
-  LanguageAddon.fromJson(Map<String, dynamic> json)
-      : super.fromJson(json, _fromJsonArgsMapper);
-
-  static List _fromJsonArgsMapper(Type type) {
-    switch (type) {
-      case AddonTextOption:
-        return [(newVal) {}];
-      default:
-        return [];
-    }
-  }
+  LanguageAddon.fromJson(Map<String, dynamic> json) : super.fromJson(json);
 
   @override
   Widget build([AddonBuildOptions? options]) {
