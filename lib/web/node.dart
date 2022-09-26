@@ -25,6 +25,8 @@ class NodeUtil {
     switch (json['runtimeType']) {
       case 'ContainerNode':
         return ContainerNode.fromJson(json);
+      case 'RoundedNode':
+        return RoundedNode.fromJson(json);
       case 'InputGroup':
         return InputGroup.fromJson(json);
       case 'OutputGroup':
@@ -101,15 +103,22 @@ class RootNode {
   getData() {
     final OutputGroup dataNode =
         graph.firstWhere((e) => e is OutputGroup) as OutputGroup;
-    return dataNode.output;
+    return dataNode.output.value;
   }
 
   void _registerSingletonInstance() {
-    getIt.registerSingleton<RootNode>(this);
+    if (getIt.isRegistered<RootNode>()) {
+      getIt.unregister<RootNode>();
+    }
+    getIt.registerSingleton<RootNode>(
+      this,
+    );
   }
 
   void dispose() {
-    getIt.unregister<RootNode>(instance: this);
+    if (getIt.isRegistered<RootNode>()) {
+      getIt.unregister<RootNode>();
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -198,52 +207,39 @@ class RootNode {
 class ContainerNode extends Node {
   ContainerNode()
       : _argb =
-            List.generate(4, (i) => InputPropertyData(255), growable: false) {
-    outputProps = applyPropsArgs(OutputProperty.new, getOutputPropsArgs());
-
-    inputProps = applyPropsArgs(InputProperty.new, getInputPropsArgs());
-  }
+            List.generate(4, (i) => InputPropertyData(255), growable: false);
 
   ContainerNode.fromJson(Map<String, dynamic> json)
       : _argb =
             List.from(json["argb"].map((e) => InputPropertyData<double>(e))),
-        super.fromJson(json) {
-    outputProps = applyPropsArgs(
-        OutputProperty.fromJson, getOutputPropsArgs(json['outputProps']));
-
-    inputProps = applyPropsArgs(
-        InputProperty.fromJson, getInputPropsArgs(json['inputProps']));
-  }
+        super.fromJson(json);
 
   @override
   Map<String, dynamic> toJson() =>
       super.toJson()..addAll({"argb": _argb.map((e) => e.value).toList()});
 
   @override
-  List<FunctionArgs> getInputPropsArgs([List? json]) => [
-        FunctionArgs(
-            json != null ? [json[0], this] : [this, 0],
-            json == null
-                ? {#data: InputPropertyData<dynamic>(null), #builderOptions: []}
-                : {}),
+  List<FunctionArgs> get inputPropsArgs => [
+        FunctionArgs([this, 0],
+            {#data: InputPropertyData<dynamic>(null), #builderOptions: []}),
         ...List.generate(
             _argb.length,
-            (i) => FunctionArgs(
-                json != null ? [json[i + 1], this] : [this, i],
-                {
+            (i) => FunctionArgs([
+                  this,
+                  i
+                ], {
                   #data: _argb[i],
-                }..addAll(json == null
-                    ? {
-                        #data: _argb[i],
-                        #builderName: "slider",
-                        #builderOptions: [0, 255],
-                      }
-                    : {})))
+                  #builderName: "slider",
+                  #builderOptions: [0, 255],
+                }))
       ];
 
   @override
-  List<FunctionArgs> getOutputPropsArgs([List? json]) => [
-        FunctionArgs(json != null ? [json[0], this] : [this, 0], {
+  List<FunctionArgs> get outputPropsArgs => [
+        FunctionArgs([
+          this,
+          0
+        ], {
           #data: wrapData(buildData, _argb),
         })
       ];
@@ -261,34 +257,21 @@ class ContainerNode extends Node {
 }
 
 class InputGroup extends InputNode {
-  InputGroup() : super(true) {
-    outputProps = List.unmodifiable(
-        [OutputProperty(this, 0, data: wrapData(() => 10, []))]);
-  }
+  InputGroup() : super(true);
 
-  InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json, true) {
-    outputProps = List.unmodifiable(json["outputProps"].map((e) =>
-        OutputProperty.fromJson(e, this, data: wrapData(() => null, []))));
-  }
+  InputGroup.fromJson(Map<String, dynamic> json) : super.fromJson(json, true);
 
   @override
-  List<FunctionArgs> getInputPropsArgs([List? json]) {
-    // TODO: implement getInputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get inputPropsArgs => [];
 
   @override
-  List<FunctionArgs> getOutputPropsArgs([List? json]) {
-    // TODO: implement getOutputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get outputPropsArgs => [
+        FunctionArgs([this, 0], {#data: wrapData(() => 10, [])})
+      ];
 }
 
 class OutputGroup extends Node {
   OutputGroup({this.dataChanged}) : super(true) {
-    outputProps = List.unmodifiable([]);
-    inputProps = List.unmodifiable([InputProperty(this, 0, data: output)]);
-
     output.addListener(() {
       _dataChanged();
       _dataRegisterListener();
@@ -297,14 +280,6 @@ class OutputGroup extends Node {
 
   OutputGroup.fromJson(Map<String, dynamic> json, {this.dataChanged})
       : super.fromJson(json, true) {
-    outputProps = List.unmodifiable([]);
-    inputProps =
-        List.unmodifiable(json['inputProps'].map((e) => InputProperty.fromJson(
-              e,
-              this,
-              data: output,
-            )));
-
     dataChanged ??= dataChangedPlaceHolder;
 
     output.addListener(() {
@@ -314,16 +289,12 @@ class OutputGroup extends Node {
   }
 
   @override
-  List<FunctionArgs> getInputPropsArgs([List? json]) {
-    // TODO: implement getInputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get inputPropsArgs => [
+        FunctionArgs([this, 0], {#data: output})
+      ];
 
   @override
-  List<FunctionArgs> getOutputPropsArgs([List? json]) {
-    // TODO: implement getOutputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get outputPropsArgs => [];
 
   static void Function(dynamic)? dataChangedPlaceHolder;
 
@@ -340,95 +311,64 @@ class OutputGroup extends Node {
 }
 
 class DummyNode extends Node {
-  DummyNode() {
-    outputProps = [
-      OutputProperty(this, 0,
-          data: wrapData(() => DateTime.now(), [inputData, inputData2])),
-    ];
-    inputProps = [
-      InputProperty(this, 0, data: inputData),
-      InputProperty(this, 1, data: inputData2),
-    ];
-  }
+  DummyNode();
 
   @override
-  List<FunctionArgs> getInputPropsArgs([List? json]) {
-    // TODO: implement getInputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get inputPropsArgs => [
+        FunctionArgs([this, 0], {#data: inputData}),
+        FunctionArgs([this, 1], {#data: inputData2})
+      ];
 
   @override
-  List<FunctionArgs> getOutputPropsArgs([List? json]) {
-    // TODO: implement getOutputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get outputPropsArgs => [
+        FunctionArgs([
+          this,
+          0
+        ], {
+          #data: wrapData(() => DateTime.now(), [inputData, inputData2])
+        })
+      ];
 
   final inputData = InputPropertyData<dynamic>(null);
   final inputData2 = InputPropertyData<dynamic>(null);
 }
 
 class RoundedNode extends Node {
-  RoundedNode() {
-    inputData2.value = 0.0;
-    outputProps = [
-      OutputProperty(this, 0,
-          data: wrapData(buildData, [inputData, inputData2])),
-    ];
-    inputProps = [
-      InputProperty(
-        this,
-        0,
-        data: inputData,
-      ),
-      InputProperty(
-        this,
-        1,
-        data: inputData2,
-        builderName: 'slider',
-        builderOptions: [0, 360],
-      )
-    ];
-  }
+  RoundedNode() : inputData2 = InputPropertyData(.0);
 
-  void _resetProps() {
-    outputProps
-      ..clear()
-      ..addAll([
-        OutputProperty(this, 0,
-            data: wrapData(buildData, [inputData, inputData2])),
-      ]);
-    inputProps
-      ..clear()
-      ..addAll([
-        InputProperty(
-          this,
-          0,
-          data: inputData,
-        ),
-        InputProperty(
-          this,
-          1,
-          data: inputData2,
-          builderName: 'slider',
-          builderOptions: [0, 360],
-        )
-      ]);
-  }
+  RoundedNode.fromJson(Map<String, dynamic> json)
+      : inputData2 = InputPropertyData(json['sliderValue']),
+        super.fromJson(json);
 
   @override
-  List<FunctionArgs> getInputPropsArgs([List? json]) {
-    // TODO: implement getInputPropsArgs
-    throw UnimplementedError();
-  }
+  Map<String, dynamic> toJson() =>
+      super.toJson()..addAll({'sliderValue': inputData2.value});
 
   @override
-  List<FunctionArgs> getOutputPropsArgs([List? json]) {
-    // TODO: implement getOutputPropsArgs
-    throw UnimplementedError();
-  }
+  List<FunctionArgs> get inputPropsArgs => [
+        FunctionArgs([this, 0], {#data: inputData}),
+        FunctionArgs([
+          this,
+          1
+        ], {
+          #data: inputData2,
+          #builderName: 'slider',
+          #builderOptions: [0, 360]
+        }),
+      ];
+
+  @override
+  List<FunctionArgs> get outputPropsArgs => [
+        FunctionArgs([
+          this,
+          0
+        ], {
+          #data: wrapData(buildData, [inputData, inputData2])
+        })
+      ];
 
   final inputData = InputPropertyData<dynamic>(null);
-  final inputData2 = InputPropertyData<dynamic>(null);
+  late final InputPropertyData<double> inputData2;
 
   Widget buildData() {
     return ClipRRect(
