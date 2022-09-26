@@ -52,8 +52,8 @@ class _OutputPropertyData<T> extends ValueNotifier<T?> {
 class FunctionArgs {
   FunctionArgs(this.positionalArguments, [this.namedArguments]);
 
-  final List? positionalArguments;
-  final Map<Symbol, dynamic>? namedArguments;
+  List? positionalArguments;
+  Map<Symbol, dynamic>? namedArguments;
   dynamic apply(Function function) =>
       Function.apply(function, positionalArguments, namedArguments);
 }
@@ -84,11 +84,19 @@ abstract class JsonExtendable {
 }
 
 abstract class Node extends JsonExtendable {
-  Node([this.isStatic = false]) : id = nanoid();
+  Node([this.isStatic = false]) : id = nanoid() {
+    outputProps = _instanciateProperties(OutputProperty.new, outputPropsArgs);
+    inputProps = _instanciateProperties(InputProperty.new, inputPropsArgs);
+  }
 
   Node.fromJson(Map<String, dynamic> json, [this.isStatic = false])
       : id = json['id'],
-        super.fromJson(json);
+        super.fromJson(json) {
+    outputProps = _instanciateProperties(
+        OutputProperty.fromJson, outputPropsArgs, json['outputProps']);
+    inputProps = _instanciateProperties(
+        InputProperty.fromJson, inputPropsArgs, json['inputProps']);
+  }
 
   Map<String, dynamic> toJson() => {
         "runtimeType": runtimeType.toString(),
@@ -98,11 +106,37 @@ abstract class Node extends JsonExtendable {
         "extensions": jsonExtension
       };
 
-  List<FunctionArgs> getInputPropsArgs([List? json]);
-  List<FunctionArgs> getOutputPropsArgs([List? json]);
-  List<T> applyPropsArgs<T extends Property>(
-          Function function, List<FunctionArgs> args) =>
-      List.unmodifiable(args.map((e) => e.apply(function)));
+  List<FunctionArgs> get inputPropsArgs;
+  List<FunctionArgs> get outputPropsArgs;
+
+  void _checkPropsArgs(FunctionArgs args, [Map<String, dynamic>? json]) {
+    if (json == null) return;
+
+    args.positionalArguments?.removeLast();
+    args.positionalArguments?.insert(0, json);
+    args.namedArguments?.removeWhere((key, value) => key != #data);
+  }
+
+  List<T> _instanciateProperties<T extends Property>(
+      Function function, List<FunctionArgs> propsArgs,
+      [List? json]) {
+    if (json != null) {
+      assert(propsArgs.length == json.length);
+    }
+
+    final ret = <T>[];
+
+    for (int i = 0; i < propsArgs.length; ++i) {
+      _checkPropsArgs(propsArgs[i], json != null ? json[i] : null);
+
+      ret.add(Function.apply(function, propsArgs[i].positionalArguments,
+          propsArgs[i].namedArguments));
+    }
+
+    assert(ret.length == propsArgs.length);
+
+    return List.unmodifiable(ret);
+  }
 
   final String id;
   final bool isStatic;
@@ -145,7 +179,6 @@ abstract class InputNode extends Node {
   }
 
   void _init() {
-    inputProps = List.unmodifiable([]);
     _canEmit.value = true;
   }
 }
