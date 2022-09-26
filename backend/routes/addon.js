@@ -11,7 +11,7 @@ const destSet = (req, res, next) => {
 
 router.get('/', addonCtrl.search); // list all addons available or matching names if search query param
 router.get('/:id', addonCtrl.get); // return an addon
-router.post('/', auth, destSet, upload);
-router.put('/:id', auth, destSet, upload);
+router.post('/', auth, destSet, upload, (req, res) => { res.status(201) });
+router.put('/:id', auth, destSet, upload, (req, res) => { res.status(201) });
 
 module.exports = router;
