@@ -24,14 +24,17 @@ class AList {
   AList.from(AList list)
       : _serverId = list.serverId,
         name = list.name,
+        status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
         _stats = AListStats() {
     _initReminder();
   }
 
-  AList.fromJson(Map<String, dynamic> json, {String? serverId})
-      : _serverId = serverId,
+  AList.fromJson(Map<String, dynamic> json)
+      : name = json['name'],
+        _serverId = json['serverId'],
+        status = json['status'],
         _entries = List.from(json['entries']),
         _tags = Set.from(json['tags']),
         _stats = AListStats.fromJson(json["listStats"]) {
@@ -40,7 +43,10 @@ class AList {
   }
 
   Map<String, dynamic> toJson() => {
+        'name': name,
+        'serverId': _serverId,
         "entries": _entries,
+        "status": status,
         "tags": _tags.toList(),
         "listStats": _stats.toJson()
       };
@@ -53,10 +59,10 @@ class AList {
   }
 
   String name = '';
+  String status = 'private';
   final List<Map> _entries;
   final Set<String> _tags;
   final AListStats _stats;
-  String addon = "JpnAddon";
   late final Reminder _reminder;
 
   AListStats get stats => _stats;
