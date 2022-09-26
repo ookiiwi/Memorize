@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, '/storage/' + req.params.status + '/' + req.params.dest);
+        cb(null, 'storage/' + req.params.status + '/' + req.params.dest);
     },
     filename: (req, _, cb) => {
         cb(null, req.params.id);
@@ -16,7 +16,7 @@ const fileFilter = (req, file, cb) => {
         // TODO: check if allowed
         req.params.status = 'private';
     } else {
-        req.params.status = 'public';
+        req.params.status = 'shared';
     }
 
     if (!req.params.id) 
