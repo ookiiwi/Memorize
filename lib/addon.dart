@@ -45,6 +45,7 @@ abstract class Addon {
   Addon(this.name, {this.node});
   Addon.fromJson(Map<String, dynamic> json)
       : name = json['name'],
+        _serverName = json['serverName'],
         node = json['node'] != null
             ? AddonNode.fromJson(json: json['node'])
             : null;
@@ -53,11 +54,13 @@ abstract class Addon {
     return {
       'type': runtimeType.toString(),
       'name': name,
+      'serverName': _serverName,
       'node': node?.toJson(),
     };
   }
 
   String name;
+  String? _serverName;
   AddonNode? node;
 
   Widget build([AddonBuildOptions? options]);
@@ -84,12 +87,32 @@ abstract class Addon {
 
   void upload() async {
     try {
-      final formData = FormData.fromMap({
-        'file': MultipartFile.fromString(jsonEncode(this),
-            filename: name, contentType: MediaType("application", "json"))
-      });
+      // Function instead of variable to set _serverName before toJson
+      FormData getFormData() => FormData.fromMap({
+            'file': MultipartFile.fromString(jsonEncode(this),
+                filename: name, contentType: MediaType("application", "json"))
+          });
 
-      await dio.post('http://localhost:3000/addon', data: formData);
+      String url = 'http://localhost:3000/addon/';
+
+      if (_serverName != null) {
+        Map<String, dynamic>? params;
+
+        print('name: $name | serverName: $_serverName');
+        final temp = _serverName!;
+        if (_serverName != name) {
+          params = {'name': name};
+          _serverName = name;
+        }
+
+        await dio.put(url + temp, data: getFormData(), queryParameters: params);
+      } else {
+        _serverName = name;
+        await dio.post(url + _serverName!, data: getFormData());
+      }
+
+      // TODO: update file on disk
+
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
@@ -177,39 +200,52 @@ class SchemaAddon extends Addon {
 
   @override
   Widget buildOptions({bool edit = false}) {
-    return ExpandedWidget(
-      sectionTitle: 'Schemas',
-      isExpanded: true,
-      duration: const Duration(milliseconds: 100),
-      child:
-
-          // name field
-          // schema field
-          Column(children: [
+    return Column(
+      children: [
         Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: TextField(
-              controller: _schemaTextFieldController,
+              controller: TextEditingController(text: name),
               onChanged: (value) {
-                // search schema
-              },
-              onSubmitted: (value) {
-                schemas.add(value);
-                schemaNotifier.value = !schemaNotifier.value;
-                _schemaTextFieldController.clear();
+                name = value;
+                print('name: $name | serverName: $_serverName');
               },
             )),
-        ValueListenableBuilder(
-            valueListenable: schemaNotifier,
-            builder: (context, _, __) => ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: schemas.length,
-                  itemBuilder: (context, i) => Container(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      alignment: Alignment.center,
-                      child: Text(schemas.elementAt(i))),
-                ))
-      ]),
+        ExpandedWidget(
+          sectionTitle: 'Schemas',
+          isExpanded: true,
+          duration: const Duration(milliseconds: 100),
+          child:
+
+              // name field
+              // schema field
+              Column(children: [
+            Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: TextField(
+                  controller: _schemaTextFieldController,
+                  onChanged: (value) {
+                    // search schema
+                  },
+                  onSubmitted: (value) {
+                    schemas.add(value);
+                    schemaNotifier.value = !schemaNotifier.value;
+                    _schemaTextFieldController.clear();
+                  },
+                )),
+            ValueListenableBuilder(
+                valueListenable: schemaNotifier,
+                builder: (context, _, __) => ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: schemas.length,
+                      itemBuilder: (context, i) => Container(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          alignment: Alignment.center,
+                          child: Text(schemas.elementAt(i))),
+                    ))
+          ]),
+        )
+      ],
     );
   }
 
