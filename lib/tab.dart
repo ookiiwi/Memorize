@@ -687,6 +687,15 @@ class _ListPage extends State<ListPage> {
         context: context);
   }
 
+  void _showAddonConfig() {
+    Overlayment.show(
+        OverWindow(
+            backgroundSettings: const BackgroundSettings(dismissOnClick: true),
+            alignment: Alignment.center,
+            child: ListAddonConfigPage(list: _list)),
+        context: context);
+  }
+
   @override
   Widget build(BuildContext ctx) {
     return FutureBuilder(
@@ -715,6 +724,11 @@ class _ListPage extends State<ListPage> {
                                         _showUploadWindow();
                                       },
                                       child: const Icon(Icons.upload)),
+                                  FloatingActionButton(
+                                      onPressed: () {
+                                        _showAddonConfig();
+                                      },
+                                      child: const Icon(Icons.settings)),
                                   OpenContainer(
                                       transitionType:
                                           ContainerTransitionType.fade,
@@ -1113,23 +1127,7 @@ class _SearchPage extends State<SearchPage> {
   }
 
   static Future<Addon?> _fetchAddon(String id) async {
-    try {
-      final response = await dio.get('http://localhost:3000/addon/$id');
-
-      final json = jsonDecode(response.data);
-
-      return AddonUtil.fromJson(json);
-    } on SocketException {
-      print('No Internet connection 😑');
-    } on HttpException {
-      print("Couldn't find the post 😱");
-    } on FormatException {
-      print("Bad response format 👎");
-    } catch (e) {
-      print('An error occured during addon upload: $e');
-    }
-
-    return null;
+    return Addon.fetch(id);
   }
 
   Widget _buildPreviewTab() {
@@ -1147,7 +1145,29 @@ class _SearchPage extends State<SearchPage> {
           } else {
             return ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: _buildPreviewContent(snapshot.data));
+                child: Stack(
+                  children: [
+                    _buildPreviewContent(snapshot.data),
+                    if (snapshot.data != null)
+                      Positioned(
+                          bottom: 5,
+                          right: 5,
+                          child: FloatingActionButton(
+                              onPressed: () {
+                                //write list
+                                //add addon to addon folder
+                                final tabs = _tabs.keys.toList();
+                                final data = snapshot.data;
+
+                                if (_selectedTab == tabs[0]) {
+                                  fe.write('', data as AList);
+                                } else if (_selectedTab == tabs[1]) {
+                                  (data as Addon).register();
+                                }
+                              },
+                              child: const Icon(Icons.download_rounded)))
+                  ],
+                ));
           }
         },
       ),
@@ -1168,7 +1188,7 @@ class _SearchPage extends State<SearchPage> {
         modifiable: false,
       );
     } else if (_selectedTab == tabs[1]) {
-      ret = data.build();
+      ret = Padding(padding: const EdgeInsets.all(5), child: data.build());
     } else {
       throw FlutterError('Cannot fetch data');
     }
@@ -1202,10 +1222,13 @@ class _SearchPage extends State<SearchPage> {
         OverWindow(
             backgroundSettings: const BackgroundSettings(dismissOnClick: true),
             alignment: Alignment.center,
-            color: Colors.transparent,
+            decoration: BoxDecoration(
+                color: Theme.of(context).backgroundColor,
+                borderRadius: BorderRadius.circular(20)),
             child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.5,
-                child: _buildPreviewTab())),
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: _buildPreviewTab(),
+            )),
         context: context);
   }
 
@@ -1359,5 +1382,49 @@ class _ListUploadPage extends State<ListUploadPage> {
                     }))
           ],
         ));
+  }
+}
+
+class ListAddonConfigPage extends StatelessWidget {
+  const ListAddonConfigPage({super.key, required this.list});
+
+  final AList list;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.3,
+          maxWidth: MediaQuery.of(context).size.width * 0.1,
+        ),
+        child: ExpandedWidget(
+            sectionTitle: 'Schemas',
+            isExpanded: true,
+            duration: const Duration(milliseconds: 100),
+            child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: SchemaAddon.availableSchemas.length,
+                itemBuilder: (context, i) => Padding(
+                    padding:
+                        const EdgeInsets.only(left: 20, right: 20, bottom: 5),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(SchemaAddon.availableSchemas.elementAt(i)),
+                        Expanded(
+                            child: Padding(
+                                padding: const EdgeInsets.only(left: 5),
+                                child: TextField(
+                                  controller: TextEditingController(
+                                      text: list.schemasMapping[i]),
+                                  onSubmitted: (value) {
+                                    list.schemasMapping[i] = value;
+                                    fe.write(fe.wd, list);
+                                  },
+                                )))
+                      ],
+                    )))));
   }
 }
