@@ -13,38 +13,33 @@ int daysBetween(DateTime from, DateTime to) {
   return (to.difference(from).inHours / 24).round();
 }
 
+typedef AListEntry = Map<String, dynamic>;
+
 class AList {
   AList(this.name, {String? serverId})
-      : schemasMapping = List.filled(SchemaAddon.availableSchemas.length, ''),
+      : schemasMapping = {},
         _serverId = serverId,
         _entries = [],
         _tags = {},
-        _stats = AListStats() {
-    _initReminder();
-  }
+        _stats = AListStats();
 
   AList.from(AList list)
       : name = list.name,
-        schemasMapping = List.from(list.schemasMapping, growable: false),
+        schemasMapping = Map.from(list.schemasMapping),
         _serverId = list.serverId,
         status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
-        _stats = AListStats() {
-    _initReminder();
-  }
+        _stats = AListStats();
 
   AList.fromJson(Map<String, dynamic> json)
       : name = json['name'],
-        schemasMapping = List.from(json['schemasMapping'], growable: false),
+        schemasMapping = Map.from(json['schemasMapping']),
         _serverId = json['serverId'],
         status = json['status'],
         _entries = List.from(json['entries']),
         _tags = Set.from(json['tags']),
-        _stats = AListStats.fromJson(json["listStats"]) {
-    //ReminderNotification.add(list._reminder);
-    _initReminder();
-  }
+        _stats = AListStats.fromJson(json["listStats"]);
 
   Map<String, dynamic> toJson() => {
         'name': name,
@@ -65,40 +60,25 @@ class AList {
 
   String name = '';
   String status = 'private';
-  final List<String> schemasMapping;
-  final List<Map> _entries;
+  final Map<String, String> schemasMapping;
+  final List<AListEntry> _entries;
   final Set<String> _tags;
   final AListStats _stats;
-  late final Reminder _reminder;
 
   AListStats get stats => _stats;
 
   String get uniqueName => name;
 
-  List<Map> get entries => _entries;
+  List<AListEntry> get entries => List.unmodifiable(_entries);
 
   int get length => _entries.length;
   bool get isEmpty => _entries.isEmpty;
   bool get isNotEmpty => _entries.isNotEmpty;
 
-  void _initReminder() {
-    _reminder = Reminder(DateTime.now(), '');
-  }
+  void addEntry(AListEntry entry) {
+    _entries.add(entry);
 
-  void newStats(QuizStats stats) => _stats.add(stats);
-  void addStat(String word, bool isGood) {
-    Map entry = _entries.firstWhere(
-      (e) => e["word"] == word,
-      orElse: () => {},
-    );
-
-    assert(entry.isNotEmpty);
-
-    if (!entry.containsKey("freq")) entry["freq"] = _reminder.initFreq;
-
-    entry["freq"] += isGood ? -_reminder.freqStep : _reminder.freqStep;
-
-    _stats.lastScore += isGood ? 1 : 0;
+    schemasMapping.putIfAbsent(entry['schema'], () => 'Language');
   }
 }
 
