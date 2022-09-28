@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/file_explorer.dart';
 import 'package:memorize/reminder.dart';
@@ -14,7 +15,8 @@ int daysBetween(DateTime from, DateTime to) {
 
 class AList {
   AList(this.name, {String? serverId})
-      : _serverId = serverId,
+      : schemasMapping = List.filled(SchemaAddon.availableSchemas.length, ''),
+        _serverId = serverId,
         _entries = [],
         _tags = {},
         _stats = AListStats() {
@@ -22,8 +24,9 @@ class AList {
   }
 
   AList.from(AList list)
-      : _serverId = list.serverId,
-        name = list.name,
+      : name = list.name,
+        schemasMapping = List.from(list.schemasMapping, growable: false),
+        _serverId = list.serverId,
         status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
@@ -33,6 +36,7 @@ class AList {
 
   AList.fromJson(Map<String, dynamic> json)
       : name = json['name'],
+        schemasMapping = List.from(json['schemasMapping'], growable: false),
         _serverId = json['serverId'],
         status = json['status'],
         _entries = List.from(json['entries']),
@@ -44,6 +48,7 @@ class AList {
 
   Map<String, dynamic> toJson() => {
         'name': name,
+        'schemasMapping': schemasMapping,
         'serverId': _serverId,
         "entries": _entries,
         "status": status,
@@ -60,6 +65,7 @@ class AList {
 
   String name = '';
   String status = 'private';
+  final List<String> schemasMapping;
   final List<Map> _entries;
   final Set<String> _tags;
   final AListStats _stats;
@@ -181,6 +187,7 @@ class DataLoader {
     // TODO: check if user logged here
 
     Auth.init();
+    SchemaAddon.init();
     if (!kIsWeb) await ReminderNotification.init();
 
     _isDataLoaded = true;
