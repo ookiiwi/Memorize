@@ -631,6 +631,9 @@ class _ListPage extends State<ListPage> {
                               child: GestureDetector(
                                 onLongPress: () =>
                                     setState(() => _openSelection = true),
+                                child: Container(
+                                    color: Colors.amber,
+                                    child: const Text('entry')),
                               )));
                     })))
       ],
@@ -752,8 +755,7 @@ class _ListPage extends State<ListPage> {
                                       openBuilder: (context, _) {
                                         return QuizLauncher(
                                           list: _list,
-                                          addon: fe.fetch(
-                                              'addon'), // fetch addon folder and load addons
+                                          // fetch addon folder and load addons
                                         );
                                       }),
                                   _openSelection
@@ -768,29 +770,14 @@ class _ListPage extends State<ListPage> {
                                           }),
                                           child: const Icon(Icons.delete),
                                         )
-                                      : OpenContainer(
-                                          transitionType:
-                                              ContainerTransitionType.fade,
-                                          transitionDuration:
-                                              const Duration(seconds: 1),
-                                          openElevation: 0,
-                                          closedElevation: 0,
-                                          closedColor: Colors.blue,
-                                          closedShape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(360)),
-                                          closedBuilder: (context, _) =>
-                                              const SizedBox(
-                                                  height: 56.0,
-                                                  width: 56.0,
-                                                  child: Icon(
-                                                    Icons.add,
-                                                    color: Colors.white,
-                                                  )),
-                                          openBuilder: (context, _) {
-                                            return Container(); // list search page
-                                          })
-                                  //)
+                                      : FloatingActionButton(
+                                          onPressed: () {
+                                            // show search window
+                                            _list.addEntry({'schema': 'en'});
+                                            fe.write(fe.wd, _list);
+                                            setState(() {});
+                                          },
+                                          child: const Icon(Icons.add))
                                 ]))
                     ]),
                     // TODO: Implement stats page
@@ -1403,7 +1390,7 @@ class ListAddonConfigPage extends StatelessWidget {
             duration: const Duration(milliseconds: 100),
             child: ListView.builder(
                 shrinkWrap: true,
-                itemCount: SchemaAddon.availableSchemas.length,
+                itemCount: list.schemasMapping.length,
                 itemBuilder: (context, i) => Padding(
                     padding:
                         const EdgeInsets.only(left: 20, right: 20, bottom: 5),
@@ -1412,15 +1399,17 @@ class ListAddonConfigPage extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(SchemaAddon.availableSchemas.elementAt(i)),
+                        Text(list.schemasMapping.keys.elementAt(i)),
                         Expanded(
                             child: Padding(
-                                padding: const EdgeInsets.only(left: 5),
+                                padding: const EdgeInsets.only(left: 10),
                                 child: TextField(
                                   controller: TextEditingController(
-                                      text: list.schemasMapping[i]),
+                                      text: list.schemasMapping.values
+                                          .elementAt(i)),
                                   onSubmitted: (value) {
-                                    list.schemasMapping[i] = value;
+                                    list.schemasMapping[list.schemasMapping.keys
+                                        .elementAt(i)] = value;
                                     fe.write(fe.wd, list);
                                   },
                                 )))
