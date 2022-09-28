@@ -63,6 +63,8 @@ abstract class Addon {
   String? _serverName;
   AddonNode? node;
 
+  static String addonStorageDir = 'addon/';
+
   Widget build([AddonBuildOptions? options]);
   Widget buildOptions({bool edit = false});
 
@@ -83,6 +85,12 @@ abstract class Addon {
     }
 
     return null;
+  }
+
+  static Future<Addon?> load(String name) async {
+    final rawAddon = await Auth.storage.read(key: addonStorageDir + name);
+
+    return rawAddon != null ? AddonUtil.fromJson(jsonDecode(rawAddon)) : null;
   }
 
   void upload() async {
@@ -124,7 +132,11 @@ abstract class Addon {
     }
   }
 
-  void register();
+  void register() {
+    Auth.storage
+        .write(key: Addon.addonStorageDir + name, value: jsonEncode(toJson()));
+  }
+
   void unregister();
 }
 
@@ -150,7 +162,7 @@ class SchemaAddon extends Addon {
 
   final Set<String> schemas;
 
-  static String storageDir = 'addon/schema/';
+  static String configStorageDir = 'addon/schema/';
 
   final schemaNotifier = ValueNotifier(false);
   final _schemaTextFieldController = TextEditingController();
@@ -166,7 +178,7 @@ class SchemaAddon extends Addon {
   static void _initSchemas() async {
     if (_availableSchemasInit) return;
 
-    final varKey = storageDir + 'availableSchemas';
+    final varKey = configStorageDir + 'availableSchemas';
 
     availableSchemas = Set.from(
         jsonDecode((await Auth.storage.read(key: varKey)) ?? '["fr", "en"]'));
@@ -251,8 +263,10 @@ class SchemaAddon extends Addon {
 
   @override
   void register() async {
+    super.register();
+
     final AddonSchema localSchema = Map.from(jsonDecode(
-        (await Auth.storage.read(key: storageDir + 'config')) ?? '{}'));
+        (await Auth.storage.read(key: configStorageDir + 'config')) ?? '{}'));
 
     for (var schema in schemas) {
       if (!localSchema.containsKey(schema)) {
@@ -260,8 +274,6 @@ class SchemaAddon extends Addon {
       }
 
       localSchema[schema]!.add(name);
-
-      Auth.storage.write(key: storageDir + name, value: jsonEncode(toJson()));
     }
 
     _updateGlobalSchema(localSchema);
@@ -269,7 +281,7 @@ class SchemaAddon extends Addon {
 
   @override
   void unregister() async {
-    final temp = await Auth.storage.read(key: storageDir + 'config');
+    final temp = await Auth.storage.read(key: configStorageDir + 'config');
 
     if (temp == null) return;
 
