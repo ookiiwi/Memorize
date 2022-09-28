@@ -247,27 +247,31 @@ class _ExpandedWidget extends State<ExpandedWidget>
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.direction == AxisDirection.up) _buildSizeTransition(),
         widget.header != null
             ? widget.header!
-            : GestureDetector(
-                onTap: () => setState(() {
-                      _isExpanded = !_isExpanded;
-                      _expandCheck();
-                    }),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(_isExpanded
-                        ? Icons.arrow_drop_down_rounded
-                        : Icons.arrow_right_rounded),
-                    FittedBox(
-                        child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 5),
-                            child: Text(widget.sectionTitle ?? '')))
-                  ],
-                )),
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: GestureDetector(
+                    onTap: () => setState(() {
+                          _isExpanded = !_isExpanded;
+                          _expandCheck();
+                        }),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(_isExpanded
+                            ? Icons.arrow_drop_down_rounded
+                            : Icons.arrow_right_rounded),
+                        FittedBox(
+                            child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 5),
+                                child: Text(widget.sectionTitle ?? '')))
+                      ],
+                    ))),
         if (widget.direction == AxisDirection.down) _buildSizeTransition(),
       ],
     );
