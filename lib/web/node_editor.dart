@@ -1,18 +1,22 @@
 import 'dart:convert';
 import 'dart:html' as html;
 
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:js/js_util.dart' as js;
 import 'package:flutter/material.dart';
 import 'package:js/js.dart';
 import 'package:memorize/addon.dart';
+import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/menu.dart' as menu;
 import 'package:memorize/web/visual_node.dart';
 import 'package:memorize/web/file_picker.dart';
 import 'package:memorize/widget.dart';
 import 'package:provider/provider.dart';
+import 'package:universal_io/io.dart';
 
 @JS("JSON.stringify")
 external String stringify(object);
@@ -57,7 +61,7 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     });
 
     if (!isFromJson) {
-      addon = LanguageAddon('Language');
+      addon = SchemaAddon('Language');
     }
   }
 
@@ -115,9 +119,9 @@ class _NodeEditor extends SerializableState<NodeEditor> {
     }
   }
 
-  void _exportAddon() {
+  void _uploadAddon() async {
     _releaseExport.value = true;
-    _saveAs();
+    addon.upload();
     _releaseExport.value = false;
   }
 
@@ -132,7 +136,7 @@ class _NodeEditor extends SerializableState<NodeEditor> {
   @override
   Widget serializableBuild(BuildContext context) {
     return Column(children: [
-      _EditorTopMenu(_loadEditor, _save, _saveAs, _exportAddon),
+      _EditorTopMenu(_loadEditor, _save, _saveAs, _uploadAddon),
       const Divider(
         height: 1,
       ),
@@ -140,7 +144,7 @@ class _NodeEditor extends SerializableState<NodeEditor> {
           child: ContextMenuManager(
               builder: (context, child) => Row(children: [
                     _AddonOptionsTab(
-                      options: addon.options,
+                      addon: addon,
                       onChanged: _onAddonChanged,
                     ),
                     const VerticalDivider(
@@ -249,12 +253,12 @@ class _NodeEditor extends SerializableState<NodeEditor> {
 }
 
 class _EditorTopMenu extends StatelessWidget {
-  const _EditorTopMenu(this.open, this.save, this.saveAs, this.export);
+  const _EditorTopMenu(this.open, this.save, this.saveAs, this.upload);
 
   final VoidCallback open;
   final VoidCallback save;
   final VoidCallback saveAs;
-  final VoidCallback export;
+  final VoidCallback upload;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +275,10 @@ class _EditorTopMenu extends StatelessWidget {
                   text: 'Save as', icon: Icons.save_as, onTap: saveAs),
             ],
             [
-              menu.MenuItem(text: 'Export', icon: Icons.settings, onTap: export)
+              menu.MenuItem(
+                  text: 'Upload',
+                  icon: Icons.file_upload_rounded,
+                  onTap: upload)
             ],
             [menu.MenuItem(text: 'Logout', icon: Icons.logout, onTap: () {})]
           ],
@@ -296,10 +303,10 @@ class _EditorTopMenu extends StatelessWidget {
 
 class _AddonOptionsTab extends StatefulWidget {
   const _AddonOptionsTab(
-      {this.defaultValue, required this.options, this.onChanged});
+      {this.defaultValue, required this.addon, this.onChanged});
 
   final String? defaultValue;
-  final List<AddonOption> options;
+  final Addon addon;
   final void Function(Addon value)? onChanged;
 
   @override
@@ -310,11 +317,9 @@ class _AddonOptionsTabState extends State<_AddonOptionsTab> {
   String _selectedValue = '';
 
   get onChanged => widget.onChanged;
-  get options => widget.options;
+  get addon => widget.addon;
 
-  static final Map<String, dynamic> _addons = {
-    'Language': LanguageAddon('Language')
-  };
+  static final Map<String, dynamic> _addons = {'Schema': SchemaAddon('Schema')};
 
   @override
   void initState() {
@@ -326,7 +331,8 @@ class _AddonOptionsTabState extends State<_AddonOptionsTab> {
   Widget build(BuildContext context) {
     return FittedBox(
         fit: BoxFit.fitHeight,
-        child: SizedBox(
+        child: Container(
+            padding: const EdgeInsets.all(5),
             height: MediaQuery.of(context).size.height - 100,
             width: MediaQuery.of(context).size.width * 0.1,
             child: Column(
@@ -347,7 +353,8 @@ class _AddonOptionsTabState extends State<_AddonOptionsTab> {
                     ]
                   ],
                 )),
-                ...options.map((e) => e.build(context, editMode: true)).toList()
+                //...options.map((e) => e.build(context, editMode: true)).toList()
+                addon.buildOptions(edit: true)
               ],
             )));
   }
