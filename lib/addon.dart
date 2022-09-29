@@ -70,7 +70,7 @@ abstract class Addon {
 
   static Future<Addon?> fetch(String name) async {
     try {
-      final response = await dio.get('http://localhost:3000/addon/' + name);
+      final response = await dio.get('$serverUrl/addon/' + name);
       final json = jsonDecode(response.data);
 
       return AddonUtil.fromJson(json);
@@ -101,7 +101,7 @@ abstract class Addon {
                 filename: name, contentType: MediaType("application", "json"))
           });
 
-      String url = 'http://localhost:3000/addon/';
+      String url = '$serverUrl/addon/';
 
       if (_serverName != null) {
         Map<String, dynamic>? params;
@@ -188,7 +188,7 @@ class SchemaAddon extends Addon {
     availableSchemas = {"fr", "en"};
 
     try {
-      const url = 'http://localhost:3000/addon/schema';
+      const url = '$serverUrl/addon/schema';
       // TODO: retrieve schemas from server
     } on SocketException {
       print('No Internet connection 😑');
@@ -297,7 +297,7 @@ class SchemaAddon extends Addon {
   /// Add local schema to global one
   static void _updateGlobalSchema(AddonSchema localSchema) async {
     try {
-      const url = 'http://localhost:3000/addon/schema';
+      const url = '$serverUrl/addon/schema';
       final schemaResponse = await dio.get(url);
 
       final AddonSchema globalSchema = Map.from(schemaResponse.data['schema'])
