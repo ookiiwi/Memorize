@@ -17,7 +17,7 @@ class _MainPage extends State<MainPage> {
   late final String title;
   List<AppBarItem> tabs = [];
   late Widget _currTab;
-  int _currTabIndex = 0;
+  int _currTabIndex = 1;
 
   @override
   void initState() {
@@ -28,15 +28,21 @@ class _MainPage extends State<MainPage> {
     if (tabs.isEmpty) {
       tabs = [
         AppBarItem(
+            icon: const Icon(Icons.account_circle),
+            tab: () => ProfilePage(
+                  onLogout: () => Navigator.of(context).pop(),
+                )),
+        AppBarItem(
             icon: const Icon(Icons.list),
             tab: () => ListExplorer(
                   listPath: widget.listPath,
                 )),
+        AppBarItem(icon: const Icon(Icons.search), tab: () => SearchPage()),
         AppBarItem(icon: const Icon(Icons.settings), tab: () => SettingsPage()),
       ];
     }
 
-    _currTab = tabs.first.tab() as Widget;
+    _currTab = tabs[_currTabIndex].tab() as Widget;
   }
 
   @override
