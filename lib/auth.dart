@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:convert';
 
 final dio = Dio();
+const serverUrl = 'http://192.168.1.12:3000';
 
 enum UserConnectionStatus { loggedIn, loggedOut, failed }
 
@@ -37,7 +38,7 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.loggedOut;
 
     try {
-      var response = await dio.get("http://localhost:3000/isLoggedIn");
+      var response = await dio.get("$serverUrl/isLoggedIn");
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
@@ -57,7 +58,7 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.failed;
 
     try {
-      var response = await dio.post("http://localhost:3000/auth/signup",
+      var response = await dio.post("$serverUrl/auth/signup",
           options: Options(
               headers: {'Content-Type': 'application/json; charset=UTF-8'}),
           data: jsonEncode(userInfo));
@@ -80,7 +81,7 @@ class Auth extends ChangeNotifier {
     UserConnectionStatus ret = UserConnectionStatus.failed;
 
     try {
-      var response = await dio.post("http://localhost:3000/auth/login",
+      var response = await dio.post("$serverUrl/auth/login",
           options: Options(
               headers: {'Content-Type': 'application/json; charset=UTF-8'}),
           data: jsonEncode(userInfo));
