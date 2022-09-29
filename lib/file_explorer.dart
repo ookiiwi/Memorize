@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
+import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 
 enum FileType { dir, list, unknown }
@@ -38,7 +40,6 @@ abstract class FileExplorer {
 }
 
 class CloudFileExplorer extends FileExplorer {
-  static const _serverUrl = "http://localhost:3000";
   static const _root = '/';
   String _wd = _root;
 
@@ -67,7 +68,7 @@ class CloudFileExplorer extends FileExplorer {
   @override
   dynamic fetch(String listname) async {
     try {
-      final response = await dio.get(_serverUrl + '/list/' + listname);
+      final response = await dio.get(serverUrl + '/list/' + listname);
       final data = jsonDecode(response.data);
       print('data: $data');
       return AList.fromJson(data);
@@ -94,9 +95,8 @@ class CloudFileExplorer extends FileExplorer {
       });
 
       final response = list.serverId != null
-          ? await dio.put(_serverUrl + '/list/' + list.serverId!,
-              data: formData)
-          : await dio.post(_serverUrl + '/list', data: formData);
+          ? await dio.put(serverUrl + '/list/' + list.serverId!, data: formData)
+          : await dio.post(serverUrl + '/list', data: formData);
 
       final String? listId = response.data["listId"];
       print('serv: $listId');
@@ -125,7 +125,7 @@ class CloudFileExplorer extends FileExplorer {
   dynamic remove(String path) async {
     try {
       final response =
-          await dio.delete(_serverUrl + '/file', data: {'path': path});
+          await dio.delete(serverUrl + '/file', data: {'path': path});
 
       return response.data;
     } on SocketException {
@@ -143,7 +143,7 @@ class CloudFileExplorer extends FileExplorer {
   Future<List<FileInfo>> ls({String dir = '.'}) async {
     final ret = <FileInfo>[];
     try {
-      final response = await dio.post(_serverUrl + '/directory/ls',
+      final response = await dio.post(serverUrl + '/directory/ls',
           data: {'path': _absolutePath(dir)});
       final content = response.data is Map ? response.data : {};
 
@@ -192,7 +192,7 @@ class CloudFileExplorer extends FileExplorer {
   dynamic mkdir(String path) async {
     try {
       final response =
-          await dio.post(_serverUrl + '/directory', data: {'path': '/' + path});
+          await dio.post(serverUrl + '/directory', data: {'path': '/' + path});
 
       return response.data;
     } on SocketException {
@@ -223,18 +223,9 @@ class MobileFileExplorer extends FileExplorer {
 
   late final Future<Directory> _fRoot;
   Directory? _root;
-  String _wd = '';
 
   @override
-  String get wd => _wd;
-
-  String? _feAbsolutePath(String path) {
-    if (!path.startsWith(_root!.absolute.path)) {
-      return null;
-    }
-
-    return path.replaceFirst(_root!.absolute.path, '');
-  }
+  String get wd => Directory.current.path.replaceFirst(RegExp(r'.*\/fe'), '');
 
   Future _check() async {
     if (_root == null) {
@@ -247,7 +238,7 @@ class MobileFileExplorer extends FileExplorer {
   @override
   dynamic fetch(String listname) async {
     await _check();
-    File file = File("./$listname");
+    File file = File(listname);
 
     if (file.existsSync()) {
       final json = jsonDecode(file.readAsStringSync());
@@ -263,7 +254,7 @@ class MobileFileExplorer extends FileExplorer {
     _check();
 
     //TODO: use listname not name
-    File file = File("${_root!.absolute.path}/${list.name}");
+    File file = File("$path/${list.name}");
 
     if (!file.existsSync()) {
       file.createSync();
@@ -273,7 +264,10 @@ class MobileFileExplorer extends FileExplorer {
   }
 
   @override
-  dynamic move(String src, String dest) {}
+  dynamic move(String src, String dest) {
+    final file = File(src);
+    file.renameSync(absolute(dest));
+  }
 
   @override
   dynamic remove(String filename) {
@@ -284,14 +278,16 @@ class MobileFileExplorer extends FileExplorer {
       dir.deleteSync(recursive: true);
     } else if (file.existsSync()) {
       file.deleteSync();
+    } else {
+      throw FlutterError('File not found: $filename');
     }
   }
 
   @override
-  Future<List<FileInfo>> ls({String dir = '/'}) async {
+  Future<List<FileInfo>> ls({String dir = '.'}) async {
     await _check();
 
-    Directory _dir = Directory(".$dir");
+    Directory _dir = Directory(dir);
     List<FileInfo> ret = [];
 
     if (_dir.existsSync()) {
@@ -306,19 +302,13 @@ class MobileFileExplorer extends FileExplorer {
   dynamic cd(String path) async {
     await _check();
     final Directory dir = Directory(path);
-    final String resPath = Platform.script.resolve(dir.absolute.path).path;
 
     if (!dir.existsSync()) {
       print('error cd: dir does not exists');
       return;
     }
 
-    String? absp = _feAbsolutePath(resPath);
-
-    if (absp != null) {
-      _wd = absp.endsWith('/') ? absp.substring(0, absp.length - 1) : absp;
-      Directory.current = resPath;
-    }
+    Directory.current = dir;
   }
 
   @override
