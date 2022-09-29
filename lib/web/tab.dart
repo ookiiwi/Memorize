@@ -3,7 +3,6 @@ import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/web/node_editor.dart';
 import 'package:memorize/tab.dart';
-import 'package:memorize/web/login.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key, required this.title, String? listPath})
@@ -226,8 +225,9 @@ class _NavigationMenu extends State<NavigationMenu> {
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(20)),
                                 backgroundColor: Colors.transparent,
-                                child: LoginPage(onValidate: (value) {
+                                child: LoginPage(onValidate: (value) async {
                                   if (value) {
+                                    await DataLoader.load();
                                     Navigator.of(context).pop();
                                   }
                                 })));
