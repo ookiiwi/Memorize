@@ -1,12 +1,7 @@
-import 'dart:convert';
 import 'dart:math';
 
-import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart' as fp;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:http_parser/http_parser.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
@@ -16,8 +11,8 @@ import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
 import 'package:overlayment/overlayment.dart';
-import 'package:provider/provider.dart';
 import 'package:universal_io/io.dart';
+import 'package:flutter/gestures.dart';
 
 const String listPage = 'listPage';
 
@@ -109,9 +104,11 @@ class _ListExplorer extends State<ListExplorer>
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (widget.listPath != null) {
         Navigator.of(_navCtx).push(MaterialPageRoute(
-            builder: (context) => ListPage.fromFile(
-                  path: widget.listPath,
-                )));
+            builder: (context) => widget.listPath != null
+                ? ListPage.fromFile(
+                    path: widget.listPath!,
+                  )
+                : ListPage()));
       }
     });
 
@@ -450,9 +447,10 @@ class _ListExplorer extends State<ListExplorer>
                                                                   openBuilder: (context, action) {
                                                                     return ListPage
                                                                         .fromFile(
-                                                                      path: _items[
-                                                                              i]
-                                                                          .id, //_items[i].name,
+                                                                      path: _items[i]
+                                                                              .id ??
+                                                                          _items[i]
+                                                                              .name,
                                                                       createIfDontExists:
                                                                           false,
                                                                     );
@@ -507,10 +505,11 @@ class ListPage extends StatefulWidget with ATab {
 
   ListPage.fromFile(
       {super.key,
-      this.path,
+      required String path,
       this.createIfDontExists = true,
       this.modifiable = true})
-      : list = null;
+      : list = null,
+        path = path;
 
   final String? path;
   final AList? list;
@@ -599,7 +598,12 @@ class _ListPage extends State<ListPage> {
               controller: _nameController,
               onChanged: (value) {
                 //TODO: check if name valid
-                _list.name = _nameController.text;
+                if (value.isEmpty) return;
+                if (_list.name.isNotEmpty) {
+                  fe.move(_list.name, value); // rename if file exists
+                }
+
+                _list.name = value;
                 fe.write(fe.wd, _list);
               },
               decoration: InputDecoration(
@@ -1011,6 +1015,110 @@ class _SettingsSection extends State<SettingsSection> {
   }
 }
 
+class LoginPage extends StatefulWidget {
+  const LoginPage({Key? key, required this.onValidate}) : super(key: key);
+
+  final void Function(bool) onValidate;
+
+  @override
+  State<LoginPage> createState() => _LoginPage();
+}
+
+class _LoginPage extends State<LoginPage> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _pwdController = TextEditingController();
+  bool _register = false;
+
+  void _clearControllers() {
+    _emailController.clear();
+    _usernameController.clear();
+    _pwdController.clear();
+  }
+
+  Widget _buildTextField(BuildContext context, bool hideChar,
+      {String? hintText, TextEditingController? controller}) {
+    return Container(
+        width: 300,
+        margin: const EdgeInsets.all(10),
+        child: TextField(
+          controller: controller,
+          obscureText: hideChar,
+          decoration: InputDecoration(
+            fillColor: Theme.of(context).backgroundColor,
+            filled: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+            hintText: hintText,
+          ),
+        ));
+  }
+
+  @override
+  Widget build(BuildContext ctx) {
+    return FittedBox(
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.amber,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_register)
+                  _buildTextField(context, false,
+                      hintText: 'email address', controller: _emailController),
+                _buildTextField(context, false,
+                    hintText: 'username', controller: _usernameController),
+                _buildTextField(context, true,
+                    hintText: 'password', controller: _pwdController),
+                GestureDetector(
+                    onTap: () async {
+                      final user = UserInfo(
+                        email: _emailController.text,
+                        username: _usernameController.text,
+                        pwd: _pwdController.text,
+                      );
+
+                      _clearControllers();
+
+                      final connStatus = await (_register
+                          ? Auth.register(user)
+                          : Auth.login(user));
+
+                      widget.onValidate(
+                          connStatus == UserConnectionStatus.loggedIn);
+                    },
+                    child: Container(
+                        height: 50,
+                        width: 100,
+                        margin: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(30)),
+                        child: Center(
+                            child: Text(_register ? "Register" : "Login")))),
+                RichText(
+                  text: TextSpan(
+                      style:
+                          const TextStyle(decoration: TextDecoration.underline),
+                      text: _register
+                          ? 'Already have an account ? '
+                          : 'Create an account',
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () => setState(() {
+                              _register = !_register;
+                              _clearControllers();
+                            })),
+                )
+              ],
+            )));
+  }
+}
+
 class ProfilePage extends StatefulWidget with ATab {
   const ProfilePage({Key? key, required this.onLogout}) : super(key: key);
 
@@ -1024,27 +1132,55 @@ class ProfilePage extends StatefulWidget with ATab {
 }
 
 class _ProfilePage extends State<ProfilePage> {
+  bool _isLogged = false;
+
+  bool get isLogged {
+    Auth.retrieveState().then((value) {
+      final ret = value == UserConnectionStatus.loggedIn;
+
+      if (ret != _isLogged) {
+        setState(() => _isLogged = ret);
+      }
+    });
+
+    return _isLogged;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    isLogged;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        GestureDetector(
-            onTap: () {
-              Auth.logout();
-              widget.onLogout();
-            },
-            child: Align(
-                child: Container(
-                    padding: const EdgeInsets.all(10),
-                    child: Text('Loggout',
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.background)),
-                    decoration: BoxDecoration(
-                        color: Colors.lightBlue,
-                        borderRadius: BorderRadius.circular(20)))))
-      ],
-    );
+    return !isLogged
+        ? Center(
+            child: LoginPage(
+                onValidate: (value) => setState(() => _isLogged = value)))
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                  onTap: () {
+                    Auth.logout();
+                    setState(() {
+                      //widget.onLogout();
+                    });
+                  },
+                  child: Align(
+                      child: Container(
+                          padding: const EdgeInsets.all(10),
+                          child: Text('Loggout',
+                              style: TextStyle(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .background)),
+                          decoration: BoxDecoration(
+                              color: Colors.lightBlue,
+                              borderRadius: BorderRadius.circular(20)))))
+            ],
+          );
   }
 }
 
@@ -1074,8 +1210,8 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchLists(String value) async {
     try {
       print('fetch lists');
-      final response = await dio.get('http://localhost:3000/list',
-          queryParameters: {'search': value});
+      final response =
+          await dio.get('$serverUrl/list', queryParameters: {'search': value});
       return response.data;
     } on SocketException {
       print('No Internet connection 😑');
@@ -1084,7 +1220,7 @@ class _SearchPage extends State<SearchPage> {
     } on FormatException {
       print("Bad response format 👎");
     } catch (e) {
-      print('An error occured during addon upload: $e');
+      print('An error occured during lists fetch: $e');
     }
 
     return [];
@@ -1093,8 +1229,8 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchAddons(String value) async {
     try {
       print('fetch addons');
-      final response = await dio.get('http://localhost:3000/addon',
-          queryParameters: {'search': value});
+      final response =
+          await dio.get('$serverUrl/addon', queryParameters: {'search': value});
       return response.data;
     } on SocketException {
       print('No Internet connection 😑');
@@ -1103,7 +1239,7 @@ class _SearchPage extends State<SearchPage> {
     } on FormatException {
       print("Bad response format 👎");
     } catch (e) {
-      print('An error occured during addon upload: $e');
+      print('An error occured during addons fetch: $e');
     }
 
     return [];
@@ -1147,9 +1283,12 @@ class _SearchPage extends State<SearchPage> {
                                 final data = snapshot.data;
 
                                 if (_selectedTab == tabs[0]) {
-                                  fe.write('', data as AList);
+                                  fe.write(fe.wd, data as AList);
                                 } else if (_selectedTab == tabs[1]) {
                                   (data as Addon).register();
+                                } else {
+                                  throw FlutterError(
+                                      'Unknow tab: $_selectedTab');
                                 }
                               },
                               child: const Icon(Icons.download_rounded)))
@@ -1382,7 +1521,7 @@ class ListAddonConfigPage extends StatelessWidget {
     return ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.3,
-          maxWidth: MediaQuery.of(context).size.width * 0.1,
+          maxWidth: MediaQuery.of(context).size.width,
         ),
         child: ExpandedWidget(
             sectionTitle: 'Schemas',
