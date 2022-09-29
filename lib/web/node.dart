@@ -210,8 +210,8 @@ class ContainerNode extends Node {
             List.generate(4, (i) => InputPropertyData(255), growable: false);
 
   ContainerNode.fromJson(Map<String, dynamic> json)
-      : _argb =
-            List.from(json["argb"].map((e) => InputPropertyData<double>(e))),
+      : _argb = List.from(
+            json["argb"].map((e) => InputPropertyData<double>(e + .0))),
         super.fromJson(json);
 
   @override
