@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
@@ -274,7 +276,10 @@ class _ListExplorer extends State<ListExplorer>
           setState(() {
             _openSelection = false;
             for (var item in _selectedItems) {
-              fe.remove(fe.wd + '/' + (item.id ?? item.name));
+              fe.remove(
+                  //fe.wd + '/' +
+                  (item.id ?? item.name),
+                  recursive: item.type == FileType.dir);
             }
           });
 
@@ -286,15 +291,14 @@ class _ListExplorer extends State<ListExplorer>
     ]);
   }
 
-  Widget _closedBuilder(context, String name, {bool roundBorders = true}) {
+  Widget _closedBuilder(context, FileInfo info, {bool roundBorders = true}) {
     return Container(
       decoration: !roundBorders
           ? null
           : BoxDecoration(
-              borderRadius: BorderRadius.circular(20), color: Colors.indigo),
-      child: Center(child: Text(
-          //AList.extractName(stripPath(name).last)
-          name)),
+              borderRadius: BorderRadius.circular(20),
+              color: info.type == FileType.dir ? Colors.amber : Colors.indigo),
+      child: Center(child: Text(info.name)),
     );
   }
 
@@ -415,9 +419,8 @@ class _ListExplorer extends State<ListExplorer>
                                                               setState(() =>
                                                                   _openSelection =
                                                                       true),
-                                                          behavior:
-                                                              HitTestBehavior
-                                                                  .translucent,
+                                                          behavior: HitTestBehavior
+                                                              .translucent,
                                                           onTap: () {
                                                             if (_items[i]
                                                                     .type ==
@@ -427,14 +430,14 @@ class _ListExplorer extends State<ListExplorer>
                                                               _updateData();
                                                             }
                                                           },
-                                                          child: _items[i]
-                                                                      .type ==
+                                                          child: _items[i].type ==
                                                                   FileType.dir
                                                               ? _closedBuilder(
                                                                   context,
-                                                                  _items[i].name)
+                                                                  _items[i])
                                                               : OpenContainer(
-                                                                  routeSettings: const RouteSettings(name: listPage),
+                                                                  routeSettings:
+                                                                      const RouteSettings(name: listPage),
                                                                   closedElevation: 0,
                                                                   closedColor: Colors.indigo,
                                                                   closedShape: RoundedRectangleBorder(
@@ -458,8 +461,8 @@ class _ListExplorer extends State<ListExplorer>
                                                                   closedBuilder: (context, action) {
                                                                     return _closedBuilder(
                                                                         context,
-                                                                        _items[i]
-                                                                            .name,
+                                                                        _items[
+                                                                            i],
                                                                         roundBorders:
                                                                             false);
                                                                   })));
@@ -599,9 +602,9 @@ class _ListPage extends State<ListPage> {
               onChanged: (value) {
                 //TODO: check if name valid
                 if (value.isEmpty) return;
-                if (_list.name.isNotEmpty) {
-                  fe.move(_list.name, value); // rename if file exists
-                }
+                //if (_list.name.isNotEmpty) {
+                //  fe.move(_list.name, value); // rename if file exists
+                //}
 
                 _list.name = value;
                 fe.write(fe.wd, _list);
@@ -1210,15 +1213,21 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchLists(String value) async {
     try {
       print('fetch lists');
-      final response =
-          await dio.get('$serverUrl/list', queryParameters: {'search': value});
-      return response.data;
+      final response = await dio.get('$serverUrl/file/dir',
+          queryParameters: {'path': '/public/list'});
+
+      print('content: ${response.data}');
+
+      return response.data.keys.toList();
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('An error occured during lists fetch: $e');
     }
@@ -1229,15 +1238,19 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchAddons(String value) async {
     try {
       print('fetch addons');
-      final response =
-          await dio.get('$serverUrl/addon', queryParameters: {'search': value});
-      return response.data;
+      final response = await dio.get('$serverUrl/file/dir',
+          queryParameters: {'path': '/public/addon'});
+
+      return response.data['content'];
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('An error occured during addons fetch: $e');
     }

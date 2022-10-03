@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:io';
 import 'dart:convert';
 
+import 'package:memorize/file_explorer.dart';
+
 final dio = Dio();
 const serverUrl = 'http://192.168.1.12:3000';
 
@@ -47,6 +49,9 @@ class Auth extends ChangeNotifier {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       //print('auth error: $e');
     }
@@ -63,6 +68,12 @@ class Auth extends ChangeNotifier {
               headers: {'Content-Type': 'application/json; charset=UTF-8'}),
           data: jsonEncode(userInfo));
 
+      await login(userInfo);
+
+      final cfe = CloudFileExplorer();
+      await cfe.mkdir('list');
+      await cfe.mkdir('addon');
+
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
       print('No Internet connection 😑');
@@ -70,6 +81,9 @@ class Auth extends ChangeNotifier {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('auth error: $e');
     }
@@ -89,9 +103,8 @@ class Auth extends ChangeNotifier {
       if (response.statusCode == 200) {
         ret = UserConnectionStatus.loggedIn;
         final token = response.data['token'];
-        print('token extracted: $token');
         await storage.write(key: 'jwt', value: token);
-        resetHeaders();
+        await resetHeaders();
       }
     } on SocketException {
       print('No Internet connection 😑');
@@ -99,6 +112,9 @@ class Auth extends ChangeNotifier {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }

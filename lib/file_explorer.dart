@@ -33,7 +33,7 @@ abstract class FileExplorer {
   dynamic fetch(String listname);
   dynamic write(String path, AList list);
   dynamic move(String src, String dest);
-  dynamic remove(String filename);
+  dynamic remove(String filename, {bool recursive = false});
   Future<List<FileInfo>> ls({String dir = '.'});
   dynamic cd(String path);
   dynamic mkdir(String path);
@@ -51,33 +51,23 @@ class CloudFileExplorer extends FileExplorer {
     throw UnimplementedError("Check not yet implemented");
   }
 
-  String _absolutePath(String path) {
-    final parentDirRe = RegExp(r'(\.\.(\/.*)*)+');
-
-    if (path.startsWith(RegExp(r'\.[^\.](\/.*)*'))) {
-      path = path.replaceFirst('.', wd);
-    }
-    path = path.replaceAllMapped(
-        parentDirRe,
-        (match) => match.group(0)!.replaceFirst(
-            RegExp(r'..\/|..'), '/' + (wd.split('/')..removeLast()).join('/')));
-
-    return path;
-  }
-
   @override
   dynamic fetch(String listname) async {
     try {
-      final response = await dio.get(serverUrl + '/list/' + listname);
+      final response = await dio.get(serverUrl + '/file/' + listname,
+          queryParameters: {'path': '/userstorage/list'});
+
       final data = jsonDecode(response.data);
-      print('data: $data');
-      return AList.fromJson(data);
+      return AList.fromJson(data)..serverId = listname;
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }
@@ -88,17 +78,17 @@ class CloudFileExplorer extends FileExplorer {
     try {
       print('write');
       final formData = FormData.fromMap({
-        'status': list.status,
-        'path': path,
+        'dest': '/userstorage/list',
+        'permissions': '300',
         'file': MultipartFile.fromString(jsonEncode(list),
             filename: list.name, contentType: MediaType("application", "json"))
       });
 
       final response = list.serverId != null
-          ? await dio.put(serverUrl + '/list/' + list.serverId!, data: formData)
-          : await dio.post(serverUrl + '/list', data: formData);
+          ? await dio.put(serverUrl + '/file/' + list.serverId!, data: formData)
+          : await dio.post(serverUrl + '/file', data: formData);
 
-      final String? listId = response.data["listId"];
+      final String? listId = response.data["id"];
       print('serv: $listId');
 
       assert(listId != list.serverId);
@@ -110,6 +100,9 @@ class CloudFileExplorer extends FileExplorer {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }
@@ -122,10 +115,11 @@ class CloudFileExplorer extends FileExplorer {
   }
 
   @override
-  dynamic remove(String path) async {
+  dynamic remove(String path, {bool recursive = false}) async {
     try {
-      final response =
-          await dio.delete(serverUrl + '/file', data: {'path': path});
+      final route = recursive ? 'dir' : 'file';
+      final response = await dio.delete(serverUrl + '/' + route,
+          data: {'path': '/userstorage/list/' + path});
 
       return response.data;
     } on SocketException {
@@ -134,6 +128,9 @@ class CloudFileExplorer extends FileExplorer {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }
@@ -143,13 +140,14 @@ class CloudFileExplorer extends FileExplorer {
   Future<List<FileInfo>> ls({String dir = '.'}) async {
     final ret = <FileInfo>[];
     try {
-      final response = await dio.post(serverUrl + '/directory/ls',
-          data: {'path': _absolutePath(dir)});
-      final content = response.data is Map ? response.data : {};
+      final response = await dio.get(serverUrl + '/dir', queryParameters: {
+        'path': '/userstorage/list',
+      });
 
+      final content = response.data is Map ? response.data : {};
       for (var e in content.entries) {
-        final name = e.value is String ? e.value : e.key;
-        final id = e.value is String ? e.key : null;
+        final name = e.key;
+        final id = e.value is String ? e.value : null;
 
         ret.add(FileInfo(id != null ? FileType.list : FileType.dir, name, id));
       }
@@ -159,6 +157,9 @@ class CloudFileExplorer extends FileExplorer {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }
@@ -168,7 +169,10 @@ class CloudFileExplorer extends FileExplorer {
 
   @override
   dynamic cd(String path) {
-    String absPath = _absolutePath(path);
+    throw UnimplementedError();
+
+    // TODO: normalize path
+    String absPath = canonicalize(path);
     int i = -1;
     List rootCodeUnits = _root.codeUnits;
     List pathCodeUnits = absPath.codeUnits;
@@ -184,15 +188,15 @@ class CloudFileExplorer extends FileExplorer {
       }
     }
 
-    _wd = _absolutePath(path);
+    _wd = canonicalize(path);
     print('cd: $_wd');
   }
 
   @override
   dynamic mkdir(String path) async {
     try {
-      final response =
-          await dio.post(serverUrl + '/directory', data: {'path': '/' + path});
+      final response = await dio.post(serverUrl + '/dir',
+          data: {'path': '/userstorage/list/' + path, 'permissions': '300'});
 
       return response.data;
     } on SocketException {
@@ -201,6 +205,9 @@ class CloudFileExplorer extends FileExplorer {
       print("Couldn't find the post 😱");
     } on FormatException {
       print("Bad response format 👎");
+    } on DioError catch (e) {
+      print(
+          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
     } catch (e) {
       print('error: $e');
     }
@@ -270,7 +277,7 @@ class MobileFileExplorer extends FileExplorer {
   }
 
   @override
-  dynamic remove(String filename) {
+  dynamic remove(String filename, {bool recursive = false}) {
     final Directory dir = Directory(filename);
     final File file = File(filename);
 
