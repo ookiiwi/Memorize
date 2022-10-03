@@ -2,17 +2,15 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const userRoutes = require('./routes/user');
-const listRoutes = require('./routes/list');
-const addonRoutes = require('./routes/addon');
 const fileRoutes = require('./routes/file');
-const directoryRoutes = require('./routes/directory');
+const dirRoutes = require('./routes/directory');
 const auth = require('./middleware/auth');
 const app = express();
 const port = 3000;
 
 mongoose.connect('mongodb+srv://admin:bX3GHQlOtCHaSPOP@memodb.fsc75sv.mongodb.net/?retryWrites=true&w=majority', 
     { useNewUrlParser: true,
-        useUnifiedTopology: true })
+      useUnifiedTopology: true })
     .then(() => console.log('MongoDB connection succeeded !'))
     .catch(() => console.log('MongoDB connection failed !'));
 
@@ -27,14 +25,10 @@ app.use((req, res, next) => {
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.get('/isLoggedIn', auth, (req, res) => { res.send('check if logged'); });
 app.use('/auth', userRoutes);
-app.use('/list', listRoutes);
-app.use('/addon', addonRoutes);
-app.use('/directory', directoryRoutes);
 app.use('/file', fileRoutes);
-app.get('/isLoggedIn', auth, (req, res) => {
-  res.send('check if logged');
-});
+app.use('/dir', dirRoutes);
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)

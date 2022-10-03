@@ -1,9 +1,13 @@
 const multer = require('multer');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
+const { resolveUserstorage } =  require('../utils/file-utils');
+
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'storage/' + req.params.status + '/' + req.params.dest);
+    destination: (req, _, cb) => {
+        cb(null, req.body.dest);
     },
     filename: (req, _, cb) => {
         cb(null, req.params.id);
@@ -11,16 +15,15 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    
-    if (req.body.status === 'private'){
-        // TODO: check if allowed
-        req.params.status = 'private';
-    } else {
-        req.params.status = 'shared';
+    req.body.dest = resolveUserstorage(req.body.dest, req.auth.userId);
+    req.body.dest = path.join(__dirname, '../storage' + req.body.dest);
+
+    if (!fs.existsSync(req.body.dest)) {
+        console.log('mkdir: ' + req.body.dest);
+        throw "File not found";
     }
 
-    if (!req.params.id) 
-    {
+    if (!req.params.id) {
         req.params.id = String(mongoose.Types.ObjectId());
     }
     

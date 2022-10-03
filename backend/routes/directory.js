@@ -4,8 +4,9 @@ const auth = require('../middleware/auth');
 
 const directoryCtrl = require('../controllers/directory');
 
-router.put('/', auth, directoryCtrl.update);
-router.post('/', auth, directoryCtrl.mkdir);
-router.post('/ls', auth, directoryCtrl.ls);
+router.get('/',     auth, directoryCtrl.ls);
+router.put('/',     auth, directoryCtrl.update);
+router.post('/',    auth, directoryCtrl.mkdir);
+router.delete('/',  auth, directoryCtrl.delete);
 
 module.exports = router;

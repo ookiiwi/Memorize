@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
+const directoryCtrl = require('../controllers/directory');
 
 exports.signup = (req, res, next) => {
     bcrypt.hash(req.body.password, 10).then(hash => {
@@ -10,11 +11,30 @@ exports.signup = (req, res, next) => {
             password: hash
         });
 
+        const userId = user._id;
+
+        delete req.body;
+        req.body = new Object();
+
+        req.body.path = '/userstorage';// + req.auth.userId;
+        req.body.permissions = '300';
+        req.auth = { userId: userId };
+        req.skipResponse = true;
+        directoryCtrl.mkdir(req, res);
+        console.log('user storage space created');
+
         user.save()
-            .then(() => res.status(201).json({ message: 'User created !' }))
-            .catch(err => res.status(400).json({ err }));
-    })
-    .catch(err => res.status(500).json({ err : "encryption error" }));
+            .then(() => {
+                res.status(201).json({ message: 'User created !' });
+            }).catch(err => {
+                console.log('cannot save user');
+                res.status(400).json({ err });
+            });
+
+    }).catch(err => {
+        console.log('error on signup: ' + err);
+        res.status(500).json({ err });
+    });
 };
 
 exports.login = (req, res, next) => {

@@ -1,64 +1,102 @@
-const ramda = require('ramda');
 const path = require('path');
 const fs = require('fs');
 
-const User = require('../models/user');
-const { splitPath } = require('../utils/path-utils');
-const List = require('../models/list');
+const File = require('../models/file');
+const upload = require('../middleware/multer-config');
+const Group = require('../models/group');
+const { assert } = require('console');
+const { testPermissions, resolveUserstorage } =  require('../utils/file-utils');
 
-exports.delete = (req, res, next) => {
-    User.findById(req.auth.userId)
-    .then(
-        (user) => {
-        const path = splitPath(req.body.path);
-        
-        if (!ramda.hasPath(path, user.listPathStructure)){
-            throw 'Cannot delete directory ' + req.body.path + '. Directory does not exists';
+exports.create = (req, res) => {
+    const file = File({
+        _id: req.params.id,
+        owner: req.auth.userId,
+        group: req.body.group,
+        name: req.file.originalname,
+        permissions: parseInt(req.body.permissions, 4)
+    });
+
+    file.save().then(
+        () => {
+            res.status(201).json({ id: file._id });
         }
-        
-        const dir = ramda.path(path, user.listPathStructure)
-
-        if (!dir) {
-            rmList(path[path.length-1]);
-        } else {
-            rm(dir);
+    ).catch(
+        (err) => {
+            console.log('Error when creating list: ' + err);
+            res.status(500).json({ err });
         }
+    )
+};
 
-        user.listPathStructure = ramda.dissocPath(path, user.listPathStructure);
-        user.save();
-        
-    }).catch((err) => { 
-        console.log(err);
-        res.status(400).json({ err })
-    });
-}
+exports.update = (req, res) => {
+    File.findById(req.params.id).then(
+        async (file) => {
+            const perm = await testPermissions(file, req.auth.userId);
 
-function rm(dir) {
-    const dirs = [];
+            if (!(perm & 1)) {
+                throw "Forbidden access";
+            }
 
-    if (!dir) {
-        return;
-    }
+            upload(req, res, () => {
+                file.name = req.file.originalname,
+                file.group = req.body.group || file.group;
+                file.permissions = req.body.permissions ? parseInt(req.body.permissions, 4) : file.permissions;
 
-    Object.entries(dir).forEach((key, index) => {
-        if (dir[key] instanceof Object) {
-            dirs.push(dir[key]);
-        } else {
-            rmList(key);
+                file.save();
+                res.status(201);
+            });
         }
-    });
+    ).catch(
+        (err) => {
+            res.status(401).json({ err });
+        }
+    );
 
-    if (!dirs.length) return;
+};
 
-    dirs.forEach((value) => {
-        rm(value);
-    });
-}
+exports.read = (req, res) => {
+    File.findById(req.params.id).then(
+        async (file) => {
+            const perm = await testPermissions(file, req.auth.userId);
 
-function rmList(id){
-    List.findById(id).then((list) => {
+            if (!(perm & 2)) {
+                throw "Forbidden access";
+            }
+            assert(req.query.path);
+            
+            req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
+            const p = path.join(__dirname, '../storage' + req.query.path + '/' + req.params.id);
+            console.log('ret: ' + p);
+            const ret = fs.readFileSync(p).toString();
 
-        const p = path.join(__dirname, '../lists/' + list.status + '/' + list._id);
-        fs.unlinkSync(p);
-    });
+            res.status(201).json(ret);
+        }
+    ).catch(
+        (err) => {
+            res.status(500).json({ err });
+        }
+    )
+};
+
+exports.delete = (req, res) => {
+    const id = req.body.path.split('/').pop();
+    File.findByIdAndDelete(id).then(
+        (file) => {
+            if (file.owner != req.auth.userId) {
+                throw "Cannot delete file unless you are the owner";
+            }
+
+            const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
+            fs.rmSync(p, { recursive: true, force: true });
+
+            res.status(201);
+        }
+    ).catch(
+        (err) => {
+            console.log('Deletion error: ' + err);
+            res.status(401).json({ err });
+        }
+    );
+
+
 }
