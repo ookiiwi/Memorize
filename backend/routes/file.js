@@ -10,7 +10,7 @@ const authNoExcept = (req, _, next) => {
     next();
 };
 
-router.get('/:id', authNoExcept, auth, fileCtrl.read);
+router.get('/',    authNoExcept, auth, fileCtrl.read);
 router.put('/:id', authNoExcept, auth, fileCtrl.update);
 router.post('/',   auth, upload, fileCtrl.create); // return id
 router.delete('/', auth, fileCtrl.delete);
