@@ -58,7 +58,9 @@ exports.ls = (req, res) => {
                 const isfile = fs.lstatSync(p + '/' + e).isFile();
                 if (isfile) {
                     const f = await File.findById(e);
-                    ret[f.name] = e;
+                    if (f) {
+                        ret[f.name] = e;
+                    }
                 } else {
                     ret[e] = null;
                 }
@@ -88,7 +90,7 @@ exports.delete = (req, res) => {
             const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
             fs.rmSync(p, { recursive: true, force: true });
 
-            res.status(201);
+            res.status(201).send();
         }).catch(
             (err) => {
                 res.status(500).json({ err });

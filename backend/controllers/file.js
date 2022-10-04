@@ -5,7 +5,7 @@ const File = require('../models/file');
 const upload = require('../middleware/multer-config');
 const Group = require('../models/group');
 const { assert } = require('console');
-const { testPermissions, resolveUserstorage } =  require('../utils/file-utils');
+const { testPermissions, resolveUserstorage } = require('../utils/file-utils');
 
 exports.create = (req, res) => {
     const file = File({
@@ -43,11 +43,16 @@ exports.update = (req, res) => {
 
             upload(req, res, () => {
                 file.name = req.file.originalname,
-                file.group = req.body.group || file.group;
+                    file.group = req.body.group || file.group;
                 file.permissions = req.body.permissions ? parseInt(req.body.permissions, 4) : file.permissions;
 
-                file.save();
-                res.status(201);
+                file.save().then(() => {
+                    res.status(201).send();
+                }).catch(
+                    (err) => {
+                        res.status(500).json({ err });
+                    }
+                );
             });
         }
     ).catch(
@@ -73,7 +78,7 @@ exports.read = (req, res) => {
                 throw "Forbidden access";
             }
             assert(req.query.path);
-            
+
             req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
             const p = path.join(__dirname, '../storage' + req.query.path);
             const ret = fs.readFileSync(p).toString();
@@ -98,7 +103,7 @@ exports.delete = (req, res) => {
             const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
             fs.rmSync(p, { recursive: true, force: true });
 
-            res.status(201);
+            res.status(201).send();
         }
     ).catch(
         (err) => {
