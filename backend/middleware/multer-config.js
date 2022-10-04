@@ -7,7 +7,7 @@ const { resolveUserstorage } =  require('../utils/file-utils');
 
 const storage = multer.diskStorage({
     destination: (req, _, cb) => {
-        cb(null, req.body.dest);
+        cb(null, req.body.path);
     },
     filename: (req, _, cb) => {
         cb(null, req.params.id);
@@ -15,11 +15,10 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-    req.body.dest = resolveUserstorage(req.body.dest, req.auth.userId);
-    req.body.dest = path.join(__dirname, '../storage' + req.body.dest);
+    req.body.path = resolveUserstorage(req.body.path, req.auth.userId);
+    req.body.path = path.join(__dirname, '../storage' + req.body.path);
 
-    if (!fs.existsSync(req.body.dest)) {
-        console.log('mkdir: ' + req.body.dest);
+    if (!fs.existsSync(req.body.path)) {
         throw "File not found";
     }
 
