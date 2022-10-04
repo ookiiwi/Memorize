@@ -1,11 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
-import 'package:memorize/file_explorer.dart';
+import 'package:memorize/file_system.dart';
 import 'package:memorize/reminder.dart';
-
-final FileExplorer fe = kIsWeb ? CloudFileExplorer() : MobileFileExplorer();
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -15,8 +15,8 @@ int daysBetween(DateTime from, DateTime to) {
 
 typedef AListEntry = Map<String, dynamic>;
 
-class AList {
-  AList(this.name, {String? serverId})
+class AList extends MemoFile {
+  AList(super.name, {String? serverId})
       : schemasMapping = {},
         _serverId = serverId,
         _entries = [],
@@ -24,23 +24,24 @@ class AList {
         _stats = AListStats();
 
   AList.from(AList list)
-      : name = list.name,
-        schemasMapping = Map.from(list.schemasMapping),
+      : schemasMapping = Map.from(list.schemasMapping),
         _serverId = list.serverId,
         status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
-        _stats = AListStats();
+        _stats = AListStats(),
+        super(list.name);
 
   AList.fromJson(Map<String, dynamic> json)
-      : name = json['name'],
-        schemasMapping = Map.from(json['schemasMapping']),
+      : schemasMapping = Map.from(json['schemasMapping']),
         _serverId = json['serverId'],
         status = json['status'],
         _entries = List.from(json['entries']),
         _tags = Set.from(json['tags']),
-        _stats = AListStats.fromJson(json["listStats"]);
+        _stats = AListStats.fromJson(json["listStats"]),
+        super(json['name']);
 
+  // TODO: use MemoFile toJson
   Map<String, dynamic> toJson() => {
         'name': name,
         'schemasMapping': schemasMapping,
@@ -51,14 +52,15 @@ class AList {
         "listStats": _stats.toJson()
       };
 
+  @override
+  get data => jsonEncode(toJson());
+
   String? _serverId;
   String? get serverId => _serverId;
   set serverId(id) {
-    assert(_serverId == null);
     _serverId = id;
   }
 
-  String name = '';
   String status = 'private';
   final Map<String, String> schemasMapping;
   final List<AListEntry> _entries;
@@ -79,6 +81,27 @@ class AList {
     _entries.add(entry);
 
     schemasMapping.putIfAbsent(entry['schema'], () => 'Language');
+  }
+
+  /// NOT IMPLEMENTED. Use fs instead
+  @override
+  write(String path, [MemoFile? file]) {
+    // TODO: implement write
+    throw UnimplementedError();
+  }
+
+  /// NOT IMPLEMENTED. Use fs instead
+  @override
+  read(String path) {
+    // TODO: implement read
+    throw UnimplementedError();
+  }
+
+  /// NOT IMPLEMENTED. Use fs instead
+  @override
+  rm(String path) {
+    // TODO: implement rm
+    throw UnimplementedError();
   }
 }
 
