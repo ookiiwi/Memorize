@@ -31,6 +31,10 @@ exports.create = (req, res) => {
 exports.update = (req, res) => {
     File.findById(req.params.id).then(
         async (file) => {
+            if (!file) {
+                throw "File not found.";
+            }
+
             const perm = await testPermissions(file, req.auth.userId);
 
             if (!(perm & 1)) {
@@ -55,8 +59,14 @@ exports.update = (req, res) => {
 };
 
 exports.read = (req, res) => {
-    File.findById(req.params.id).then(
+    const id = req.query.path.split('/').pop();
+
+    File.findById(id).then(
         async (file) => {
+            if (!file) {
+                throw "File not found.";
+            }
+
             const perm = await testPermissions(file, req.auth.userId);
 
             if (!(perm & 2)) {
@@ -65,8 +75,7 @@ exports.read = (req, res) => {
             assert(req.query.path);
             
             req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
-            const p = path.join(__dirname, '../storage' + req.query.path + '/' + req.params.id);
-            console.log('ret: ' + p);
+            const p = path.join(__dirname, '../storage' + req.query.path);
             const ret = fs.readFileSync(p).toString();
 
             res.status(201).json(ret);
@@ -94,7 +103,7 @@ exports.delete = (req, res) => {
     ).catch(
         (err) => {
             console.log('Deletion error: ' + err);
-            res.status(401).json({ err });
+            res.status(500).json({ err });
         }
     );
 
