@@ -1,10 +1,10 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:memorize/file_explorer.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:memorize/file_system.dart' as fs;
 
 final dio = Dio();
 const serverUrl = 'http://192.168.1.12:3000';
@@ -70,9 +70,8 @@ class Auth extends ChangeNotifier {
 
       await login(userInfo);
 
-      final cfe = CloudFileExplorer();
-      await cfe.mkdir('list');
-      await cfe.mkdir('addon');
+      await fs.mkdirWeb('/userstorage/list');
+      await fs.mkdirWeb('/userstorage/addon');
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
