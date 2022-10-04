@@ -7,7 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/file_explorer.dart';
+import 'package:memorize/file_system.dart' as fs;
 import 'package:memorize/quiz.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
@@ -71,7 +71,7 @@ class ListExplorer extends StatefulWidget with ATab {
 class _ListExplorer extends State<ListExplorer>
     with RouteAware, TickerProviderStateMixin {
   SortType _sortType = SortType.rct;
-  List<FileInfo> _items = [];
+  List<fs.FileInfo> _items = [];
   Future<List> _fItems = Future.value([]);
   bool _openBtnMenu = false;
   static late BuildContext _navCtx;
@@ -108,7 +108,8 @@ class _ListExplorer extends State<ListExplorer>
         Navigator.of(_navCtx).push(MaterialPageRoute(
             builder: (context) => widget.listPath != null
                 ? ListPage.fromFile(
-                    path: widget.listPath!,
+                    fileInfo: fs.FileInfo(FileSystemEntityType.file, '')
+                      ..path = widget.listPath!,
                   )
                 : ListPage()));
       }
@@ -139,6 +140,8 @@ class _ListExplorer extends State<ListExplorer>
         vsync: this, duration: const Duration(milliseconds: 500));
     _addBtnAnim =
         CurvedAnimation(parent: _addBtnAnimController, curve: Curves.linear);
+
+    fs.cd('/userstorage/list');
   }
 
   @override
@@ -161,7 +164,7 @@ class _ListExplorer extends State<ListExplorer>
   }
 
   void _updateData() {
-    _fItems = fe.ls()
+    _fItems = fs.ls()
       ..then((value) {
         if (mounted) {
           setState(() {
@@ -176,7 +179,7 @@ class _ListExplorer extends State<ListExplorer>
     if (Navigator.of(_navCtx).canPop()) {
       return true;
     } else {
-      fe.cd('..');
+      fs.cd('..');
       _updateData();
     }
     return false;
@@ -224,8 +227,8 @@ class _ListExplorer extends State<ListExplorer>
                             hasConfirmed: (value) {
                               setState(() {
                                 _openBtnMenu = !_openBtnMenu;
-                                if (value) {
-                                  fe.mkdir(_controller.text);
+                                if (value && _controller.text.isNotEmpty) {
+                                  fs.mkdir(_controller.text);
                                   _updateData();
                                 }
                               });
@@ -276,10 +279,9 @@ class _ListExplorer extends State<ListExplorer>
           setState(() {
             _openSelection = false;
             for (var item in _selectedItems) {
-              fe.remove(
-                  //fe.wd + '/' +
-                  (item.id ?? item.name),
-                  recursive: item.type == FileType.dir);
+              item.type == FileSystemEntityType.directory
+                  ? fs.rmdir(item.name)
+                  : fs.rmFile((item.id ?? item.name));
             }
           });
 
@@ -291,13 +293,15 @@ class _ListExplorer extends State<ListExplorer>
     ]);
   }
 
-  Widget _closedBuilder(context, FileInfo info, {bool roundBorders = true}) {
+  Widget _closedBuilder(context, fs.FileInfo info, {bool roundBorders = true}) {
     return Container(
       decoration: !roundBorders
           ? null
           : BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: info.type == FileType.dir ? Colors.amber : Colors.indigo),
+              color: info.type == FileSystemEntityType.directory
+                  ? Colors.amber
+                  : Colors.indigo),
       child: Center(child: Text(info.name)),
     );
   }
@@ -328,7 +332,7 @@ class _ListExplorer extends State<ListExplorer>
                           borderRadius: BorderRadius.circular(20),
                           color: Colors.grey,
                         ),
-                        child: Text(fe.wd),
+                        child: Text(fs.wd),
                       )),
                       Container(
                         margin: const EdgeInsets.only(left: 10),
@@ -336,7 +340,7 @@ class _ListExplorer extends State<ListExplorer>
                         child: FloatingActionButton(
                             onPressed: () {
                               //ReminderNotification.removeFirst(
-                              //    '/data/data/com.example.memorize/app_flutter/fe/root/maez1W0jSm?test');
+                              //    '/data/data/com.example.memorize/app_flutter/fs/root/maez1W0jSm?test');
                             },
                             child: const Icon(Icons.search)),
                       )
@@ -419,25 +423,27 @@ class _ListExplorer extends State<ListExplorer>
                                                               setState(() =>
                                                                   _openSelection =
                                                                       true),
-                                                          behavior: HitTestBehavior
-                                                              .translucent,
+                                                          behavior:
+                                                              HitTestBehavior
+                                                                  .translucent,
                                                           onTap: () {
                                                             if (_items[i]
                                                                     .type ==
-                                                                FileType.dir) {
-                                                              fe.cd(_items[i]
+                                                                FileSystemEntityType
+                                                                    .directory) {
+                                                              fs.cd(_items[i]
                                                                   .name);
                                                               _updateData();
                                                             }
                                                           },
                                                           child: _items[i].type ==
-                                                                  FileType.dir
+                                                                  FileSystemEntityType
+                                                                      .directory
                                                               ? _closedBuilder(
                                                                   context,
                                                                   _items[i])
                                                               : OpenContainer(
-                                                                  routeSettings:
-                                                                      const RouteSettings(name: listPage),
+                                                                  routeSettings: const RouteSettings(name: listPage),
                                                                   closedElevation: 0,
                                                                   closedColor: Colors.indigo,
                                                                   closedShape: RoundedRectangleBorder(
@@ -450,10 +456,11 @@ class _ListExplorer extends State<ListExplorer>
                                                                   openBuilder: (context, action) {
                                                                     return ListPage
                                                                         .fromFile(
-                                                                      path: _items[i]
-                                                                              .id ??
-                                                                          _items[i]
-                                                                              .name,
+                                                                      fileInfo: _items[
+                                                                          i]
+                                                                        ..path =
+                                                                            _items[i].id ??
+                                                                                _items[i].name,
                                                                       createIfDontExists:
                                                                           false,
                                                                     );
@@ -503,18 +510,18 @@ class ListPage extends StatefulWidget with ATab {
       this.list,
       this.createIfDontExists = true,
       this.modifiable = true})
-      : path = null,
+      : fileInfo = null,
         super(key: key);
 
   ListPage.fromFile(
       {super.key,
-      required String path,
+      required fs.FileInfo fileInfo,
       this.createIfDontExists = true,
       this.modifiable = true})
       : list = null,
-        path = path;
+        fileInfo = fileInfo;
 
-  final String? path;
+  final fs.FileInfo? fileInfo;
   final AList? list;
   final bool createIfDontExists;
   final bool modifiable;
@@ -547,10 +554,21 @@ class _ListPage extends State<ListPage> {
 
     widget._reload = () => setState(() {});
 
-    _list = widget.list ?? AList('');
-
     _nameIsValid = true; //TODO: check if name valid
-    _nameController = TextEditingController(text: _list.name);
+
+    if (widget.fileInfo != null) {
+      assert(widget.fileInfo?.path != null);
+      _fList = fs.readFile(widget.fileInfo!.path!).then((value) {
+        assert(!(value == null && !widget.createIfDontExists));
+        assert(value != null, 'Cannot read list');
+        _list = AList.fromJson(jsonDecode(value))..id = widget.fileInfo!.id;
+      }).catchError((err) => print('err $err'));
+    } else {
+      _list = widget.list ?? AList('');
+      _fList = Future.value();
+    }
+    _fList.whenComplete(
+        () => _nameController = TextEditingController(text: _list.name));
   }
 
   @override
@@ -560,20 +578,6 @@ class _ListPage extends State<ListPage> {
     _route?.removeScopedWillPopCallback(canPop);
     _route = ModalRoute.of(context);
     _route?.addScopedWillPopCallback(canPop);
-
-    if (!_listSet) {
-      if (widget.path != null) {
-        _fList = fe.fetch(widget.path!).then((value) {
-          assert(!(value == null && !widget.createIfDontExists));
-          _list = value ?? AList("List not found");
-          _nameController.text = _list.name;
-        });
-      } else {
-        _fList = Future.value(null);
-      }
-
-      _listSet = true;
-    }
   }
 
   @override
@@ -602,12 +606,9 @@ class _ListPage extends State<ListPage> {
               onChanged: (value) {
                 //TODO: check if name valid
                 if (value.isEmpty) return;
-                //if (_list.name.isNotEmpty) {
-                //  fe.move(_list.name, value); // rename if file exists
-                //}
 
                 _list.name = value;
-                fe.write(fe.wd, _list);
+                fs.writeFile(fs.wd, _list);
               },
               decoration: InputDecoration(
                   border: OutlineInputBorder(
@@ -773,7 +774,7 @@ class _ListPage extends State<ListPage> {
                                             for (int i in _selectedItems) {
                                               _list.entries.removeAt(i);
                                             }
-                                            fe.write(fe.wd, _list);
+                                            fs.writeFile(fs.wd, _list);
                                           }),
                                           child: const Icon(Icons.delete),
                                         )
@@ -781,7 +782,7 @@ class _ListPage extends State<ListPage> {
                                           onPressed: () {
                                             // show search window
                                             _list.addEntry({'schema': 'en'});
-                                            fe.write(fe.wd, _list);
+                                            fs.writeFile(fs.wd, _list);
                                             setState(() {});
                                           },
                                           child: const Icon(Icons.add))
@@ -1259,7 +1260,7 @@ class _SearchPage extends State<SearchPage> {
   }
 
   static Future<AList> _fetchList(String id) async {
-    return await CloudFileExplorer().fetch(id);
+    return await fs.readFileWeb('/public/addon/' + id);
   }
 
   static Future<Addon?> _fetchAddon(String id) async {
@@ -1296,7 +1297,7 @@ class _SearchPage extends State<SearchPage> {
                                 final data = snapshot.data;
 
                                 if (_selectedTab == tabs[0]) {
-                                  fe.write(fe.wd, data as AList);
+                                  fs.writeFile(fs.wd, data as AList);
                                 } else if (_selectedTab == tabs[1]) {
                                   (data as Addon).register();
                                 } else {
@@ -1508,13 +1509,12 @@ class _ListUploadPage extends State<ListUploadPage> {
                         return FloatingActionButton(
                             onPressed: () {
                               print('list id: ${widget.list.serverId}');
-                              _writeResponse =
-                                  CloudFileExplorer().write(fe.wd, widget.list)
-                                    ..then((value) {
-                                      if (widget.onUpload != null) {
-                                        widget.onUpload!();
-                                      }
-                                    });
+                              _writeResponse = fs.writeFile(fs.wd, widget.list)
+                                ..then((value) {
+                                  if (widget.onUpload != null) {
+                                    widget.onUpload!();
+                                  }
+                                });
                             },
                             child: const Icon(Icons.send_rounded));
                       }
@@ -1562,7 +1562,7 @@ class ListAddonConfigPage extends StatelessWidget {
                                   onSubmitted: (value) {
                                     list.schemasMapping[list.schemasMapping.keys
                                         .elementAt(i)] = value;
-                                    fe.write(fe.wd, list);
+                                    fs.writeFile(fs.wd, list);
                                   },
                                 )))
                       ],
