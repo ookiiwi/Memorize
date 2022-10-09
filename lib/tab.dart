@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:memorize/addon.dart';
@@ -537,16 +538,16 @@ class ListPage extends StatefulWidget with ATab {
 }
 
 class _ListPage extends State<ListPage> {
-  late final TextEditingController _nameController;
+  final _nameController = TextEditingController();
   late AList _list;
   bool _nameIsValid = false;
   bool get _canPop => _nameIsValid;
   bool _openSelection = false;
   final List _selectedItems = [];
   late Future _fList;
-  bool _listSet = false;
   ModalRoute? _route;
   final String _uploadWindowName = 'upload';
+  bool get isEditable => widget.modifiable && _list.version == null;
 
   @override
   void initState() {
@@ -556,19 +557,7 @@ class _ListPage extends State<ListPage> {
 
     _nameIsValid = true; //TODO: check if name valid
 
-    if (widget.fileInfo != null) {
-      assert(widget.fileInfo?.path != null);
-      _fList = fs.readFile(widget.fileInfo!.path!).then((value) {
-        assert(!(value == null && !widget.createIfDontExists));
-        assert(value != null, 'Cannot read list');
-        _list = AList.fromJson(jsonDecode(value))..id = widget.fileInfo!.id;
-      }).catchError((err) => print('err $err'));
-    } else {
-      _list = widget.list ?? AList('');
-      _fList = Future.value();
-    }
-    _fList.whenComplete(
-        () => _nameController = TextEditingController(text: _list.name));
+    _loadList();
   }
 
   @override
@@ -595,25 +584,49 @@ class _ListPage extends State<ListPage> {
     super.deactivate();
   }
 
+  void _loadList([String? versionId]) {
+    if (widget.fileInfo != null) {
+      assert(widget.fileInfo?.path != null);
+      _fList =
+          fs.readFile(widget.fileInfo!.path!, version: versionId).then((value) {
+        assert(!(value == null && !widget.createIfDontExists));
+        assert(value != null, 'Cannot read list');
+        _list = AList.fromJson(jsonDecode(value['ret']),
+            versions: Set.from(value['versions']));
+      }).catchError((err) => print('err $err'));
+    } else {
+      _list = widget.list ?? AList('');
+      _fList = Future.value();
+    }
+    _fList.whenComplete(() => _nameController.text = _list.name);
+  }
+
   Widget _buildElts() {
     return Column(
       children: [
-        Container(
-            margin: const EdgeInsets.all(20),
-            child: TextField(
-              enabled: widget.modifiable,
-              controller: _nameController,
-              onChanged: (value) {
-                //TODO: check if name valid
-                if (value.isEmpty) return;
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+              width: MediaQuery.of(context).size.width * 0.3,
+              margin: const EdgeInsets.all(20),
+              child: TextField(
+                enabled: isEditable,
+                controller: _nameController,
+                onChanged: (value) {
+                  //TODO: check if name valid
+                  if (value.isEmpty) return;
 
-                _list.name = value;
-                fs.writeFile(fs.wd, _list);
-              },
-              decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20))),
-            )),
+                  _list.name = value;
+                  _list.version = null;
+                  fs.writeFile(fs.wd, _list);
+
+                  setState(() {});
+                },
+                decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20))),
+              )),
+          _buildVersionDropdown()
+        ]),
         Expanded(
             child: RefreshIndicator(
                 onRefresh: (() async {
@@ -647,6 +660,32 @@ class _ListPage extends State<ListPage> {
       ],
     );
   }
+
+  Widget _buildVersionDropdown() => OverExpander(
+      backgroundSettings: const BackgroundSettings(
+          color: Colors.transparent, dismissOnClick: true),
+      fitParentWidth: false,
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Text(_list.version ?? 'HEAD')),
+      expandChild: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            children: _list.versions.map((e) {
+              if (e == _list.version) {
+                e = 'HEAD';
+              }
+              return MaterialButton(
+                  onPressed: () {
+                    setState(() {
+                      _loadList(e == 'HEAD' ? null : e);
+                      Overlayment.dismissLast(result: e);
+                    });
+                  },
+                  child: Text(e));
+            }).toList(),
+          )));
 
   Future<bool> canPop() async {
     print('listpage pop');
@@ -694,7 +733,10 @@ class _ListPage extends State<ListPage> {
             alignment: Alignment.center,
             child: ListUploadPage(
                 list: _list,
-                onUpload: () => Overlayment.dismissName(_uploadWindowName))),
+                onUpload: () {
+                  setState(() {});
+                  Overlayment.dismissName(_uploadWindowName);
+                })),
         context: context);
   }
 
@@ -721,7 +763,7 @@ class _ListPage extends State<ListPage> {
                   children: [
                     Stack(children: [
                       _buildElts(),
-                      if (widget.modifiable)
+                      if (isEditable)
                         Positioned(
                             left: 10,
                             right: 10,
@@ -1471,6 +1513,8 @@ class ListUploadPage extends StatefulWidget {
 class _ListUploadPage extends State<ListUploadPage> {
   Map<String, bool> _selectedStatus = {'Private': true, 'Shared': false};
   Future _writeResponse = Future.value();
+  String _uploadVersion = '';
+  bool _doUpload = false;
 
   @override
   void initState() {
@@ -1499,6 +1543,24 @@ class _ListUploadPage extends State<ListUploadPage> {
               },
             ),
             Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const Padding(
+                    padding: EdgeInsets.all(10), child: Text('Version: ')),
+                SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.2,
+                    child: TextField(
+                      enabled: _doUpload,
+                      onChanged: (value) =>
+                          setState(() => _uploadVersion = value),
+                    )),
+                Checkbox(
+                    value: _doUpload,
+                    onChanged: (value) =>
+                        setState(() => _doUpload = value ?? _doUpload))
+              ]),
+            ),
+            Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: FutureBuilder(
                     future: _writeResponse,
@@ -1508,17 +1570,29 @@ class _ListUploadPage extends State<ListUploadPage> {
                       } else {
                         return FloatingActionButton(
                             onPressed: () {
-                              print('list id: ${widget.list.serverId}');
-                              _writeResponse = fs.writeFile(fs.wd, widget.list)
+                              //assert(widget.list.version == null);
+
+                              if (_doUpload) {
+                                widget.list.version = _uploadVersion;
+                              }
+
+                              _writeResponse = fs.writeFileWeb(
+                                  fs.wd, widget.list,
+                                  version: widget.list.version)
                                 ..then((value) {
                                   if (widget.onUpload != null) {
                                     widget.onUpload!();
+                                  }
+
+                                  if (!kIsWeb) {
+                                    fs.writeFileMobile(
+                                        fs.wd, widget.list..id = value);
                                   }
                                 });
                             },
                             child: const Icon(Icons.send_rounded));
                       }
-                    }))
+                    })),
           ],
         ));
   }
