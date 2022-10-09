@@ -16,50 +16,41 @@ int daysBetween(DateTime from, DateTime to) {
 typedef AListEntry = Map<String, dynamic>;
 
 class AList extends MemoFile {
-  AList(super.name, {String? serverId})
+  AList(super.name)
       : schemasMapping = {},
-        _serverId = serverId,
         _entries = [],
         _tags = {},
         _stats = AListStats();
 
   AList.from(AList list)
       : schemasMapping = Map.from(list.schemasMapping),
-        _serverId = list.serverId,
         status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
         _stats = AListStats(),
-        super(list.name);
+        super(list.name,
+            id: list.id, version: list.version, versions: list.versions);
 
-  AList.fromJson(Map<String, dynamic> json)
+  AList.fromJson(Map<String, dynamic> json, {super.versions})
       : schemasMapping = Map.from(json['schemasMapping']),
-        _serverId = json['serverId'],
         status = json['status'],
         _entries = List.from(json['entries']),
         _tags = Set.from(json['tags']),
         _stats = AListStats.fromJson(json["listStats"]),
-        super(json['name']);
+        super.fromJson(json);
 
-  // TODO: use MemoFile toJson
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'schemasMapping': schemasMapping,
-        'serverId': _serverId,
-        "entries": _entries,
-        "status": status,
-        "tags": _tags.toList(),
-        "listStats": _stats.toJson()
-      };
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      'schemasMapping': schemasMapping,
+      "entries": _entries,
+      "status": status,
+      "tags": _tags.toList(),
+      "listStats": _stats.toJson()
+    });
 
   @override
   get data => jsonEncode(toJson());
-
-  String? _serverId;
-  String? get serverId => _serverId;
-  set serverId(id) {
-    _serverId = id;
-  }
 
   String status = 'private';
   final Map<String, String> schemasMapping;
