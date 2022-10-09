@@ -1,7 +1,8 @@
 const File = require('../models/file');
 const path = require('path');
 const fs = require('fs');
-const { testPermissions, resolveUserstorage } =  require('../utils/file-utils');
+const shell = require('shelljs');
+const { testPermissions, resolveUserstorage } = require('../utils/file-utils');
 
 exports.mkdir = (req, res) => {
     const file = File({
@@ -16,6 +17,12 @@ exports.mkdir = (req, res) => {
     fs.mkdirSync(p);
 
     console.log('mkdir: ' + p + ' from ' + req.body.path);
+
+    if (req.body.git_init) {
+        if (shell.exec("git init " + p).code !== 0){
+            throw "Git error";
+        }
+    }
 
     file.save().then(
         () => {
@@ -40,10 +47,10 @@ exports.ls = (req, res) => {
             if (!file) {
                 throw "File not found. " + req.query.path;
             }
-            
+
             req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
             const perm = await testPermissions(file, req.auth.userId);
-            
+
             if (!(perm & 2)) {
                 console.log('perm: ' + perm);
                 throw "Forbidden access";
@@ -51,7 +58,7 @@ exports.ls = (req, res) => {
 
             const p = path.join(__dirname, '../storage' + req.query.path);
             console.log('ret: ' + p);
-            const dirContent = fs.readdirSync(p);
+            const dirContent = fs.readdirSync(p).filter((filename) => !filename.startsWith('.'));
             let ret = new Object();
 
             for await (const e of dirContent) {
@@ -84,8 +91,8 @@ exports.delete = (req, res) => {
     File.findOneAndDelete({ name: req.body.path }).then(
         (file) => {
             if (!file) {
-                throw "File not found. Cannot delete '" + req.body.path + "'"; 
-            } 
+                throw "File not found. Cannot delete '" + req.body.path + "'";
+            }
 
             const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
             fs.rmSync(p, { recursive: true, force: true });
