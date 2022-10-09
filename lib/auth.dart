@@ -70,8 +70,8 @@ class Auth extends ChangeNotifier {
 
       await login(userInfo);
 
-      await fs.mkdirWeb('/userstorage/list');
-      await fs.mkdirWeb('/userstorage/addon');
+      await fs.mkdirWeb('/userstorage/list', gitInit: true);
+      await fs.mkdirWeb('/userstorage/addon', gitInit: true);
 
       if (response.statusCode == 200) ret = UserConnectionStatus.loggedIn;
     } on SocketException {
