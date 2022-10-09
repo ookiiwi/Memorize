@@ -20,13 +20,23 @@ class FileInfo {
   final String name;
   final String? id;
   String? path;
+  String? version;
 }
 
 abstract class MemoFile {
-  MemoFile(this.name);
+  MemoFile(this.name, {this.id, this.version, this.versions = const {}});
+  MemoFile.fromJson(Map<String, dynamic> json, {this.versions = const {}})
+      : id = json['id'],
+        name = json['name'],
+        version = json['version'];
 
   String? id;
   String name;
+  String branch = 'rl';
+  String? version;
+  final Set versions;
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'version': version};
 
   /// In base 4, respectively 3 being read and 1 write permission
   int permissions = 300;
@@ -42,8 +52,8 @@ String get wd => _wd;
 
 dynamic writeFile(String path, MemoFile file) async =>
     kIsWeb ? writeFileWeb(path, file) : writeFileMobile(path, file);
-Future readFile(String path) async =>
-    kIsWeb ? readFileWeb(path) : readFileMobile(path);
+Future readFile(String path, {String? version}) async =>
+    kIsWeb ? readFileWeb(path, version: version) : readFileMobile(path);
 dynamic rmFile(String path) async =>
     kIsWeb ? rmFileWeb(path) : rmFileMobile(path);
 
@@ -115,84 +125,189 @@ dynamic cdMobile(String path) {
 
 //======================================== WEB ========================================\\
 
-/// For mobile devices: If the is written for the first time on the server,
+/// For mobile devices: If the file is written for the first time on the server,
 /// you must save it after calling this function in order to get the id
-dynamic writeFileWeb(String path, MemoFile file) async => dioCatcher(() async {
-      path = _normalizePathWeb(path);
+dynamic writeFileWeb(String path, MemoFile file, {String? version}) async {
+  try {
+    path = _normalizePathWeb(path);
 
-      final formData = FormData.fromMap({
-        'path': path,
-        'permissions': file.permissions.toString(),
-        'file': MultipartFile.fromString(file.data,
-            filename: file.name, contentType: MediaType("application", "json"))
-      });
-
-      final response = file.id != null
-          ? await dio.put(serverUrl + '/file/' + file.id!, data: formData)
-          : await dio.post(serverUrl + '/file', data: formData);
-
-      file.id ??= response.data['id'];
-
-      return response.data;
+    final formData = FormData.fromMap({
+      'path': path,
+      'permissions': file.permissions.toString(),
+      if (file.id != null && version != null) 'version': version,
+      'file': MultipartFile.fromString(file.data,
+          filename: file.name, contentType: MediaType("application", "json"))
     });
 
-Future readFileWeb(String path) async => dioCatcher(() async {
-      path = _normalizePathWeb(path);
+    final response = file.id != null
+        ? await dio.put(serverUrl + '/file/' + file.id!, data: formData)
+        : await dio.post(serverUrl + '/file', data: formData);
 
-      final response =
-          await dio.get(serverUrl + '/file', queryParameters: {'path': path});
-      return response.data;
+    file.id ??= response.data['id'];
+
+    return response.data;
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
+}
+
+Future readFileWeb(String path, {String? version}) async {
+  try {
+    path = _normalizePathWeb(path);
+
+    final response = await dio.get(serverUrl + '/file', queryParameters: {
+      'path': path,
+      if (version != null) 'version': version
+    });
+    print('response: ${response.data}');
+    return response.data;
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
+}
+
+dynamic rmFileWeb(String path) async {
+  try {
+    path = _normalizePathWeb(path);
+
+    final response =
+        await dio.delete(serverUrl + '/file', data: {'path': path});
+
+    return response.data;
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
+}
+
+Future<List<FileInfo>> lsWeb(String path) async {
+  final ret = <FileInfo>[];
+  try {
+    path = _normalizePathWeb(path);
+
+    final response = await dio.get(serverUrl + '/dir', queryParameters: {
+      'path': path,
     });
 
-dynamic rmFileWeb(String path) async => dioCatcher(() async {
-      path = _normalizePathWeb(path);
+    final content = response.data is Map ? response.data : {};
 
-      final response =
-          await dio.delete(serverUrl + '/file', data: {'path': path});
+    for (var e in content.entries) {
+      final name = e.key;
+      final id = e.value is String ? e.value : null;
 
-      return response.data;
-    });
+      ret.add(FileInfo(
+          id != null
+              ? FileSystemEntityType.file
+              : FileSystemEntityType.directory,
+          name,
+          id));
+    }
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
 
-Future<List<FileInfo>> lsWeb(String path) async => dioCatcher(() async {
-      final ret = <FileInfo>[];
-      path = _normalizePathWeb(path);
+  return ret;
+}
 
-      final response = await dio.get(serverUrl + '/dir', queryParameters: {
-        'path': path,
-      });
+dynamic mkdirWeb(String path, {bool? gitInit}) async {
+  try {
+    path = _normalizePathWeb(path);
 
-      final content = response.data is Map ? response.data : {};
+    final response = await dio.post(serverUrl + '/dir',
+        data: {'path': path, 'permissions': '300', 'git_init': gitInit});
+    return response.data;
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
+}
 
-      for (var e in content.entries) {
-        final name = e.key;
-        final id = e.value is String ? e.value : null;
+dynamic rmDirWeb(String path) async {
+  try {
+    path = _normalizePathWeb(path);
 
-        ret.add(FileInfo(
-            id != null
-                ? FileSystemEntityType.file
-                : FileSystemEntityType.directory,
-            name,
-            id));
-      }
-
-      return ret;
-    });
-
-dynamic mkdirWeb(String path) async => dioCatcher(() async {
-      path = _normalizePathWeb(path);
-
-      final response = await dio
-          .post(serverUrl + '/dir', data: {'path': path, 'permissions': '300'});
-      return response.data;
-    });
-
-dynamic rmDirWeb(String path) async => dioCatcher(() async {
-      path = _normalizePathWeb(path);
-
-      final response =
-          await dio.delete(serverUrl + '/dir', data: {'path': path});
-      return response.data;
-    });
+    final response = await dio.delete(serverUrl + '/dir', data: {'path': path});
+    return response.data;
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('error: $e');
+  }
+}
 
 dynamic cdWeb(String path) {
   path = _normalizePathWeb(path);
@@ -202,25 +317,3 @@ dynamic cdWeb(String path) {
 
 String _normalizePathWeb(String path) =>
     path.startsWith(wd) ? path : normalize(wd + '/' + path);
-
-//================================ Util =================================\\
-
-dynamic dioCatcher(dynamic Function() func) {
-  try {
-    return func();
-  } on SocketException {
-    print('No Internet connection 😑');
-  } on HttpException {
-    print("Couldn't find the post 😱");
-  } on FormatException {
-    print("Bad response format 👎");
-  } on DioError catch (e) {
-    print("""
-          Dio error: ${e.response?.statusCode}\n
-          Message: ${e.message}\n
-          Request: ${e.response}
-          """);
-  } catch (e) {
-    print('error: $e');
-  }
-}
