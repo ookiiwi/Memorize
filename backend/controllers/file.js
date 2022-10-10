@@ -6,7 +6,7 @@ const File = require('../models/file');
 const upload = require('../middleware/multer-config');
 const Group = require('../models/group');
 const { assert } = require('console');
-const { testPermissions, resolveUserstorage } = require('../utils/file-utils');
+const { testPermissions, resolveUserstorage, search } = require('../utils/file-utils');
 
 exports.create = (req, res) => {
     const file = File({
@@ -159,23 +159,23 @@ exports.delete = (req, res) => {
 
             let hashDrop = '';
             console.log('tags:', tags);
-            
+
             // get commits hash for each tags
-            for (let e of tags){
+            for (let e of tags) {
                 let commitCmd = shell.exec('git show ' + e + ' --format="%h" -s');
                 if (commitCmd.code !== 0) {
                     throw "Git error";
                 }
 
                 let hash = commitCmd.trim();
-                hashDrop+='s/^pick ' + hash + '/drop ' + hash + '/;';
+                hashDrop += 's/^pick ' + hash + '/drop ' + hash + '/;';
             }
 
             console.log('hashArr:', hashDrop);
 
             // drop commits
             const dropCmd = 'GIT_SEQUENCE_EDITOR="sed -i -re \'' + hashDrop + '\'" git rebase -i --autostash --root';
-            
+
             fs.rmSync(p, { recursive: false, force: true });
 
             if (shell.exec(dropCmd).code !== 0) {
@@ -194,6 +194,15 @@ exports.delete = (req, res) => {
 
 
 }
+
+exports.search = (req, res) => {
+    search(req.query.value, '', req.auth ? req.auth.userId : null).then((files) => {
+        res.status(201).json(files);
+    }).catch((e) => {
+        console.log('error:', e);
+        res.status(500).json({ error: e });
+    });
+};
 
 function readVersion(id, version) {
     const commitCmd = shell.exec('git show ' + version + ' --format="%h" -s');
