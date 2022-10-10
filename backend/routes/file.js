@@ -10,9 +10,10 @@ const authNoExcept = (req, _, next) => {
     next();
 };
 
+router.get('/search', authNoExcept, auth, fileCtrl.search);
 router.get('/',    authNoExcept, auth, fileCtrl.read);
 router.put('/:id', authNoExcept, auth, fileCtrl.update);
-router.post('/',   auth, upload, fileCtrl.create); // return id
+router.post('/',   auth, upload, fileCtrl.create);
 router.delete('/', auth, fileCtrl.delete);
 
 module.exports = router;
