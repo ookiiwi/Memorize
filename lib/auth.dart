@@ -27,8 +27,8 @@ class UserInfo {
 class Auth extends ChangeNotifier {
   static const storage = FlutterSecureStorage();
 
-  static void init() async {
-    resetHeaders();
+  static Future<void> init() async {
+    await resetHeaders();
   }
 
   static resetHeaders() async {
