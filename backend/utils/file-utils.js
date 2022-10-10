@@ -1,21 +1,49 @@
 const fs = require('fs');
 const path = require('path');
 const Group = require('../models/group');
+const File = require('../models/file');
 
-
-exports.search = (value, dir) => {
-
+exports.search = async (value, path, userId) => {
     if (value == null) {
         throw "prout";
     }
 
-    const dirPath = path.join(__dirname, '../storage' + dir);
-    let files = fs.readdirSync(dirPath);
+    const groups = [];
+    const re = '^' + value + '[^\/]*$';
+    console.log('value: "' + re + '"');
 
-    if (value.length) {
-        console.log('search '+ value + ' in ' + files);
-        files = files.filter(file => file.startsWith(value));
-    }
+    const files = await File.find(
+        {
+            $and: [
+                { name: { $regex: re } },
+                {
+                    $or: [
+                        {
+                            permissions: { $bitsAllSet: 2 }
+                        },
+                        {
+                            $and: [
+                                { permissions: { $bitsAllSet: 8 } },
+                                { group: { $in: groups } }
+                            ]
+                        },
+                        {
+                            $and: [
+                                { permissions: { $bitsAllSet: 32 } },
+                                { owner: { $eq: userId } }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        , { name: 1 }, (err, file) => {
+            if (err) {
+                console.log('err');
+            } else {
+                console.log('file', file)
+            }
+        }).clone();
 
     return files;
 };
@@ -45,7 +73,17 @@ exports.testPermissions = async (file, userId) => {
 }
 
 exports.resolveUserstorage = (path, id) => {
-    if (!path.startsWith('/userstorage')) return path;
-    if (!id) throw "Forbidden access";
-    return path.replace('userstorage', 'user/'+id);
+    const ust = 'userstorage';
+    const gst = 'globalstorage';
+    let ret = path;
+
+    if (path.startsWith('/' + ust)) {
+        if (!id) throw "Forbidden access";
+        ret = ret.replace(ust, 'user/' + id);
+    }
+    else if (path.startsWith('/' + gst)) {
+        ret = ret.replace(gst, 'global');
+    }
+
+    return ret;
 }
