@@ -180,7 +180,7 @@ class DataLoader {
     if (_isDataLoaded && !force) return;
     // TODO: check if user logged here
 
-    Auth.init();
+    await Auth.init();
     SchemaAddon.init();
     if (!kIsWeb) await ReminderNotification.init();
 
