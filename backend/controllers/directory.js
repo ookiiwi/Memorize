@@ -1,5 +1,4 @@
 const File = require('../models/file');
-const path = require('path');
 const fs = require('fs');
 const shell = require('shelljs');
 const { testPermissions, resolveUserstorage } = require('../utils/file-utils');
@@ -13,7 +12,7 @@ exports.mkdir = (req, res) => {
     });
 
     // resolve /userstorage to /storage/user/<userId>
-    const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
+    const p = resolveUserstorage(req.body.path, req.auth.userId);
     fs.mkdirSync(p);
 
     console.log('mkdir: ' + p + ' from ' + req.body.path);
@@ -42,22 +41,20 @@ exports.mkdir = (req, res) => {
 
 exports.ls = (req, res) => {
     // resolve /userstorage to /storage/user/<userId>s
-    File.findOne({ name: req.query.path }).then(
+    // Check owner to avoid matching first identical name
+    File.findOne({ name: req.query.path, owner: req.auth.userId }).then(
         async (file) => {
             if (!file) {
                 throw "File not found. " + req.query.path;
             }
 
-            req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
             const perm = await testPermissions(file, req.auth.userId);
 
             if (!(perm & 2)) {
-                console.log('perm: ' + perm);
                 throw "Forbidden access";
             }
 
-            const p = path.join(__dirname, '../storage' + req.query.path);
-            console.log('ret: ' + p);
+            const p = resolveUserstorage(req.query.path, req.auth.userId);
             const dirContent = fs.readdirSync(p).filter((filename) => !filename.startsWith('.'));
             let ret = new Object();
 
@@ -65,8 +62,10 @@ exports.ls = (req, res) => {
                 const isfile = fs.lstatSync(p + '/' + e).isFile();
                 if (isfile) {
                     const f = await File.findById(e);
+                    
                     if (f) {
-                        ret[f.name] = e;
+                        const fPerm = await testPermissions(f, req.auth.userId);
+                        if (fPerm & 2) ret[f.name] = e;
                     }
                 } else {
                     ret[e] = null;
@@ -84,7 +83,7 @@ exports.ls = (req, res) => {
 };
 
 exports.update = (req, res) => {
-
+    res.status(500).send('Not implemented');
 };
 
 exports.delete = (req, res) => {
@@ -94,7 +93,9 @@ exports.delete = (req, res) => {
                 throw "File not found. Cannot delete '" + req.body.path + "'";
             }
 
-            const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
+            const p = resolveUserstorage(req.body.path, req.auth.userId);
+            //TODO: delete files from db
+
             fs.rmSync(p, { recursive: true, force: true });
 
             res.status(201).send();
