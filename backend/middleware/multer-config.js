@@ -1,7 +1,6 @@
 const multer = require('multer');
 const mongoose = require('mongoose');
 const fs = require('fs');
-const path = require('path');
 const { resolveUserstorage } =  require('../utils/file-utils');
 
 
@@ -16,7 +15,6 @@ const storage = multer.diskStorage({
 
 const fileFilter = (req, file, cb) => {
     req.body.path = resolveUserstorage(req.body.path, req.auth.userId);
-    req.body.path = path.join(__dirname, '../storage' + req.body.path);
 
     if (!fs.existsSync(req.body.path)) {
         throw "File not found";
