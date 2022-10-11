@@ -3,11 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:memorize/auth.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:universal_io/io.dart';
 
 class FileInfo {
-  FileInfo(this.type, this.name, [this.id]);
-  FileInfo.guess(String type, this.name, [this.id]) {
+  FileInfo(this.type, this.name, [this.id, this.path]);
+  FileInfo.guess(String type, this.name, [this.id, this.path]) {
     if (type == 'dir' || type == 'directory') {
       this.type = FileSystemEntityType.directory;
     } else if (type == 'file') {
@@ -25,18 +26,42 @@ class FileInfo {
 
 abstract class MemoFile {
   MemoFile(this.name, {this.id, this.version, this.versions = const {}});
+  MemoFile.from(MemoFile file)
+      : name = file.name,
+        id = file.id,
+        upstream = file.upstream,
+        version = file.version,
+        versions = Set.from(file.versions);
   MemoFile.fromJson(Map<String, dynamic> json, {this.versions = const {}})
       : id = json['id'],
+        upstream = json['upstream'],
         name = json['name'],
-        version = json['version'];
+        version = json['version']
+  //,
+  //permissions = json['permissions'].toRadixString(4)
+  {
+    print('data: $json');
+    // meaning: copy
+    if (json.containsKey('isOwned') && !json['isOwned']) {
+      upstream = id;
+      id = null;
+      permissions = 300;
+    }
+  }
 
   String? id;
+  String? upstream;
   String name;
-  String branch = 'rl';
   String? version;
   final Set versions;
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'version': version};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'upstream': upstream,
+        'name': name,
+        'version': version,
+        'permissions': permissions
+      };
 
   /// In base 4, respectively 3 being read and 1 write permission
   int permissions = 300;
@@ -49,6 +74,10 @@ abstract class MemoFile {
 
 String _wd = '';
 String get wd => _wd;
+
+dynamic init() async => kIsWeb ? initWeb() : initMobile();
+dynamic initFirstRun() async =>
+    kIsWeb ? initFirstRunWeb() : initFirstRunMobile();
 
 dynamic writeFile(String path, MemoFile file) async =>
     kIsWeb ? writeFileWeb(path, file) : writeFileMobile(path, file);
@@ -67,8 +96,15 @@ Future<List<FileInfo>> ls([String path = '.']) async =>
 
 //======================================== Mobile ========================================\\
 
+dynamic initMobile() async =>
+    cdMobile((await getApplicationDocumentsDirectory()).path + '/userstorage');
+dynamic initFirstRunMobile() async {
+  cdMobile((await getApplicationDocumentsDirectory()).path);
+  mkdirMobile('userstorage');
+}
+
 dynamic writeFileMobile(String path, MemoFile file) async {
-  File f = File(path);
+  File f = File(path + '/' + file.name);
 
   if (!f.existsSync()) {
     f.createSync();
@@ -117,30 +153,37 @@ dynamic rmdirMobile(String path) {
 dynamic cdMobile(String path) {
   final Directory dir = Directory(path);
   if (!dir.existsSync()) {
-    throw 'Cannot change directory: dir does not exists';
+    throw 'Cannot change directory: $dir does not exists';
   }
 
   Directory.current = dir;
+  _wd = Directory.current.path;
 }
 
 //======================================== WEB ========================================\\
 
+dynamic initWeb() {}
+dynamic initFirstRunWeb() {}
+
 /// For mobile devices: If the file is written for the first time on the server,
 /// you must save it after calling this function in order to get the id
-dynamic writeFileWeb(String path, MemoFile file, {String? version}) async {
+dynamic writeFileWeb(String path, MemoFile file) async {
   try {
     path = _normalizePathWeb(path);
+    final id = path.startsWith('/globalstorage')
+        ? (file.upstream ?? file.id)
+        : file.id;
 
     final formData = FormData.fromMap({
       'path': path,
       'permissions': file.permissions.toString(),
-      if (file.id != null && version != null) 'version': version,
+      if (file.version != null) 'version': file.version,
       'file': MultipartFile.fromString(file.data,
           filename: file.name, contentType: MediaType("application", "json"))
     });
 
-    final response = file.id != null
-        ? await dio.put(serverUrl + '/file/' + file.id!, data: formData)
+    final response = id != null
+        ? await dio.put(serverUrl + '/file/' + id, data: formData)
         : await dio.post(serverUrl + '/file', data: formData);
 
     file.id ??= response.data['id'];
@@ -153,8 +196,7 @@ dynamic writeFileWeb(String path, MemoFile file, {String? version}) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -172,7 +214,7 @@ Future readFileWeb(String path, {String? version}) async {
       'path': path,
       if (version != null) 'version': version
     });
-    print('response: ${response.data}');
+
     return response.data;
   } on SocketException {
     print('No Internet connection 😑');
@@ -181,8 +223,7 @@ Future readFileWeb(String path, {String? version}) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -207,8 +248,7 @@ dynamic rmFileWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -247,8 +287,7 @@ Future<List<FileInfo>> lsWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -274,8 +313,7 @@ dynamic mkdirWeb(String path, {bool? gitInit}) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -298,8 +336,7 @@ dynamic rmDirWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print(
-        """
+    print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -316,4 +353,4 @@ dynamic cdWeb(String path) {
 }
 
 String _normalizePathWeb(String path) =>
-    path.startsWith(wd) ? path : normalize(wd + '/' + path);
+    path.startsWith('/') ? path : normalize(wd + '/' + path);
