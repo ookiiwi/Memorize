@@ -1,4 +1,3 @@
-const path = require('path');
 const fs = require('fs');
 const shell = require('shelljs');
 
@@ -16,6 +15,8 @@ exports.create = (req, res) => {
         name: req.file.originalname,
         permissions: parseInt(req.body.permissions, 4)
     });
+
+    versionFile(file._id, req.body.version, req.file.destination, req.file.path);
 
     file.save().then(
         () => {
@@ -51,23 +52,7 @@ exports.update = (req, res) => {
                 file.group = req.body.group || file.group;
                 file.permissions = req.body.permissions ? parseInt(req.body.permissions, 4) : file.permissions;
 
-
-                if (req.body.version) {
-                    console.log('commit:', req.body.version);
-
-                    if (shell.cd(req.file.destination).code !== 0) {
-                        throw "Shell error during cd to " + req.file.destination;
-                    }
-
-                    const tag = 'v' + id + '_' + req.body.version;
-                    const addCmd = 'git add "' + req.file.path + '"';
-                    const commitCmd = 'git commit -m "' + Date.UTC() + '"';
-                    const tagCmd = 'git tag ' + tag;
-
-                    if (shell.exec(addCmd + ' && ' + commitCmd + ' && ' + tagCmd).code !== 0) {
-                        throw "Git error";
-                    }
-                }
+                versionFile(id, req.body.version, req.file.destination, req.file.path);
 
                 file.save().then(() => {
                     res.status(201).send();
@@ -102,9 +87,7 @@ exports.read = (req, res) => {
             }
             assert(req.query.path);
 
-            req.query.path = resolveUserstorage(req.query.path, req.auth.userId);
-            const p = path.join(__dirname, '../storage' + req.query.path);
-
+            const p = resolveUserstorage(req.query.path, req.auth.userId);
             const fileDir = p.replace(/(\/[^\/]*)$/, '');
 
             if (shell.cd(fileDir).code !== 0) {
@@ -125,7 +108,7 @@ exports.read = (req, res) => {
             });
 
             const ret = version ? readVersion(id, 'v' + id + '_' + version) : fs.readFileSync(p).toString();
-            res.status(201).json({ ret, versions: tags });
+            res.status(201).json({ file: ret, versions: tags, isOwned: file.owner === req.auth.userId, id: file._id });
         }
     ).catch(
         (err) => {
@@ -143,7 +126,7 @@ exports.delete = (req, res) => {
                 throw "Cannot delete file unless you are the owner";
             }
 
-            const p = path.join(__dirname, '../storage' + resolveUserstorage(req.body.path, req.auth.userId));
+            const p = resolveUserstorage(req.body.path, req.auth.userId);
             const fileDir = p.replace(/(\/[^\/]*)$/, '');
 
             if (shell.cd(fileDir).code !== 0) {
@@ -228,4 +211,23 @@ function readVersion(id, version) {
     }
 
     return ret;
+}
+
+function versionFile(id, version, destination, path) {
+    if (!version) return;
+    console.log('commit:', version);
+
+    if (shell.cd(destination).code !== 0) {
+        throw "Shell error during cd to " + destination;
+    }
+
+    const tag = 'v' + id + '_' + version;
+    const addCmd = 'git add "' + path + '"';
+    const commitCmd = 'git commit -m "' + Date.UTC() + '"';
+    const tagCmd = 'git tag ' + tag;
+
+    if (shell.exec(addCmd + ' && ' + commitCmd + ' && ' + tagCmd).code !== 0) {
+        throw "Git error";
+    }
+
 }
