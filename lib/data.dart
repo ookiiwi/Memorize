@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
-import 'package:memorize/file_system.dart';
-import 'package:memorize/reminder.dart';
+import 'package:memorize/file_system.dart' as fs;
+import 'package:memorize/tab.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -15,7 +15,7 @@ int daysBetween(DateTime from, DateTime to) {
 
 typedef AListEntry = Map<String, dynamic>;
 
-class AList extends MemoFile {
+class AList extends fs.MemoFile {
   AList(super.name)
       : schemasMapping = {},
         _entries = [],
@@ -28,16 +28,26 @@ class AList extends MemoFile {
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
         _stats = AListStats(),
-        super(list.name,
-            id: list.id, version: list.version, versions: list.versions);
+        super.from(list);
 
-  AList.fromJson(Map<String, dynamic> json, {super.versions})
+  AList._fromJson(Map<String, dynamic> json, {super.versions})
       : schemasMapping = Map.from(json['schemasMapping']),
         status = json['status'],
         _entries = List.from(json['entries']),
         _tags = Set.from(json['tags']),
         _stats = AListStats.fromJson(json["listStats"]),
         super.fromJson(json);
+
+  factory AList.fromJson(Map<String, dynamic> json) {
+    if (json.containsKey('file')) {
+      final data = jsonDecode(json['file']);
+      data.remove('id');
+      json.remove('file');
+      json.addAll(data);
+    }
+
+    return AList._fromJson(json, versions: Set.from(json['versions'] ?? {}));
+  }
 
   @override
   Map<String, dynamic> toJson() => super.toJson()
@@ -76,7 +86,7 @@ class AList extends MemoFile {
 
   /// NOT IMPLEMENTED. Use fs instead
   @override
-  write(String path, [MemoFile? file]) {
+  write(String path, [fs.MemoFile? file]) {
     // TODO: implement write
     throw UnimplementedError();
   }
@@ -180,9 +190,22 @@ class DataLoader {
     if (_isDataLoaded && !force) return;
     // TODO: check if user logged here
 
+    final pref = await SharedPreferences.getInstance();
+    final isFirstRun = pref.getBool('isFirstRun');
+
+    if (isFirstRun == null || !isFirstRun) {
+      await fs.initFirstRun();
+      ListExplorer.init();
+      print('firstrun');
+      pref.setBool('isFirstRun', false);
+    } else {
+      print('not firstrun');
+    }
+
     await Auth.init();
+    await fs.init();
     SchemaAddon.init();
-    if (!kIsWeb) await ReminderNotification.init();
+    //if (!kIsWeb) await ReminderNotification.init();
 
     _isDataLoaded = true;
   }
