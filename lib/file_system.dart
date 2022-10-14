@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:memorize/auth.dart';
+import 'package:objectid/objectid.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_io/io.dart';
+import 'package:yaml/yaml.dart';
 
 class FileInfo {
   FileInfo(this.type, this.name, [this.id, this.path]);
@@ -21,51 +25,61 @@ class FileInfo {
   final String name;
   final String? id;
   String? path;
-  String? version;
+  //String? version;
 }
 
 abstract class MemoFile {
-  MemoFile(this.name, {this.id, this.version, this.versions = const {}});
+  MemoFile(this.name, {this.version, Set? versions})
+      : id = ObjectId(),
+        permissions = 48,
+        versions = versions ?? {};
   MemoFile.from(MemoFile file)
-      : name = file.name,
-        id = file.id,
+      : id = file.id,
         upstream = file.upstream,
+        name = file.name,
         version = file.version,
+        permissions = file.permissions,
         versions = Set.from(file.versions);
-  MemoFile.fromJson(Map<String, dynamic> json, {this.versions = const {}})
-      : id = json['id'],
-        upstream = json['upstream'],
-        name = json['name'],
-        version = json['version']
-  //,
-  //permissions = json['permissions'].toRadixString(4)
-  {
-    print('data: $json');
-    // meaning: copy
-    if (json.containsKey('isOwned') && !json['isOwned']) {
-      upstream = id;
-      id = null;
-      permissions = 300;
-    }
-  }
+  MemoFile.fromJson(Map<String, dynamic> json)
+      : id = ObjectId.fromHexString(json['meta']['id']),
+        upstream = json['meta']['upstream'] != null
+            ? ObjectId.fromHexString(json['meta']['upstream'])
+            : null,
+        name = json['meta']['name'],
+        version = json['file']['version'],
+        versions = json['meta']['versions']?.toSet() ?? {},
+        permissions = json['meta']['permissions'];
 
-  String? id;
-  String? upstream;
+  ObjectId id;
+
+  /// Web only
+  ObjectId? upstream;
+
   String name;
   String? version;
   final Set versions;
 
+  /// In base 4, respectively 3 being read and 1 write permission
+  int permissions;
+
+  Map<String, dynamic> toJsonEncodable();
+
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'upstream': upstream,
-        'name': name,
-        'version': version,
-        'permissions': permissions
+        'meta': {
+          'id': id.hexString,
+          'name': name,
+          'upstream': upstream?.hexString,
+          'versions': versions.toList(),
+          'permissions': permissions
+        },
+        'file': toJsonEncodable()
+          ..addAll({
+            'version': version,
+          })
       };
 
-  /// In base 4, respectively 3 being read and 1 write permission
-  int permissions = 300;
-  String get data;
+  @override
+  String toString() => jsonEncode(this);
 
   dynamic write(String path, [MemoFile? file]);
   dynamic read(String path);
@@ -74,15 +88,16 @@ abstract class MemoFile {
 
 String _wd = '';
 String get wd => _wd;
+late final String root;
 
-dynamic init() async => kIsWeb ? initWeb() : initMobile();
-dynamic initFirstRun() async =>
-    kIsWeb ? initFirstRunWeb() : initFirstRunMobile();
+dynamic init([bool isFirstRun = false]) async =>
+    kIsWeb ? initWeb() : initMobile(isFirstRun);
 
 dynamic writeFile(String path, MemoFile file) async =>
     kIsWeb ? writeFileWeb(path, file) : writeFileMobile(path, file);
-Future readFile(String path, {String? version}) async =>
-    kIsWeb ? readFileWeb(path, version: version) : readFileMobile(path);
+Future readFile(String path, {String? version}) async => kIsWeb
+    ? readFileWeb(path, version: version)
+    : readFileMobile(path, version: version);
 dynamic rmFile(String path) async =>
     kIsWeb ? rmFileWeb(path) : rmFileMobile(path);
 
@@ -96,47 +111,88 @@ Future<List<FileInfo>> ls([String path = '.']) async =>
 
 //======================================== Mobile ========================================\\
 
-dynamic initMobile() async =>
-    cdMobile((await getApplicationDocumentsDirectory()).path + '/userstorage');
-dynamic initFirstRunMobile() async {
-  cdMobile((await getApplicationDocumentsDirectory()).path);
-  mkdirMobile('userstorage');
+dynamic initMobile([bool isFirstRun = false]) async {
+  final tmp = (await getApplicationDocumentsDirectory()).path;
+  cdMobile(tmp);
+
+  if (isFirstRun) {
+    mkdirMobile('userstorage');
+  }
+
+  cdMobile('userstorage');
+  root = tmp + '/userstorage';
 }
 
 dynamic writeFileMobile(String path, MemoFile file) async {
-  File f = File(path + '/' + file.name);
+  File f = File('$path/${file.id}');
+  late final Map<String, dynamic> entries;
 
   if (!f.existsSync()) {
     f.createSync();
+    entries = {};
+  } else {
+    entries = jsonDecode(f.readAsStringSync());
   }
 
-  f.writeAsStringSync(file.data);
+  final jsonData = file.toJson();
+  entries['meta'] = jsonData['meta']; // update meta data
+  entries[file.version ?? 'HEAD'] =
+      jsonEncode((jsonData..remove('meta'))['file']); // add or update version
+
+  f.writeAsStringSync(jsonEncode(entries));
 }
 
-Future readFileMobile(String path) async {
+Future readFileMobile(String path, {String? version}) async {
   File file = File(path);
+  late final Map<String, dynamic> entries;
 
   if (!file.existsSync()) {
     throw FileSystemException("File not found: $path");
   }
-  return file.readAsStringSync();
+
+  entries = jsonDecode(file.readAsStringSync());
+  final versions = entries.keys.toList()
+    ..sort()
+    ..remove('meta')
+    ..remove('HEAD');
+  print('entries: $entries');
+
+  return {
+    'meta': entries['meta']..['versions'] = versions,
+    'file': jsonDecode(entries[version ?? 'HEAD'] ?? entries[versions.last])
+  };
 }
 
-dynamic rmFileMobile(String path) async {
+dynamic rmFileMobile(String path, {String? version}) async {
   final File file = File(path);
+  late final Map<String, dynamic> regEntries;
+
   if (!file.existsSync()) {
     throw FileSystemException('File not found: $path');
   }
 
-  file.deleteSync();
+  if (version == null) {
+    file.deleteSync();
+  } else {
+    final Map entries = jsonDecode(file.readAsStringSync());
+    entries.remove(version);
+
+    // TODO: set last version name in reg
+
+    file.writeAsStringSync(jsonEncode(entries));
+  }
 }
 
 Future<List<FileInfo>> lsMobile(String path) async {
   final dir = Directory(path);
-  return dir
-      .listSync()
-      .map((e) => FileInfo(e.statSync().type, e.path.split('/').last))
-      .toList();
+
+  return dir.listSync().map((e) {
+    final file = File(e.path);
+    assert(file.existsSync());
+    final meta = loadYamlStream(file.readAsStringSync()).first.value['meta'];
+    print('meta: $meta');
+    return FileInfo(e.statSync().type, meta['name'], meta['id']);
+  }).toList();
 }
 
 dynamic mkdirMobile(String path) => Directory(path).createSync(recursive: true);
@@ -163,30 +219,29 @@ dynamic cdMobile(String path) {
 //======================================== WEB ========================================\\
 
 dynamic initWeb() {}
-dynamic initFirstRunWeb() {}
 
 /// For mobile devices: If the file is written for the first time on the server,
 /// you must save it after calling this function in order to get the id
 dynamic writeFileWeb(String path, MemoFile file) async {
   try {
     path = _normalizePathWeb(path);
-    final id = path.startsWith('/globalstorage')
-        ? (file.upstream ?? file.id)
-        : file.id;
+
+    final ObjectId tmpId = file.id;
+
+    if (path.startsWith('/globalstorage')) {
+      file.upstream ??= ObjectId();
+      file.id = file.upstream!;
+    }
 
     final formData = FormData.fromMap({
       'path': path,
-      'permissions': file.permissions.toString(),
-      if (file.version != null) 'version': file.version,
-      'file': MultipartFile.fromString(file.data,
+      'file': MultipartFile.fromString(file.toString(),
           filename: file.name, contentType: MediaType("application", "json"))
     });
 
-    final response = id != null
-        ? await dio.put(serverUrl + '/file/' + id, data: formData)
-        : await dio.post(serverUrl + '/file', data: formData);
+    file.id = tmpId;
 
-    file.id ??= response.data['id'];
+    final response = await dio.put('$serverUrl/file', data: formData);
 
     return response.data;
   } on SocketException {
@@ -267,18 +322,17 @@ Future<List<FileInfo>> lsWeb(String path) async {
       'path': path,
     });
 
-    final content = response.data is Map ? response.data : {};
+    final content = response.data;
 
-    for (var e in content.entries) {
-      final name = e.key;
-      final id = e.value is String ? e.value : null;
+    for (var e in content) {
+      late final FileInfo info;
+      if (e is String) {
+        info = FileInfo(FileSystemEntityType.directory, e);
+      } else {
+        info = FileInfo(FileSystemEntityType.file, e['name'], e['id']);
+      }
 
-      ret.add(FileInfo(
-          id != null
-              ? FileSystemEntityType.file
-              : FileSystemEntityType.directory,
-          name,
-          id));
+      ret.add(info);
     }
   } on SocketException {
     print('No Internet connection 😑');
@@ -303,8 +357,7 @@ dynamic mkdirWeb(String path, {bool? gitInit}) async {
   try {
     path = _normalizePathWeb(path);
 
-    final response = await dio.post(serverUrl + '/dir',
-        data: {'path': path, 'permissions': '300', 'git_init': gitInit});
+    final response = await dio.post(serverUrl + '/dir', data: {'path': path});
     return response.data;
   } on SocketException {
     print('No Internet connection 😑');
