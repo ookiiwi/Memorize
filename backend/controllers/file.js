@@ -1,181 +1,114 @@
 const fs = require('fs');
-const shell = require('shelljs');
 
 const File = require('../models/file');
-const upload = require('../middleware/multer-config');
 const Group = require('../models/group');
 const { assert } = require('console');
 const { testPermissions, resolveUserstorage, search } = require('../utils/file-utils');
 
-exports.create = (req, res) => {
-    const file = File({
-        _id: req.params.id,
-        owner: req.auth.userId,
-        group: req.body.group,
-        name: req.file.originalname,
-        permissions: parseInt(req.body.permissions, 4)
-    });
+exports.update = async (req, res) => {
+    try {
+        const uploadedFile = JSON.parse(req.file.buffer.toString());
+        const version = uploadedFile.file.version || 'HEAD';
+        const path = req.body.path + '/' + uploadedFile.meta.id;
+        const file = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path).toString()) : {};
 
-    versionFile(file._id, req.body.version, req.file.destination, req.file.path);
-
-    file.save().then(
-        () => {
-            res.status(201).json({ id: file._id });
+        if (!Object.keys(file).length) {
+            if (!req.auth) {
+                throw "Forbiden access.";
+            }
         }
-    ).catch(
-        (err) => {
-            console.log('Error when creating list: ' + err);
-            res.status(500).json({ err });
-        }
-    )
-};
 
-exports.update = (req, res) => {
-    const id = req.params.id;
+        const dbFile = File({
+            _id: uploadedFile.meta.id,
+            owner: req.auth.userId,
+            name: uploadedFile.meta.name,
+            group: uploadedFile.meta.group,
+            permissions: uploadedFile.meta.permissions,
+        });
 
-    File.findById(id).then(
-        async (file) => {
-            if (!file) {
-                throw "File not found.";
-            }
-
-            // TODO: check dir permissions
-
-            const perm = await testPermissions(file, req.auth.userId);
-
-            if (!(perm & 1)) {
-                throw "Forbidden access";
-            }
-
-            upload(req, res, () => {
-                file.name = req.file.originalname;
-                file.group = req.body.group || file.group;
-                file.permissions = req.body.permissions ? parseInt(req.body.permissions, 4) : file.permissions;
-
-                versionFile(id, req.body.version, req.file.destination, req.file.path);
-
-                file.save().then(() => {
-                    res.status(201).send();
-                }).catch(
-                    (err) => {
-                        res.status(500).json({ err });
-                    }
-                );
-            });
-        }
-    ).catch(
-        (err) => {
-            res.status(401).json({ err });
-        }
-    );
-
-};
-
-exports.read = (req, res) => {
-    const id = req.query.path.split('/').pop();
-
-    File.findById(id).then(
-        async (file) => {
-            if (!file) {
-                throw "File not found.";
-            }
-
-            const perm = await testPermissions(file, req.auth.userId);
-
-            if (!(perm & 2)) {
-                throw "Forbidden access";
-            }
-            assert(req.query.path);
-
-            const p = resolveUserstorage(req.query.path, req.auth.userId);
-            const fileDir = p.replace(/(\/[^\/]*)$/, '');
-
-            if (shell.cd(fileDir).code !== 0) {
-
-                throw "Shell error with cd";
-
-            }
-
-            const version = req.query.version;
-            const tagsCmd = shell.exec('git tag -l v' + id + '_*');
-
-            if (tagsCmd.code !== 0) {
-                throw "Git error";
-            }
-
-            const tags = tagsCmd.trim().split('\n').map((e) => {
-                return e.split('_')[1];
-            });
-
-            const ret = version ? readVersion(id, 'v' + id + '_' + version) : fs.readFileSync(p).toString();
-            res.status(201).json({ file: ret, versions: tags, isOwned: file.owner === req.auth.userId, id: file._id });
-        }
-    ).catch(
-        (err) => {
-            console.log('error read', err);
-            res.status(500).json({ err });
-        }
-    )
-};
-
-exports.delete = (req, res) => {
-    const id = req.body.path.split('/').pop();
-    File.findByIdAndDelete(id).then(
-        (file) => {
-            if (file.owner != req.auth.userId) {
-                throw "Cannot delete file unless you are the owner";
-            }
-
-            const p = resolveUserstorage(req.body.path, req.auth.userId);
-            const fileDir = p.replace(/(\/[^\/]*)$/, '');
-
-            if (shell.cd(fileDir).code !== 0) {
-                throw "Git error";
-            }
-
-            // get all tags for this file
-            const tagsCmd = shell.exec('git tag -l v' + id + '_*');
-            if (tagsCmd.code !== 0) {
-                throw "Git error";
-            }
-            const tags = tagsCmd.trim().split('\n');
-
-            let hashDrop = '';
-            console.log('tags:', tags);
-
-            // get commits hash for each tags
-            for (let e of tags) {
-                let commitCmd = shell.exec('git show ' + e + ' --format="%h" -s');
-                if (commitCmd.code !== 0) {
-                    throw "Git error";
+        File.findOneAndUpdate({
+            $and: [
+                { _id: dbFile._id },
+                {
+                    $or: [
+                        {
+                            permissions: { $bitsAllSet: 2 }
+                        },
+                        {
+                            $and: [
+                                { permissions: { $bitsAllSet: 8 } },
+                                { group: { $in: [] } }
+                            ]
+                        },
+                        {
+                            $and: [
+                                { permissions: { $bitsAllSet: 32 } },
+                                { owner: { $eq: req.auth.userId } }
+                            ]
+                        }
+                    ]
                 }
+            ]
+        }, dbFile, { upsert: true }).then((_) => {
+            file.meta = uploadedFile.meta;
+            file[version] = uploadedFile.file;
 
-                let hash = commitCmd.trim();
-                hashDrop += 's/^pick ' + hash + '/drop ' + hash + '/;';
-            }
-
-            console.log('hashArr:', hashDrop);
-
-            // drop commits
-            const dropCmd = 'GIT_SEQUENCE_EDITOR="sed -i -re \'' + hashDrop + '\'" git rebase -i --autostash --root';
-
-            fs.rmSync(p, { recursive: false, force: true });
-
-            if (shell.exec(dropCmd).code !== 0) {
-                throw "Git error";
-            }
-
-
+            fs.writeFileSync(path, JSON.stringify(file));
             res.status(201).send();
-        }
-    ).catch(
-        (err) => {
-            console.log('Deletion error: ' + err);
-            res.status(500).json({ err });
-        }
-    );
+        }).catch((err) => res.status(500).json({ err }));
+    }
+    catch (e) {
+        console.log('err:', e);
+    }
+};
 
+exports.read = async (req, res) => {
+    const path = resolveUserstorage(req.query.path, req.auth.userId);
 
+    assert(fs.existsSync(path));
+
+    const version = req.query.version || 'HEAD';
+    const file = JSON.parse(fs.readFileSync(path));
+
+    File.findById(file.meta.id).then(async (dbFile) => {
+        const perm = await testPermissions(dbFile, req.auth.userId);
+
+        if (!(perm & 2)) {
+            throw "Forbidden access";
+        }
+
+        const versions = Object.keys(file);
+        versions.splice(versions.indexOf('meta'), 1);
+        versions.splice(versions.indexOf('HEAD'), 1);
+        file.meta.versions = versions;
+
+        res.status(201).send(JSON.stringify({
+            meta: file.meta,
+            file: file[version]
+        }));
+    }).catch((err) => res.status(500).json({ err }));
+};
+
+exports.delete = async (req, res) => {
+    if (!fs.existsSync) {
+        throw "File not found.";
+    }
+
+    const path = resolveUserstorage(req.body.path, req.auth.userId);
+    const version = req.body.version;
+    const file = JSON.parse(fs.readFileSync(path));
+
+    if (version) {
+        delete file.meta.versions[version];
+        delete file[version];
+
+        fs.writeFileSync(path, JSON.stringify(file));
+    } else {
+        await File.findByIdAndDelete(file.meta.id);
+        fs.rmSync(path);
+    }
+
+    res.status(201).send();
 }
 
 exports.search = (req, res) => {
@@ -186,48 +119,3 @@ exports.search = (req, res) => {
         res.status(500).json({ error: e });
     });
 };
-
-function readVersion(id, version) {
-    const commitCmd = shell.exec('git show ' + version + ' --format="%h" -s');
-
-    if (commitCmd.code !== 0) {
-        throw 'Git error';
-    }
-
-    const commit = commitCmd.trim().replace('\n', '');
-
-    const filenameCmd = shell.exec("git ls-tree --name-only -r " + commit);
-
-    if (filenameCmd.code !== 0) {
-        throw "Git error" + filename;
-    }
-
-    const filename = filenameCmd.match(new RegExp(".*" + id));
-    const ret = shell.exec("git show " + commit + ':"' + filename + '"');
-
-    if (ret.code !== 0) {
-        console.log('cmd ret: ', ret);
-        throw "Git error";
-    }
-
-    return ret;
-}
-
-function versionFile(id, version, destination, path) {
-    if (!version) return;
-    console.log('commit:', version);
-
-    if (shell.cd(destination).code !== 0) {
-        throw "Shell error during cd to " + destination;
-    }
-
-    const tag = 'v' + id + '_' + version;
-    const addCmd = 'git add "' + path + '"';
-    const commitCmd = 'git commit -m "' + Date.UTC() + '"';
-    const tagCmd = 'git tag ' + tag;
-
-    if (shell.exec(addCmd + ' && ' + commitCmd + ' && ' + tagCmd).code !== 0) {
-        throw "Git error";
-    }
-
-}
