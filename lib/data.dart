@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
@@ -19,58 +17,30 @@ class AList extends fs.MemoFile {
   AList(super.name)
       : schemasMapping = {},
         _entries = [],
-        _tags = {},
-        _stats = AListStats();
+        _tags = {};
 
   AList.from(AList list)
       : schemasMapping = Map.from(list.schemasMapping),
-        status = list.status,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
-        _stats = AListStats(),
         super.from(list);
 
-  AList._fromJson(Map<String, dynamic> json, {super.versions})
-      : schemasMapping = Map.from(json['schemasMapping']),
-        status = json['status'],
-        _entries = List.from(json['entries']),
-        _tags = Set.from(json['tags']),
-        _stats = AListStats.fromJson(json["listStats"]),
+  AList.fromJson(Map<String, dynamic> json)
+      : schemasMapping = Map.from(json['file']['schemasMapping']),
+        _entries = List.from(json['file']['entries']),
+        _tags = Set.from(json['file']['tags']),
         super.fromJson(json);
 
-  factory AList.fromJson(Map<String, dynamic> json) {
-    if (json.containsKey('file')) {
-      final data = jsonDecode(json['file']);
-      data.remove('id');
-      json.remove('file');
-      json.addAll(data);
-    }
-
-    return AList._fromJson(json, versions: Set.from(json['versions'] ?? {}));
-  }
-
   @override
-  Map<String, dynamic> toJson() => super.toJson()
-    ..addAll({
-      'schemasMapping': schemasMapping,
-      "entries": _entries,
-      "status": status,
-      "tags": _tags.toList(),
-      "listStats": _stats.toJson()
-    });
+  Map<String, dynamic> toJsonEncodable() => {
+        'schemasMapping': schemasMapping,
+        "entries": _entries,
+        "tags": _tags.toList(),
+      };
 
-  @override
-  get data => jsonEncode(toJson());
-
-  String status = 'private';
   final Map<String, String> schemasMapping;
   final List<AListEntry> _entries;
   final Set<String> _tags;
-  final AListStats _stats;
-
-  AListStats get stats => _stats;
-
-  String get uniqueName => name;
 
   List<AListEntry> get entries => List.unmodifiable(_entries);
 
@@ -104,50 +74,6 @@ class AList extends fs.MemoFile {
     // TODO: implement rm
     throw UnimplementedError();
   }
-}
-
-class QuizStats {
-  QuizStats(this.time, this.mode, {this.score = 0});
-  factory QuizStats.fromJson(Map<String, dynamic> data) {
-    return QuizStats(
-        DateTime.fromMillisecondsSinceEpoch(int.parse(data['data'][1])),
-        data['data'][0],
-        score: int.parse(data['data'][2]));
-  }
-
-  final DateTime time;
-  final String mode;
-  int score;
-
-  Map<String, dynamic> toJson() => {
-        'data': [mode, time.millisecondsSinceEpoch.toString(), score.toString()]
-      };
-}
-
-class AListStats {
-  AListStats();
-
-  factory AListStats.fromJson(Map<String, dynamic> data) {
-    AListStats stats = AListStats();
-    stats._stats.addAll(
-        (data['stats'] as List).map((e) => QuizStats.fromJson(e)).toList());
-    return stats;
-  }
-
-  Map<String, dynamic> toJson() =>
-      {"stats": _stats.map((e) => e.toJson()).toList()};
-
-  final List<QuizStats> _stats = [];
-
-  List<QuizStats> get stats => _stats;
-
-  void add(QuizStats stats) => _stats.add(stats);
-  int get lastScore => _stats.last.score;
-  set lastScore(int n) => _stats.last.score = n.clamp(0, n.abs());
-}
-
-List<String> stripPath(String path) {
-  return (path.split('/'))..removeWhere((e) => e.isEmpty);
 }
 
 enum SortType { rct, asc, dsc }
@@ -192,20 +118,20 @@ class DataLoader {
 
     final pref = await SharedPreferences.getInstance();
     final isFirstRun = pref.getBool('isFirstRun');
+    print('isFirstRun? $isFirstRun');
 
-    if (isFirstRun == null || !isFirstRun) {
-      await fs.initFirstRun();
+    await Auth.init();
+    await fs.init(isFirstRun == null || isFirstRun);
+    SchemaAddon.init();
+    //if (!kIsWeb) await ReminderNotification.init();
+
+    if (isFirstRun == null || isFirstRun) {
       ListExplorer.init();
       print('firstrun');
       pref.setBool('isFirstRun', false);
     } else {
       print('not firstrun');
     }
-
-    await Auth.init();
-    await fs.init();
-    SchemaAddon.init();
-    //if (!kIsWeb) await ReminderNotification.init();
 
     _isDataLoaded = true;
   }
