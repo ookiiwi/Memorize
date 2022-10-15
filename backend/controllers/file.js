@@ -32,17 +32,17 @@ exports.update = async (req, res) => {
                 {
                     $or: [
                         {
-                            permissions: { $bitsAllSet: 2 }
+                            permissions: { $bitsAllSet: 1 }
                         },
                         {
                             $and: [
-                                { permissions: { $bitsAllSet: 8 } },
+                                { permissions: { $bitsAllSet: 4 } },
                                 { group: { $in: [] } }
                             ]
                         },
                         {
                             $and: [
-                                { permissions: { $bitsAllSet: 32 } },
+                                { permissions: { $bitsAllSet: 16 } },
                                 { owner: { $eq: req.auth.userId } }
                             ]
                         }
@@ -78,13 +78,15 @@ exports.read = async (req, res) => {
         }
 
         const versions = Object.keys(file);
-        versions.splice(versions.indexOf('meta'), 1);
-        versions.splice(versions.indexOf('HEAD'), 1);
+        const metaIndex = versions.indexOf('meta');
+        const headIndex = versions.indexOf('HEAD');
+        if (metaIndex != -1) versions.splice(metaIndex, 1);
+        if (headIndex != -1) versions.splice(headIndex, 1);
         file.meta.versions = versions;
 
         res.status(201).send(JSON.stringify({
             meta: file.meta,
-            file: file[version]
+            file: file[version] || file[versions.pop()]
         }));
     }).catch((err) => res.status(500).json({ err }));
 };
