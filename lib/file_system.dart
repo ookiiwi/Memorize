@@ -229,7 +229,7 @@ dynamic writeFileWeb(String path, MemoFile file) async {
     final ObjectId tmpId = file.id;
 
     if (path.startsWith('/globalstorage')) {
-      file.upstream ??= ObjectId();
+      assert(file.upstream != null);
       file.id = file.upstream!;
     }
 
@@ -251,7 +251,8 @@ dynamic writeFileWeb(String path, MemoFile file) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -278,7 +279,8 @@ Future readFileWeb(String path, {String? version}) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -303,7 +305,8 @@ dynamic rmFileWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -341,7 +344,8 @@ Future<List<FileInfo>> lsWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -366,7 +370,8 @@ dynamic mkdirWeb(String path, {bool? gitInit}) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -389,7 +394,8 @@ dynamic rmDirWeb(String path) async {
   } on FormatException {
     print("Bad response format 👎");
   } on DioError catch (e) {
-    print("""
+    print(
+        """
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
