@@ -13,6 +13,7 @@ import 'package:memorize/quiz.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
+import 'package:objectid/objectid.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
 import 'package:flutter/gestures.dart';
@@ -58,8 +59,10 @@ class TabNavigator extends StatelessWidget {
 }
 
 class ListExplorer extends StatefulWidget with ATab {
-  ListExplorer({Key? key, this.listPath}) : super(key: key);
+  ListExplorer({Key? key, this.listPath, this.rawView = false})
+      : super(key: key);
   final String? listPath;
+  final bool rawView;
   late final void Function() _reload;
 
   @override
@@ -67,6 +70,12 @@ class ListExplorer extends StatefulWidget with ATab {
 
   @override
   State<ListExplorer> createState() => _ListExplorer();
+
+  static void init() {
+    if (kIsWeb) return;
+
+    fs.mkdirMobile('list');
+  }
 }
 
 class _ListExplorer extends State<ListExplorer>
@@ -91,6 +100,8 @@ class _ListExplorer extends State<ListExplorer>
 
   final NavigationHistoryObserver _navHistory = NavigationHistoryObserver();
   ModalRoute? _route;
+
+  String get root => fs.root + '/list';
 
   List<String> tabs = ["recent", "ascending", "descending"];
 
@@ -142,7 +153,7 @@ class _ListExplorer extends State<ListExplorer>
     _addBtnAnim =
         CurvedAnimation(parent: _addBtnAnimController, curve: Curves.linear);
 
-    fs.cd('/userstorage/list');
+    fs.cd((kIsWeb ? '/userstorage/' : '') + 'list');
   }
 
   @override
@@ -161,6 +172,7 @@ class _ListExplorer extends State<ListExplorer>
     _addBtnAnimController.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
+    fs.cd(fs.root);
     super.dispose();
   }
 
@@ -180,7 +192,7 @@ class _ListExplorer extends State<ListExplorer>
     if (Navigator.of(_navCtx).canPop()) {
       return true;
     } else {
-      fs.cd('..');
+      fs.cd(fs.root);
       _updateData();
     }
     return false;
@@ -322,62 +334,68 @@ class _ListExplorer extends State<ListExplorer>
               child: Stack(
                 children: [
                   Column(children: [
-                    Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Expanded(
-                          child: Container(
-                        height: _searchHeight,
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.all(5),
-                        margin: const EdgeInsets.only(top: 5),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.grey,
-                        ),
-                        child: Text(fs.wd),
-                      )),
-                      Container(
-                        margin: const EdgeInsets.only(left: 10),
-                        height: _searchHeight,
-                        child: FloatingActionButton(
-                            onPressed: () {
-                              //ReminderNotification.removeFirst(
-                              //    '/data/data/com.example.memorize/app_flutter/fs/root/maez1W0jSm?test');
-                            },
-                            child: const Icon(Icons.search)),
-                      )
-                    ]),
-                    //tab row
-                    Container(
-                      height: 50,
-                      alignment: Alignment.centerLeft,
-                      margin: const EdgeInsets.symmetric(vertical: 20),
-                      child: ListView.builder(
-                          shrinkWrap: true,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: tabs.length,
-                          itemBuilder: (ctx, i) {
-                            return GestureDetector(
-                                onTap: () => setState(
-                                    () => _sortType = SortType.values[i]),
+                    if (!widget.rawView)
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
                                 child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: _horizontalMargin),
-                                  margin: i < (tabs.length - 1)
-                                      ? const EdgeInsets.only(right: 10)
-                                      : EdgeInsets.zero,
-                                  decoration: BoxDecoration(
-                                      color: _sortType == SortType.values[i]
-                                          ? _seletedColor
-                                          : Colors.grey,
-                                      borderRadius: BorderRadius.circular(30)),
-                                  child: Center(
-                                      child: Text(
-                                    tabs[i],
-                                    style: const TextStyle(color: Colors.black),
-                                  )),
-                                ));
-                          }),
-                    ),
+                              height: _searchHeight,
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.all(5),
+                              margin: const EdgeInsets.only(top: 5),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.grey,
+                              ),
+                              child: Text(fs.wd),
+                            )),
+                            Container(
+                              margin: const EdgeInsets.only(left: 10),
+                              height: _searchHeight,
+                              child: FloatingActionButton(
+                                  onPressed: () {
+                                    //ReminderNotification.removeFirst(
+                                    //    '/data/data/com.example.memorize/app_flutter/fs/root/maez1W0jSm?test');
+                                  },
+                                  child: const Icon(Icons.search)),
+                            )
+                          ]),
+                    //tab row
+                    if (!widget.rawView)
+                      Container(
+                        height: 50,
+                        alignment: Alignment.centerLeft,
+                        margin: const EdgeInsets.symmetric(vertical: 20),
+                        child: ListView.builder(
+                            shrinkWrap: true,
+                            scrollDirection: Axis.horizontal,
+                            itemCount: tabs.length,
+                            itemBuilder: (ctx, i) {
+                              return GestureDetector(
+                                  onTap: () => setState(
+                                      () => _sortType = SortType.values[i]),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: _horizontalMargin),
+                                    margin: i < (tabs.length - 1)
+                                        ? const EdgeInsets.only(right: 10)
+                                        : EdgeInsets.zero,
+                                    decoration: BoxDecoration(
+                                        color: _sortType == SortType.values[i]
+                                            ? _seletedColor
+                                            : Colors.grey,
+                                        borderRadius:
+                                            BorderRadius.circular(30)),
+                                    child: Center(
+                                        child: Text(
+                                      tabs[i],
+                                      style:
+                                          const TextStyle(color: Colors.black),
+                                    )),
+                                  ));
+                            }),
+                      ),
 
                     //page view
                     Expanded(
@@ -480,25 +498,26 @@ class _ListExplorer extends State<ListExplorer>
                                   }
                                 })))),
                   ]),
-                  Positioned(
-                      right: 10,
-                      bottom: 10,
-                      child: ExpandedWidget(
-                          key: key,
-                          direction: AxisDirection.up,
-                          isExpanded: _openBtnMenu || _openSelection,
-                          duration: const Duration(milliseconds: 500),
-                          child: _openSelection
-                              ? _buildSelectionBtns()
-                              : _buildAddBtns(_navCtx),
-                          header: AnimatedSwitcher(
-                              key: const ValueKey<int>(10),
-                              transitionBuilder: (child, animation) {
-                                return FadeTransition(
-                                    opacity: animation, child: child);
-                              },
-                              duration: const Duration(milliseconds: 300),
-                              child: _buildAddBtn()))),
+                  if (!widget.rawView)
+                    Positioned(
+                        right: 10,
+                        bottom: 10,
+                        child: ExpandedWidget(
+                            key: key,
+                            direction: AxisDirection.up,
+                            isExpanded: _openBtnMenu || _openSelection,
+                            duration: const Duration(milliseconds: 500),
+                            child: _openSelection
+                                ? _buildSelectionBtns()
+                                : _buildAddBtns(_navCtx),
+                            header: AnimatedSwitcher(
+                                key: const ValueKey<int>(10),
+                                transitionBuilder: (child, animation) {
+                                  return FadeTransition(
+                                      opacity: animation, child: child);
+                                },
+                                duration: const Duration(milliseconds: 300),
+                                child: _buildAddBtn()))),
                 ],
               ));
         });
@@ -506,27 +525,29 @@ class _ListExplorer extends State<ListExplorer>
 }
 
 class ListPage extends StatefulWidget with ATab {
-  ListPage(
-      {Key? key,
-      this.list,
-      this.createIfDontExists = true,
-      this.modifiable = true})
-      : fileInfo = null,
+  ListPage({
+    Key? key,
+    this.createIfDontExists = true,
+  })  : modifiable = true,
+        readCallback = fs.readFile,
+        fileInfo = null,
         super(key: key);
 
   ListPage.fromFile(
       {super.key,
       required fs.FileInfo fileInfo,
       this.createIfDontExists = true,
-      this.modifiable = true})
-      : list = null,
-        fileInfo = fileInfo;
+      this.modifiable = true,
+      this.readCallback = fs.readFile,
+      this.onVersionChanged})
+      : fileInfo = fileInfo;
 
   final fs.FileInfo? fileInfo;
-  final AList? list;
   final bool createIfDontExists;
   final bool modifiable;
   void Function() _reload = () {};
+  Future<dynamic> Function(String path, {String? version}) readCallback;
+  void Function(String? version)? onVersionChanged;
 
   @override
   void reload() {
@@ -538,7 +559,6 @@ class ListPage extends StatefulWidget with ATab {
 }
 
 class _ListPage extends State<ListPage> {
-  final _nameController = TextEditingController();
   late AList _list;
   bool _nameIsValid = false;
   bool get _canPop => _nameIsValid;
@@ -548,6 +568,7 @@ class _ListPage extends State<ListPage> {
   ModalRoute? _route;
   final String _uploadWindowName = 'upload';
   bool get isEditable => widget.modifiable && _list.version == null;
+  fs.FileInfo? get fileInfo => widget.fileInfo;
 
   @override
   void initState() {
@@ -571,7 +592,6 @@ class _ListPage extends State<ListPage> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _route?.removeScopedWillPopCallback(canPop);
     _route = null;
 
@@ -585,47 +605,66 @@ class _ListPage extends State<ListPage> {
   }
 
   void _loadList([String? versionId]) {
-    if (widget.fileInfo != null) {
-      assert(widget.fileInfo?.path != null);
-      _fList =
-          fs.readFile(widget.fileInfo!.path!, version: versionId).then((value) {
+    if (versionId != null && widget.onVersionChanged != null) {
+      widget.onVersionChanged!(versionId);
+    }
+
+    if (fileInfo != null) {
+      assert(fileInfo?.path != null);
+
+      _fList = widget.readCallback(fileInfo!.path!, version: versionId);
+
+      _fList.then((value) {
         assert(!(value == null && !widget.createIfDontExists));
         assert(value != null, 'Cannot read list');
-        _list = AList.fromJson(jsonDecode(value['ret']),
-            versions: Set.from(value['versions']));
-      }).catchError((err) => print('err $err'));
+
+        _list = AList.fromJson(
+            value is Map<String, dynamic> ? value : jsonDecode(value));
+      }).catchError((err) {
+        print('err $err');
+      });
     } else {
-      _list = widget.list ?? AList('');
+      _list = AList('');
       _fList = Future.value();
     }
-    _fList.whenComplete(() => _nameController.text = _list.name);
+  }
+
+  void _writeList() {
+    assert(_list.version == null);
+    fs.writeFile(fs.wd, _list);
   }
 
   Widget _buildElts() {
     return Column(
       children: [
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Expanded(
+              child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.3,
+                    minWidth: MediaQuery.of(context).size.width * 0.1,
+                  ),
+                  margin: const EdgeInsets.all(20),
+                  child: TextField(
+                    enabled: isEditable,
+                    controller: TextEditingController(text: _list.name),
+                    onChanged: (value) async {
+                      assert(_list.version != null);
+
+                      if (value.isEmpty) return;
+
+                      //TODO: check if name valid
+
+                      _list.name = value;
+                      _writeList();
+                    },
+                    decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20))),
+                  ))),
           Container(
-              width: MediaQuery.of(context).size.width * 0.3,
-              margin: const EdgeInsets.all(20),
-              child: TextField(
-                enabled: isEditable,
-                controller: _nameController,
-                onChanged: (value) {
-                  //TODO: check if name valid
-                  if (value.isEmpty) return;
-
-                  _list.name = value;
-                  _list.version = null;
-                  fs.writeFile(fs.wd, _list);
-
-                  setState(() {});
-                },
-                decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20))),
-              )),
-          _buildVersionDropdown()
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              child: _buildVersionDropdown())
         ]),
         Expanded(
             child: RefreshIndicator(
@@ -678,17 +717,17 @@ class _ListPage extends State<ListPage> {
               }
               return MaterialButton(
                   onPressed: () {
-                    setState(() {
-                      _loadList(e == 'HEAD' ? null : e);
-                      Overlayment.dismissLast(result: e);
-                    });
+                    final version = e == 'HEAD' ? null : e;
+                    if (version != _list.version) {
+                      setState(() => _loadList(version));
+                    }
+                    Overlayment.dismissLast(result: e);
                   },
                   child: Text(e));
             }).toList(),
           )));
 
   Future<bool> canPop() async {
-    print('listpage pop');
     if (!_canPop) {
       await showDialog(
           context: context,
@@ -749,6 +788,129 @@ class _ListPage extends State<ListPage> {
         context: context);
   }
 
+  void _showRawList() {
+    Overlayment.show(
+        OverWindow(
+            backgroundSettings: const BackgroundSettings(dismissOnClick: true),
+            alignment: Alignment.center,
+            child: Column(
+              children: [
+                // id
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('id: ${_list.id}')),
+                // upstream
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('upstream: ${_list.upstream}')),
+                // version
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('version: ${_list.version}')),
+                // versions
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('versions: ${_list.versions.toList()}')),
+                // permissions
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('permissions: ${_list.permissions}')),
+              ],
+            )),
+        context: context);
+  }
+
+  void _showFileVersioning() {
+    Overlayment.show(
+        OverWindow(
+            backgroundSettings: const BackgroundSettings(dismissOnClick: true),
+            alignment: Alignment.center,
+            child: FileVersioningPage(list: _list)),
+        context: context);
+  }
+
+  Widget _buildOptions() {
+    return Positioned(
+        left: 10,
+        right: 10,
+        bottom: 10,
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+          if (kDebugMode)
+            FloatingActionButton(
+                onPressed: _showRawList,
+                child: const Icon(Icons.info_outline_rounded)),
+          FloatingActionButton(
+              onPressed: _showFileVersioning,
+              child: const Icon(Icons.update_rounded)),
+          FloatingActionButton(
+              onPressed: () {
+                _showUploadWindow();
+              },
+              child: const Icon(Icons.upload)),
+          FloatingActionButton(
+              onPressed: () {
+                _showAddonConfig();
+              },
+              child: const Icon(Icons.settings)),
+          if (isEditable)
+            OpenContainer(
+                transitionType: ContainerTransitionType.fade,
+                transitionDuration: const Duration(milliseconds: 1000),
+                openElevation: 0,
+                closedElevation: 0,
+                closedColor: Colors.blue,
+                closedShape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(360)),
+                closedBuilder: (context, action) {
+                  return const SizedBox(
+                      height: 56.0,
+                      width: 56.0,
+                      child: Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                      ));
+                },
+                openBuilder: (context, _) {
+                  return QuizLauncher(
+                    list: _list,
+                    // fetch addon folder and load addons
+                  );
+                }),
+          if (isEditable)
+            _openSelection
+                ? FloatingActionButton(
+                    heroTag: "prout",
+                    onPressed: () => setState(() {
+                      _openSelection = false;
+
+                      if (_list.version != null) {
+                        _loadList();
+                        setState(() {});
+                      }
+
+                      for (int i in _selectedItems) {
+                        _list.entries.removeAt(i);
+                      }
+
+                      _writeList();
+                    }),
+                    child: const Icon(Icons.delete),
+                  )
+                : FloatingActionButton(
+                    onPressed: () {
+                      if (_list.version != null) {
+                        _loadList();
+                      }
+
+                      // show search window
+                      _list.addEntry({'schema': 'en'});
+                      _writeList();
+                      setState(() {});
+                    },
+                    child: const Icon(Icons.add))
+        ]));
+  }
+
   @override
   Widget build(BuildContext ctx) {
     return FutureBuilder(
@@ -761,75 +923,7 @@ class _ListPage extends State<ListPage> {
                 color: Theme.of(context).backgroundColor,
                 child: PageView(
                   children: [
-                    Stack(children: [
-                      _buildElts(),
-                      if (isEditable)
-                        Positioned(
-                            left: 10,
-                            right: 10,
-                            bottom: 10,
-                            child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: [
-                                  FloatingActionButton(
-                                      onPressed: () {
-                                        _showUploadWindow();
-                                      },
-                                      child: const Icon(Icons.upload)),
-                                  FloatingActionButton(
-                                      onPressed: () {
-                                        _showAddonConfig();
-                                      },
-                                      child: const Icon(Icons.settings)),
-                                  OpenContainer(
-                                      transitionType:
-                                          ContainerTransitionType.fade,
-                                      transitionDuration:
-                                          const Duration(milliseconds: 1000),
-                                      openElevation: 0,
-                                      closedElevation: 0,
-                                      closedColor: Colors.blue,
-                                      closedShape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(360)),
-                                      closedBuilder: (context, action) {
-                                        return const SizedBox(
-                                            height: 56.0,
-                                            width: 56.0,
-                                            child: Icon(
-                                              Icons.play_arrow,
-                                              color: Colors.white,
-                                            ));
-                                      },
-                                      openBuilder: (context, _) {
-                                        return QuizLauncher(
-                                          list: _list,
-                                          // fetch addon folder and load addons
-                                        );
-                                      }),
-                                  _openSelection
-                                      ? FloatingActionButton(
-                                          heroTag: "prout",
-                                          onPressed: () => setState(() {
-                                            _openSelection = false;
-                                            for (int i in _selectedItems) {
-                                              _list.entries.removeAt(i);
-                                            }
-                                            fs.writeFile(fs.wd, _list);
-                                          }),
-                                          child: const Icon(Icons.delete),
-                                        )
-                                      : FloatingActionButton(
-                                          onPressed: () {
-                                            // show search window
-                                            _list.addEntry({'schema': 'en'});
-                                            fs.writeFile(fs.wd, _list);
-                                            setState(() {});
-                                          },
-                                          child: const Icon(Icons.add))
-                                ]))
-                    ]),
+                    Stack(children: [_buildElts(), _buildOptions()]),
                     // TODO: Implement stats page
                   ],
                 ));
@@ -1248,6 +1342,8 @@ class _SearchPage extends State<SearchPage> {
   Future _previewData = Future.value(null);
   bool get _displayPreviewOverlay => MediaQuery.of(context).size.width < 1000;
 
+  String? _selectedVersion;
+
   static final Map<String, dynamic> _tabs = {
     'Lists': _fetchLists,
     'Addons': _fetchAddons
@@ -1256,12 +1352,15 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchLists(String value) async {
     try {
       print('fetch lists');
-      final response = await dio.get('$serverUrl/file/dir',
-          queryParameters: {'path': '/public/list'});
+      final response = await dio
+          .get('$serverUrl/file/search', queryParameters: {'value': value});
 
       print('content: ${response.data}');
 
-      return response.data.keys.toList();
+      return response.data
+          .map((e) => fs.FileInfo(
+              FileSystemEntityType.file, e['name'], e['_id'], e['path']))
+          .toList();
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
@@ -1269,10 +1368,13 @@ class _SearchPage extends State<SearchPage> {
     } on FormatException {
       print("Bad response format 👎");
     } on DioError catch (e) {
-      print(
-          'Dio error: ${e.response?.statusCode}\nMessage: ${e.message}\nRequest: ${e.response}');
+      print("""
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
     } catch (e) {
-      print('An error occured during lists fetch: $e');
+      print('error: $e');
     }
 
     return [];
@@ -1301,25 +1403,21 @@ class _SearchPage extends State<SearchPage> {
     return [];
   }
 
-  static Future<AList> _fetchList(String id) async {
-    return await fs.readFileWeb('/public/addon/' + id);
-  }
-
   static Future<Addon?> _fetchAddon(String id) async {
     return Addon.fetch(id);
   }
 
-  Widget _buildPreviewTab() {
+  Widget _buildPreviewTab({VoidCallback? onCancel}) {
     return Container(
       margin: _displayPreviewOverlay ? null : const EdgeInsets.only(left: 10),
       decoration: BoxDecoration(
           color: Colors.transparent, borderRadius: BorderRadius.circular(20)),
       height: double.infinity,
-      width: MediaQuery.of(context).size.width * 0.3,
+      width: MediaQuery.of(context).size.height * 0.3,
       child: FutureBuilder(
         future: _previewData,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           } else {
             return ClipRRect(
@@ -1332,14 +1430,62 @@ class _SearchPage extends State<SearchPage> {
                           bottom: 5,
                           right: 5,
                           child: FloatingActionButton(
-                              onPressed: () {
-                                //write list
-                                //add addon to addon folder
+                              onPressed: () async {
+                                if (kIsWeb) return;
+
                                 final tabs = _tabs.keys.toList();
                                 final data = snapshot.data;
 
+                                String? dest;
+
+                                print('download');
+
+                                await Overlayment.show(
+                                    OverWindow(
+                                        alignment: Alignment.center,
+                                        child: Stack(children: [
+                                          SizedBox(
+                                              height: MediaQuery.of(context)
+                                                      .size
+                                                      .height *
+                                                  0.6,
+                                              width: MediaQuery.of(context)
+                                                      .size
+                                                      .height *
+                                                  0.3,
+                                              child: ListExplorer(
+                                                rawView: true,
+                                              )),
+                                          Positioned(
+                                              bottom: 10,
+                                              right: 10,
+                                              child: FloatingActionButton(
+                                                  onPressed: () {
+                                                    dest = fs.wd;
+                                                    Overlayment.dismissAll();
+                                                  },
+                                                  child:
+                                                      const Icon(Icons.check)))
+                                        ])),
+                                    context: context);
+
+                                if (dest == null) {
+                                  if (onCancel != null) onCancel();
+                                  return;
+                                }
+
+                                print('dest: $dest');
+
                                 if (_selectedTab == tabs[0]) {
-                                  fs.writeFile(fs.wd, data as AList);
+                                  fs
+                                      .readFileWeb((data as fs.FileInfo).path!,
+                                          version: _selectedVersion)
+                                      .then((value) {
+                                    final list =
+                                        AList.fromJson(jsonDecode(value));
+
+                                    fs.writeFile(dest!, list);
+                                  });
                                 } else if (_selectedTab == tabs[1]) {
                                   (data as Addon).register();
                                 } else {
@@ -1365,10 +1511,12 @@ class _SearchPage extends State<SearchPage> {
         color: Colors.purple,
       );
     } else if (_selectedTab == tabs[0]) {
-      ret = ListPage(
-        list: data,
-        modifiable: false,
-      );
+      ret = ListPage.fromFile(
+          fileInfo: data,
+          modifiable: false,
+          readCallback: fs.readFileWeb,
+          onVersionChanged: (value) =>
+              setState(() => _selectedVersion = value));
     } else if (_selectedTab == tabs[1]) {
       ret = Padding(padding: const EdgeInsets.all(5), child: data.build());
     } else {
@@ -1380,9 +1528,8 @@ class _SearchPage extends State<SearchPage> {
 
   void _fetchSearch(String value) async {
     final tabs = _tabs.keys.toList();
-
     _lastSearch = value;
-    print('fetch search $value');
+
     if (_selectedTab == tabs[0]) {
       _data = await _fetchLists(value);
     } else if (_selectedTab == tabs[1]) {
@@ -1409,7 +1556,7 @@ class _SearchPage extends State<SearchPage> {
                 borderRadius: BorderRadius.circular(20)),
             child: SizedBox(
               height: MediaQuery.of(context).size.height * 0.5,
-              child: _buildPreviewTab(),
+              child: _buildPreviewTab(onCancel: () => Overlayment.dismissAll()),
             )),
         context: context);
   }
@@ -1471,14 +1618,15 @@ class _SearchPage extends State<SearchPage> {
                                                         BorderRadius.circular(
                                                             20)),
                                                 onPressed: () {
-                                                  final id = _data[i];
+                                                  final id = _data[i].id;
                                                   print('get data ');
                                                   setState(() {
                                                     _previewData =
-                                                        _selectedTab ==
+                                                        (_selectedTab ==
                                                                 _tabs.keys.first
-                                                            ? _fetchList(id)
-                                                            : _fetchAddon(id);
+                                                            ? Future.value(
+                                                                _data[i])
+                                                            : _fetchAddon(id));
 
                                                     if (_displayPreviewOverlay) {
                                                       _showPreviewOverlay();
@@ -1486,7 +1634,8 @@ class _SearchPage extends State<SearchPage> {
                                                   });
                                                 },
                                                 child: Center(
-                                                    child: Text(_data[i]))),
+                                                    child:
+                                                        Text(_data[i].name))),
                                           )),
                                 );
                               },
@@ -1511,90 +1660,169 @@ class ListUploadPage extends StatefulWidget {
 }
 
 class _ListUploadPage extends State<ListUploadPage> {
-  Map<String, bool> _selectedStatus = {'Private': true, 'Shared': false};
+  late int _perm;
+  String status = '';
   Future _writeResponse = Future.value();
-  String _uploadVersion = '';
-  bool _doUpload = false;
+  late final String _uploadVersion;
+  String _group = '';
+  bool get _enabledGroup => _perm & 8 != 0 || _perm & 4 != 0;
 
   @override
   void initState() {
     super.initState();
-    _selectedStatus = _selectedStatus
-        .map((k, v) => MapEntry(k, widget.list.status == k.toLowerCase()));
+    _uploadVersion = widget.list.version ?? widget.list.versions.last;
+    _perm = widget.list.permissions | 2;
+  }
+
+  Widget _buildToggleButtons(int perm, int bits, String title,
+      {required void Function(int) onChanged}) {
+    final Map<String, bool> toggles = {
+      'Read': perm & bits != 0,
+      'Write': perm & (bits >> 1) != 0
+    };
+
+    return Row(children: [
+      Padding(padding: const EdgeInsets.all(10), child: Text(title)),
+      ToggleButtons(
+        borderRadius: BorderRadius.circular(20),
+        children: toggles.keys
+            .map((e) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(e)))
+            .toList(),
+        isSelected: toggles.values.toList(),
+        onPressed: (i) {
+          onChanged(bits >> i);
+          setState(() {});
+        },
+      )
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-        margin: const EdgeInsets.all(10),
+    return Padding(
+        padding: const EdgeInsets.all(10),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ToggleButtons(
-              borderRadius: BorderRadius.circular(20),
-              children: _selectedStatus.keys.map((e) => Text(e)).toList(),
-              isSelected: _selectedStatus.values.toList(),
-              onPressed: (i) {
-                final key = _selectedStatus.keys.elementAt(i);
-                _selectedStatus =
-                    _selectedStatus.map((k, v) => MapEntry(k, false));
-                _selectedStatus[key] = true;
-                widget.list.status = key.toLowerCase();
-                setState(() {});
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('Version: $_uploadVersion'),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Center(
+                  child: _buildToggleButtons(_perm, 8, 'Group',
+                      onChanged: (value) => _perm ^= value)),
+              Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.05,
+                      child: TextField(
+                          enabled: _enabledGroup,
+                          onChanged: (value) => _group = value))),
+            ]),
+            Row(
+              children: [
                 const Padding(
-                    padding: EdgeInsets.all(10), child: Text('Version: ')),
-                SizedBox(
-                    width: MediaQuery.of(context).size.width * 0.2,
-                    child: TextField(
-                      enabled: _doUpload,
-                      onChanged: (value) =>
-                          setState(() => _uploadVersion = value),
-                    )),
+                    padding: EdgeInsets.all(10), child: Text('World')),
                 Checkbox(
-                    value: _doUpload,
-                    onChanged: (value) =>
-                        setState(() => _doUpload = value ?? _doUpload))
-              ]),
+                    value: _perm & 1 != 0,
+                    onChanged: (value) => setState(() {
+                          if (value == null) return;
+
+                          _perm ^= 1;
+                        }))
+              ],
             ),
-            Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: FutureBuilder(
-                    future: _writeResponse,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const CircularProgressIndicator();
-                      } else {
-                        return FloatingActionButton(
-                            onPressed: () {
-                              //assert(widget.list.version == null);
-
-                              if (_doUpload) {
-                                widget.list.version = _uploadVersion;
-                              }
-
-                              _writeResponse = fs.writeFileWeb(
-                                  fs.wd, widget.list,
-                                  version: widget.list.version)
-                                ..then((value) {
-                                  if (widget.onUpload != null) {
-                                    widget.onUpload!();
+            Center(
+                child: Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: FutureBuilder(
+                        future: _writeResponse,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const CircularProgressIndicator();
+                          } else {
+                            return FloatingActionButton(
+                                onPressed: () {
+                                  assert(_perm != 48);
+                                  if (_enabledGroup) {
+                                    print('throw UnimplementedError();');
+                                    return;
                                   }
 
-                                  if (!kIsWeb) {
-                                    fs.writeFileMobile(
-                                        fs.wd, widget.list..id = value);
-                                  }
-                                });
-                            },
-                            child: const Icon(Icons.send_rounded));
-                      }
-                    })),
+                                  if (_enabledGroup && _group.isEmpty) return;
+
+                                  const String path = '/globalstorage';
+
+                                  final AList listToUpload =
+                                      AList.from(widget.list)
+                                        ..version = _uploadVersion
+                                        ..permissions = _perm
+                                        ..upstream ??= ObjectId()
+                                      //..group = _group
+                                      ;
+
+                                  print('list to upload: $listToUpload');
+
+                                  _writeResponse = fs.writeFileWeb(
+                                      path, listToUpload)
+                                    ..then((value) {
+                                      if (widget.onUpload != null) {
+                                        widget.onUpload!();
+                                      }
+
+                                      if (widget.list.upstream == null) {
+                                        widget.list.upstream =
+                                            listToUpload.upstream;
+                                        fs.writeFile(
+                                            '/userstorage/list', widget.list);
+                                      }
+                                    });
+                                },
+                                child: const Icon(Icons.send_rounded));
+                          }
+                        }))),
           ],
         ));
+  }
+}
+
+class FileVersioningPage extends StatelessWidget {
+  const FileVersioningPage({super.key, required this.list});
+
+  final AList list;
+
+  @override
+  Widget build(BuildContext context) {
+    String version = list.version ?? '';
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            const Padding(padding: EdgeInsets.all(10), child: Text('Version')),
+            Padding(
+                padding: const EdgeInsets.all(10),
+                child: SizedBox(
+                    width: MediaQuery.of(context).size.width * 0.1,
+                    child: TextField(
+                      onChanged: (value) => version = value,
+                    ))),
+          ]),
+        ),
+        Padding(
+            padding: const EdgeInsets.all(10),
+            child: FloatingActionButton(
+                onPressed: () {
+                  Overlayment.dismissAll();
+                  list.version = version;
+                  print('version list: $list');
+                  fs.writeFile(fs.wd, list);
+                },
+                child: const Icon(Icons.check)))
+      ],
+    );
   }
 }
 
