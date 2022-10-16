@@ -567,6 +567,7 @@ class _ListPage extends State<ListPage> {
   late Future _fList;
   ModalRoute? _route;
   final String _uploadWindowName = 'upload';
+  Set<String> _forwardVersions = {};
   bool get isEditable => widget.modifiable && _list.version == null;
   fs.FileInfo? get fileInfo => widget.fileInfo;
 
@@ -579,6 +580,7 @@ class _ListPage extends State<ListPage> {
     _nameIsValid = true; //TODO: check if name valid
 
     _loadList();
+    _fList.whenComplete(() => _checkUpdates());
   }
 
   @override
@@ -632,6 +634,25 @@ class _ListPage extends State<ListPage> {
   void _writeList() {
     assert(_list.version == null);
     fs.writeFile(fs.wd, _list);
+  }
+
+  Future<void> _checkUpdates() async {
+    // catch if no connection
+    try {
+      if (_list.upstream != null) {
+        final data = await fs
+            .readFileWeb('/globalstorage/${_list.upstream!}'); // check gst
+        print('forward list: $data');
+        final list = AList.fromJson(jsonDecode(data));
+        _forwardVersions = Set.from(list.versions.difference(_list.versions));
+        print('local versions: ${_list.versions}');
+        print('upstream versions: ${list.versions}');
+        print('forward versions: $_forwardVersions');
+      }
+    }
+
+    // fs.readFileWeb(path: '/userstorage/list/${fs.wd}'); // check ust
+    catch (e) {}
   }
 
   Widget _buildElts() {
@@ -711,14 +732,39 @@ class _ListPage extends State<ListPage> {
       expandChild: Padding(
           padding: const EdgeInsets.all(10),
           child: Column(
-            children: _list.versions.map((e) {
+            children: (_list.versions..addAll(_forwardVersions)).map((e) {
               if (e == _list.version) {
                 e = 'HEAD';
               }
+
+              final version = e == 'HEAD' ? null : e;
+              final isForward = _forwardVersions.contains(version);
+
               return MaterialButton(
-                  onPressed: () {
-                    final version = e == 'HEAD' ? null : e;
+                  color: isForward ? Colors.amber : null,
+                  onLongPress: () async {
+                    _list.versions.remove(version);
+                    await fs.rmFile('${_list.id}', version: version);
+
+                    setState(() {});
+                  },
+                  onPressed: () async {
                     if (version != _list.version) {
+                      if (isForward) {
+                        assert(_list.upstream != null);
+
+                        final json = await fs.readFileWeb(
+                            '/globalstorage/${_list.upstream!}',
+                            version: version);
+                        final list = AList.fromJson(jsonDecode(json));
+                        list
+                          ..id = _list.id
+                          ..permissions = _list.permissions;
+                        await fs.writeFile(fs.wd, list);
+
+                        _forwardVersions.remove(version);
+                      }
+
                       setState(() => _loadList(version));
                     }
                     Overlayment.dismissLast(result: e);
@@ -1514,7 +1560,8 @@ class _SearchPage extends State<SearchPage> {
       ret = ListPage.fromFile(
           fileInfo: data,
           modifiable: false,
-          readCallback: fs.readFileWeb,
+          readCallback: (String path, {String? version}) =>
+              fs.readFileWeb(path, version: version),
           onVersionChanged: (value) =>
               setState(() => _selectedVersion = value));
     } else if (_selectedTab == tabs[1]) {
