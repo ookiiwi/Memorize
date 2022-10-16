@@ -79,11 +79,11 @@ exports.read = async (req, res) => {
 
         const versions = Object.keys(file);
         const metaIndex = versions.indexOf('meta');
-        const headIndex = versions.indexOf('HEAD');
         if (metaIndex != -1) versions.splice(metaIndex, 1);
+        const headIndex = versions.indexOf('HEAD');
         if (headIndex != -1) versions.splice(headIndex, 1);
-        file.meta.versions = versions;
-
+        file.meta.versions = versions.slice(0);
+        
         res.status(201).send(JSON.stringify({
             meta: file.meta,
             file: file[version] || file[versions.pop()]
