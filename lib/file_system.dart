@@ -29,9 +29,9 @@ class FileInfo {
 }
 
 abstract class MemoFile {
-  MemoFile(this.name, {this.version, Set? versions})
+  MemoFile(this.name,
+      {this.permissions = 48, this.version, Set<String>? versions})
       : id = ObjectId(),
-        permissions = 48,
         versions = versions ?? {};
   MemoFile.from(MemoFile file)
       : id = file.id,
@@ -47,7 +47,7 @@ abstract class MemoFile {
             : null,
         name = json['meta']['name'],
         version = json['file']['version'],
-        versions = json['meta']['versions']?.toSet() ?? {},
+        versions = Set.from(json['meta']['versions'] ?? {}),
         permissions = json['meta']['permissions'];
 
   ObjectId id;
@@ -57,7 +57,7 @@ abstract class MemoFile {
 
   String name;
   String? version;
-  final Set versions;
+  final Set<String> versions;
 
   /// In base 4, respectively 3 being read and 1 write permission
   int permissions;
@@ -98,8 +98,9 @@ dynamic writeFile(String path, MemoFile file) async =>
 Future readFile(String path, {String? version}) async => kIsWeb
     ? readFileWeb(path, version: version)
     : readFileMobile(path, version: version);
-dynamic rmFile(String path) async =>
-    kIsWeb ? rmFileWeb(path) : rmFileMobile(path);
+dynamic rmFile(String path, {String? version}) async => kIsWeb
+    ? rmFileWeb(path, version: version)
+    : rmFileMobile(path, version: version);
 
 dynamic mkdir(String path) async =>
     await (kIsWeb ? mkdirWeb(path) : mkdirMobile(path));
@@ -165,7 +166,6 @@ Future readFileMobile(String path, {String? version}) async {
 
 dynamic rmFileMobile(String path, {String? version}) async {
   final File file = File(path);
-  late final Map<String, dynamic> regEntries;
 
   if (!file.existsSync()) {
     throw FileSystemException('File not found: $path');
@@ -176,9 +176,6 @@ dynamic rmFileMobile(String path, {String? version}) async {
   } else {
     final Map entries = jsonDecode(file.readAsStringSync());
     entries.remove(version);
-
-    // TODO: set last version name in reg
-
     file.writeAsStringSync(jsonEncode(entries));
   }
 }
@@ -290,12 +287,12 @@ Future readFileWeb(String path, {String? version}) async {
   }
 }
 
-dynamic rmFileWeb(String path) async {
+dynamic rmFileWeb(String path, {String? version}) async {
   try {
     path = _normalizePathWeb(path);
 
-    final response =
-        await dio.delete(serverUrl + '/file', data: {'path': path});
+    final response = await dio.delete(serverUrl + '/file',
+        data: {'path': path, if (version != null) 'version': version});
 
     return response.data;
   } on SocketException {
