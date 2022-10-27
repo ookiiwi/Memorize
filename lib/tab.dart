@@ -5,11 +5,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:memorize/addon.dart';
+import 'package:html/parser.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/file_system.dart' as fs;
 import 'package:memorize/quiz.dart';
+import 'package:memorize/addon.dart';
 import 'package:memorize/widget.dart';
 import 'package:animations/animations.dart';
 import 'package:navigation_history_observer/navigation_history_observer.dart';
@@ -348,7 +349,7 @@ class _ListExplorer extends State<ListExplorer>
                                 borderRadius: BorderRadius.circular(20),
                                 color: Colors.grey,
                               ),
-                              child: Text(fs.wd),
+                              child: Text(fs.wd.replaceAll(root, '')),
                             )),
                             Container(
                               margin: const EdgeInsets.only(left: 10),
@@ -631,9 +632,9 @@ class _ListPage extends State<ListPage> {
     }
   }
 
-  void _writeList() {
+  Future<void> _writeList() async {
     assert(_list.version == null);
-    fs.writeFile(fs.wd, _list);
+    await fs.writeFile(fs.wd, _list);
   }
 
   Future<void> _checkUpdates() async {
@@ -641,7 +642,7 @@ class _ListPage extends State<ListPage> {
     try {
       if (_list.upstream != null) {
         final data = await fs
-            .readFileWeb('/globalstorage/${_list.upstream!}'); // check gst
+            .readFileWeb('/globalstorage/list/${_list.upstream!}'); // check gst
         print('forward list: $data');
         final list = AList.fromJson(jsonDecode(data));
         _forwardVersions = Set.from(list.versions.difference(_list.versions));
@@ -670,14 +671,14 @@ class _ListPage extends State<ListPage> {
                     enabled: isEditable,
                     controller: TextEditingController(text: _list.name),
                     onChanged: (value) async {
-                      assert(_list.version != null);
+                      //assert(_list.version != null);
 
                       if (value.isEmpty) return;
 
                       //TODO: check if name valid
 
                       _list.name = value;
-                      _writeList();
+                      await _writeList();
                     },
                     decoration: InputDecoration(
                         border: OutlineInputBorder(
@@ -712,9 +713,17 @@ class _ListPage extends State<ListPage> {
                               child: GestureDetector(
                                 onLongPress: () =>
                                     setState(() => _openSelection = true),
+                                onTap: () async {
+                                  final entry = await _list.buildEntry(i);
+                                  print('built entry: $entry');
+
+                                  Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (context) =>
+                                          EntryViewer(entry: entry)));
+                                },
                                 child: Container(
                                     color: Colors.amber,
-                                    child: const Text('entry')),
+                                    child: Text(_list.entries[i].word)),
                               )));
                     })))
       ],
@@ -861,6 +870,10 @@ class _ListPage extends State<ListPage> {
                 Padding(
                     padding: const EdgeInsets.all(10),
                     child: Text('permissions: ${_list.permissions}')),
+                // addon id
+                Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Text('addon id: ${_list.addonId}')),
               ],
             )),
         context: context);
@@ -880,88 +893,113 @@ class _ListPage extends State<ListPage> {
         left: 10,
         right: 10,
         bottom: 10,
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-          if (kDebugMode)
-            FloatingActionButton(
-                onPressed: _showRawList,
-                child: const Icon(Icons.info_outline_rounded)),
-          FloatingActionButton(
-              onPressed: _showFileVersioning,
-              child: const Icon(Icons.update_rounded)),
-          FloatingActionButton(
-              onPressed: () {
-                _showUploadWindow();
-              },
-              child: const Icon(Icons.upload)),
-          FloatingActionButton(
-              onPressed: () {
-                _showAddonConfig();
-              },
-              child: const Icon(Icons.settings)),
-          if (isEditable)
-            OpenContainer(
-                transitionType: ContainerTransitionType.fade,
-                transitionDuration: const Duration(milliseconds: 1000),
-                openElevation: 0,
-                closedElevation: 0,
-                closedColor: Colors.blue,
-                closedShape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(360)),
-                closedBuilder: (context, action) {
-                  return const SizedBox(
-                      height: 56.0,
-                      width: 56.0,
-                      child: Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                      ));
-                },
-                openBuilder: (context, _) {
-                  return QuizLauncher(
-                    list: _list,
-                    // fetch addon folder and load addons
-                  );
-                }),
-          if (isEditable)
-            _openSelection
-                ? FloatingActionButton(
-                    heroTag: "prout",
-                    onPressed: () => setState(() {
-                      _openSelection = false;
-
-                      if (_list.version != null) {
-                        _loadList();
-                        setState(() {});
-                      }
-
-                      for (int i in _selectedItems) {
-                        _list.entries.removeAt(i);
-                      }
-
-                      _writeList();
-                    }),
-                    child: const Icon(Icons.delete),
-                  )
-                : FloatingActionButton(
-                    onPressed: () {
-                      if (_list.version != null) {
-                        _loadList();
-                      }
-
-                      // show search window
-                      _list.addEntry({'schema': 'en'});
-                      _writeList();
-                      setState(() {});
+        height: 50,
+        child: ListView(
+            shrinkWrap: true,
+            scrollDirection: Axis.horizontal,
+            children: [
+              if (kDebugMode)
+                FloatingActionButton(
+                    onPressed: _showRawList,
+                    child: const Icon(Icons.info_outline_rounded)),
+              FloatingActionButton(
+                  onPressed: _showFileVersioning,
+                  child: const Icon(Icons.new_label_rounded)),
+              if (!kIsWeb && isEditable)
+                FloatingActionButton(
+                    onPressed: () => fs.writeFileWeb('.', _list),
+                    child: const Icon(Icons.cloud_upload)),
+              FloatingActionButton(
+                  onPressed: () {
+                    _showUploadWindow();
+                  },
+                  child: const Icon(Icons.upload)),
+              FloatingActionButton(
+                  onPressed: () {
+                    _showAddonConfig();
+                  },
+                  child: const Icon(Icons.settings)),
+              if (isEditable)
+                OpenContainer(
+                    transitionType: ContainerTransitionType.fade,
+                    transitionDuration: const Duration(milliseconds: 1000),
+                    openElevation: 0,
+                    closedElevation: 0,
+                    closedColor: Colors.blue,
+                    closedShape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(360)),
+                    closedBuilder: (context, action) {
+                      return const SizedBox(
+                          height: 56.0,
+                          width: 56.0,
+                          child: Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                          ));
                     },
-                    child: const Icon(Icons.add))
-        ]));
+                    openBuilder: (context, _) {
+                      return QuizLauncher(
+                        list: _list,
+                        // fetch addon folder and load addons
+                      );
+                    }),
+              if (isEditable)
+                _openSelection
+                    ? FloatingActionButton(
+                        heroTag: "prout",
+                        onPressed: () => setState(() {
+                          _openSelection = false;
+
+                          if (_list.version != null) {
+                            _loadList();
+                            setState(() {});
+                          }
+
+                          for (int i in _selectedItems) {
+                            _list.entries.removeAt(i);
+                          }
+
+                          _writeList();
+                        }),
+                        child: const Icon(Icons.delete),
+                      )
+                    : FloatingActionButton(
+                        onPressed: () {
+                          if (_list.version != null) {
+                            _loadList();
+                          }
+
+                          Overlayment.show(
+                              OverWindow(
+                                  backgroundSettings:
+                                      const BackgroundSettings(),
+                                  alignment: Alignment.center,
+                                  child: SizedBox(
+                                      height: 200,
+                                      width: 200,
+                                      child: ListSearchPage(
+                                          onConfirm: (word, res) {
+                                        print('search res: $res');
+                                        _list.addEntry(AListEntry(
+                                            'jpn-eng',
+                                            res.keys.first,
+                                            res.values.first,
+                                            word));
+                                        _writeList();
+                                        Overlayment.dismissLast();
+                                        setState(() {});
+                                      }))),
+                              context: context);
+                        },
+                        child: const Icon(Icons.add))
+            ]));
   }
 
   @override
   Widget build(BuildContext ctx) {
     return FutureBuilder(
         future: _fList,
-        builder: ((context, snapshot) {
+        builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           } else {
@@ -974,94 +1012,103 @@ class _ListPage extends State<ListPage> {
                   ],
                 ));
           }
-        }));
+        });
   }
 }
 
 class ListSearchPage extends StatefulWidget {
-  const ListSearchPage({Key? key, required this.addon, required this.onConfirm})
-      : super(key: key);
+  const ListSearchPage({Key? key, required this.onConfirm}) : super(key: key);
 
-  final Addon addon;
-  final void Function(List<Map> results) onConfirm;
+  final void Function(String word, Map results) onConfirm;
 
   @override
   State<ListSearchPage> createState() => _ListSearchPage();
 }
 
 class _ListSearchPage extends State<ListSearchPage> {
-  final TextEditingController _controller = TextEditingController();
-  final List _results = [];
-  final List _selectedItems = [];
+  Map values = {};
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    _find('亜');
+  }
+
+  void _find(String value) async {
+    try {
+      final response = await dio.get('$serverUrl/dict',
+          queryParameters: {'lang': 'jpn-eng', 'key': value});
+
+      setState(() => values = response.data);
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } on DioError catch (e) {
+      print("""
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+    } catch (e) {
+      print('error: $e');
+    }
+  }
+
+  Future<String> _get(String id) async {
+    try {
+      final response = await dio
+          .get('$serverUrl/dict/$id', queryParameters: {'lang': 'jpn-eng'});
+
+      return response.data;
+    } on SocketException {
+      print('No Internet connection 😑');
+    } on HttpException {
+      print("Couldn't find the post 😱");
+    } on FormatException {
+      print("Bad response format 👎");
+    } on DioError catch (e) {
+      print("""
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+    } catch (e) {
+      print('error: $e');
+    }
+
+    return '';
   }
 
   @override
-  void dispose() {
-    super.dispose();
-    _controller.dispose();
-  }
-
-  @override
-  Widget build(BuildContext ctx) {
-    return Container(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          children: [
-            Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                child: TextField(
-                  controller: _controller,
-                  onChanged: (value) {
-                    // TODO: clear results and set to new results
-                  },
-                  decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30)),
-                      fillColor: Colors.white,
-                      filled: true),
-                )),
-            Expanded(
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+            padding: const EdgeInsets.all(10),
+            child: TextField(
+              onChanged: (value) => _find(value),
+            )),
+        Expanded(
+            child: Padding(
+                padding: const EdgeInsets.all(10),
                 child: ListView.builder(
-                    itemCount: _results.length,
-                    itemBuilder: (ctx, i) {
-                      return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 10),
-                          child: GestureDetector(
-                              onTap: () => setState(() =>
-                                  _selectedItems.contains(i)
-                                      ? _selectedItems.remove(i)
-                                      : _selectedItems.add(i)),
-                              child: Container(
-                                margin:
-                                    const EdgeInsets.symmetric(vertical: 10),
-                                decoration: BoxDecoration(
-                                    color: _selectedItems.contains(i)
-                                        ? Colors.amberAccent
-                                        : Colors.amber,
-                                    borderRadius: BorderRadius.circular(30)),
-                                //child: widget.addon
-                                //    .buildListEntryPreview(_results[i])
-                              )));
-                    })),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              ConfirmationButton(
-                  onTap: () => Navigator.of(context).pop(), text: 'Exit'),
-              ConfirmationButton(
-                  onTap: () {
-                    List<Map> ret = [];
-                    for (int i in _selectedItems) {
-                      ret.add(_results[i]);
-                    }
-                    widget.onConfirm(ret);
-                  },
-                  text: 'Confirm'),
-            ]),
-          ],
-        ));
+                    shrinkWrap: true,
+                    itemCount: values.length,
+                    itemBuilder: (context, i) => Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: ElevatedButton(
+                            onPressed: () async {
+                              final id = values.keys.elementAt(i);
+                              widget.onConfirm(values.values.elementAt(i),
+                                  {id: await _get(id)});
+                            },
+                            child: Text(values.values.elementAt(i)))))))
+      ],
+    );
   }
 }
 
@@ -1398,8 +1445,11 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchLists(String value) async {
     try {
       print('fetch lists');
-      final response = await dio
-          .get('$serverUrl/file/search', queryParameters: {'value': value});
+      final response =
+          await dio.get('$serverUrl/file/search', queryParameters: {
+        'value': value,
+        'paths': ['/globalstorage/list', '/userstorage/list']
+      });
 
       print('content: ${response.data}');
 
@@ -1429,10 +1479,18 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchAddons(String value) async {
     try {
       print('fetch addons');
-      final response = await dio.get('$serverUrl/file/dir',
-          queryParameters: {'path': '/public/addon'});
+      final response =
+          await dio.get('$serverUrl/file/search', queryParameters: {
+        'value': value,
+        'paths': ['/globalstorage/addon', '/userstorage/addon']
+      });
 
-      return response.data['content'];
+      print('addons: ${response.data}');
+
+      return response.data
+          .map((e) => fs.FileInfo(
+              FileSystemEntityType.file, e['name'], e['_id'], e['path']))
+          .toList();
     } on SocketException {
       print('No Internet connection 😑');
     } on HttpException {
@@ -1450,7 +1508,32 @@ class _SearchPage extends State<SearchPage> {
   }
 
   static Future<Addon?> _fetchAddon(String id) async {
-    return Addon.fetch(id);
+    final data = await fs.readFileWeb('/globalstorage/addon/$id');
+    return Addon.fromJson(jsonDecode(data));
+  }
+
+  Future<void> _showDestDialog(VoidCallback onConfirm) async {
+    await Overlayment.show(
+        OverWindow(
+            alignment: Alignment.center,
+            child: Stack(children: [
+              SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  width: MediaQuery.of(context).size.height * 0.3,
+                  child: ListExplorer(
+                    rawView: true,
+                  )),
+              Positioned(
+                  bottom: 10,
+                  right: 10,
+                  child: FloatingActionButton(
+                      onPressed: () {
+                        onConfirm();
+                        Overlayment.dismissAll();
+                      },
+                      child: const Icon(Icons.check)))
+            ])),
+        context: context);
   }
 
   Widget _buildPreviewTab({VoidCallback? onCancel}) {
@@ -1477,7 +1560,7 @@ class _SearchPage extends State<SearchPage> {
                           right: 5,
                           child: FloatingActionButton(
                               onPressed: () async {
-                                if (kIsWeb) return;
+                                //if (kIsWeb) return;
 
                                 final tabs = _tabs.keys.toList();
                                 final data = snapshot.data;
@@ -1486,43 +1569,17 @@ class _SearchPage extends State<SearchPage> {
 
                                 print('download');
 
-                                await Overlayment.show(
-                                    OverWindow(
-                                        alignment: Alignment.center,
-                                        child: Stack(children: [
-                                          SizedBox(
-                                              height: MediaQuery.of(context)
-                                                      .size
-                                                      .height *
-                                                  0.6,
-                                              width: MediaQuery.of(context)
-                                                      .size
-                                                      .height *
-                                                  0.3,
-                                              child: ListExplorer(
-                                                rawView: true,
-                                              )),
-                                          Positioned(
-                                              bottom: 10,
-                                              right: 10,
-                                              child: FloatingActionButton(
-                                                  onPressed: () {
-                                                    dest = fs.wd;
-                                                    Overlayment.dismissAll();
-                                                  },
-                                                  child:
-                                                      const Icon(Icons.check)))
-                                        ])),
-                                    context: context);
-
-                                if (dest == null) {
-                                  if (onCancel != null) onCancel();
-                                  return;
-                                }
-
-                                print('dest: $dest');
-
                                 if (_selectedTab == tabs[0]) {
+                                  if (_selectedTab == tabs.first) {
+                                    _showDestDialog(() => dest = fs.wd);
+                                  }
+
+                                  if (dest == null) {
+                                    if (onCancel != null) onCancel();
+                                    return;
+                                  }
+                                  print('dest: $dest');
+
                                   fs
                                       .readFileWeb((data as fs.FileInfo).path!,
                                           version: _selectedVersion)
@@ -1560,12 +1617,13 @@ class _SearchPage extends State<SearchPage> {
       ret = ListPage.fromFile(
           fileInfo: data,
           modifiable: false,
-          readCallback: (String path, {String? version}) =>
-              fs.readFileWeb(path, version: version),
           onVersionChanged: (value) =>
               setState(() => _selectedVersion = value));
     } else if (_selectedTab == tabs[1]) {
-      ret = Padding(padding: const EdgeInsets.all(5), child: data.build());
+      ret = Padding(
+          padding: const EdgeInsets.all(5),
+          child:
+              Text(parse((data as Addon).html, encoding: 'utf-8').outerHtml));
     } else {
       throw FlutterError('Cannot fetch data');
     }
@@ -1874,47 +1932,54 @@ class FileVersioningPage extends StatelessWidget {
 }
 
 class ListAddonConfigPage extends StatelessWidget {
-  const ListAddonConfigPage({super.key, required this.list});
+  ListAddonConfigPage({super.key, required this.list}) {
+    _fAddonList = Addon.ls(list.langCode);
+  }
 
   final AList list;
+  String _selectedAddon = '';
+  late final Future<Map<String, String>> _fAddonList;
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.3,
-          maxWidth: MediaQuery.of(context).size.width,
-        ),
-        child: ExpandedWidget(
-            sectionTitle: 'Schemas',
-            isExpanded: true,
-            duration: const Duration(milliseconds: 100),
-            child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: list.schemasMapping.length,
-                itemBuilder: (context, i) => Padding(
-                    padding:
-                        const EdgeInsets.only(left: 20, right: 20, bottom: 5),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(list.schemasMapping.keys.elementAt(i)),
-                        Expanded(
-                            child: Padding(
-                                padding: const EdgeInsets.only(left: 10),
-                                child: TextField(
-                                  controller: TextEditingController(
-                                      text: list.schemasMapping.values
-                                          .elementAt(i)),
-                                  onSubmitted: (value) {
-                                    list.schemasMapping[list.schemasMapping.keys
-                                        .elementAt(i)] = value;
-                                    fs.writeFile(fs.wd, list);
-                                  },
-                                )))
-                      ],
-                    )))));
+    return FutureBuilder(
+        future: _fAddonList,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const CircularProgressIndicator();
+          } else {
+            final data = snapshot.data as Map<String, String>?;
+
+            assert(data != null);
+
+            if (_selectedAddon.isEmpty && data!.isNotEmpty) {
+              _selectedAddon = data[list.addonId] ?? data.values.first;
+            }
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OverExpander(
+                    alignment: Alignment.bottomCenter,
+                    backgroundSettings: const BackgroundSettings(),
+                    child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Text(_selectedAddon)),
+                    expandChild: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: data!.length,
+                            itemBuilder: (context, i) => MaterialButton(
+                                onPressed: () {
+                                  list.addonId = data.keys.elementAt(i);
+                                  fs.writeFile(fs.wd, list);
+                                  Overlayment.dismissLast();
+                                },
+                                child: Text(data.values.elementAt(i))))))
+              ],
+            );
+          }
+        });
   }
 }
