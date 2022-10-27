@@ -4,7 +4,7 @@ const Group = require('../models/group');
 const File = require('../models/file');
 const shell = require('shelljs');
 
-exports.search = async (value, path, userId) => {
+exports.search = async (value, paths, userId) => {
     if (value == null) {
         throw "prout";
     }
@@ -45,15 +45,25 @@ exports.search = async (value, path, userId) => {
             }
         }).clone();
 
-    return files.map((e) => {
+    return files.reduce((p, e) => {
         e.path = mapFileToPath(e._id, userId);
-        return { _id: e._id, name: e.name, path: e.path };
-    });
+
+        if (!paths || e.path.match(paths.join('|').replaceAll('/', '\\/') + '.*')){
+            p.push({ _id: e._id, name: e.name, path: e.path });
+        }
+
+        return p;
+    }, []);
 };
 
 function mapFileToPath(fileId, userId) {
     function find(path) {
         const p = resolveUserstorage(path, userId);
+
+        if (!p) {
+            throw "Cannot resolve path";
+        }
+
         const ret = shell.exec('find ' + p + ' -name ' + fileId);
 
         if (ret.code !== 0) {
@@ -72,15 +82,15 @@ exports.testPermissions = async (file, userId) => {
 
     if (ret == 3 || !userId) return ret;
     perm >>= 2;
-    
+
     const group = await Group.findById(file.group);
     if (group && group.users.has(userId)) {
         ret |= perm & 3;
     }
-    
+
     if (ret == 3) return ret;
     perm >>= 2;
-    
+
     if (file.owner == userId) {
         ret |= perm & 3;
     }
@@ -98,7 +108,7 @@ function resolveUserstorage(aPath, id) {
     console.log('p:', aPath);
 
     if (aPath.startsWith(ust)) {
-        if (!id) throw "Forbidden access";
+        if (!id) return undefined;//throw "Forbidden access";
         ret = ret.replace(ust, 'user/' + id);
     }
     else if (aPath.startsWith(gst)) {
@@ -107,6 +117,8 @@ function resolveUserstorage(aPath, id) {
 
     return path.join(__dirname, '../storage/' + ret);
 }
+
+exports.unresolveUserStorage = unresolveUserStorage;
 
 function unresolveUserStorage(path, id) {
     let ret = path.replace(/.*\/global/, '/globalstorage');
