@@ -73,7 +73,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/backend/dict/tools/lib/
 lib64/
 parts/
 sdist/
