@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/file_system.dart' as fs;
-import 'package:memorize/tab.dart';
+import 'package:memorize/list_explorer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 int daysBetween(DateTime from, DateTime to) {

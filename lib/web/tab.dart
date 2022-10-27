@@ -4,6 +4,7 @@ import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/file_system.dart' as fs;
+import 'package:memorize/list_explorer.dart';
 import 'package:memorize/tab.dart';
 import 'package:objectid/objectid.dart';
 import 'package:overlayment/overlayment.dart';

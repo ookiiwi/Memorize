@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/data.dart';
+import 'package:memorize/list_explorer.dart';
 import 'package:memorize/tab.dart';
 
 class MainPage extends StatefulWidget {
@@ -89,8 +90,6 @@ class _MainPage extends State<MainPage> {
                 }
               },
               items: _buildBottomNavBarItems(),
-              selectedItemColor: AppData.colors["buttonSelected"],
-              unselectedItemColor: AppData.colors["buttonIdle"],
             )));
   }
 }
