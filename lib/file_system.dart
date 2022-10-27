@@ -187,11 +187,21 @@ Future<List<FileInfo>> lsMobile(String path) async {
   final dir = Directory(path);
 
   return dir.listSync().map((e) {
-    final file = File(e.path);
+    final type = e.statSync().type;
+    final file = type == FileSystemEntityType.directory
+        ? Directory(e.path)
+        : File(e.path);
+
     assert(file.existsSync());
-    final meta = loadYamlStream(file.readAsStringSync()).first.value['meta'];
+
+    if (file is Directory) {
+      return FileInfo(type, file.path.split('/').last);
+    }
+
+    final meta =
+        loadYamlStream((file as File).readAsStringSync()).first.value['meta'];
     print('meta: $meta');
-    return FileInfo(e.statSync().type, meta['name'], meta['id']);
+    return FileInfo(type, meta['name'], meta['id']);
   }).toList();
 }
 
