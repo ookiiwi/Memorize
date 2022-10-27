@@ -62,6 +62,8 @@ abstract class MemoFile {
   /// In base 4, respectively 3 being read and 1 write permission
   int permissions;
 
+  Map<String, dynamic> metaToJson();
+
   Map<String, dynamic> toJsonEncodable();
 
   Map<String, dynamic> toJson() => {
@@ -70,8 +72,8 @@ abstract class MemoFile {
           'name': name,
           'upstream': upstream?.hexString,
           'versions': versions.toList(),
-          'permissions': permissions
-        },
+          'permissions': permissions,
+        }..addAll(metaToJson()),
         'file': toJsonEncodable()
           ..addAll({
             'version': version,
@@ -80,10 +82,6 @@ abstract class MemoFile {
 
   @override
   String toString() => jsonEncode(this);
-
-  dynamic write(String path, [MemoFile? file]);
-  dynamic read(String path);
-  dynamic rm(String path);
 }
 
 String _wd = '';
@@ -110,10 +108,15 @@ dynamic cd(String path) async => await (kIsWeb ? cdWeb(path) : cdMobile(path));
 Future<List<FileInfo>> ls([String path = '.']) async =>
     await (kIsWeb ? lsWeb(path) : lsMobile(path));
 
+Future<List<FileInfo>> findFile(String target, {List<String>? paths}) async =>
+    await (kIsWeb
+        ? findFileWeb(target, paths: paths)
+        : findFileMobile(target, paths: paths));
+
 //======================================== Mobile ========================================\\
 
 dynamic initMobile([bool isFirstRun = false]) async {
-  final tmp = (await getApplicationDocumentsDirectory()).path;
+  final tmp = (await getApplicationDocumentsDirectory()).absolute.path;
   cdMobile(tmp);
 
   if (isFirstRun) {
@@ -121,7 +124,7 @@ dynamic initMobile([bool isFirstRun = false]) async {
   }
 
   cdMobile('userstorage');
-  root = tmp + '/userstorage';
+  root = Directory.current.path;
 }
 
 dynamic writeFileMobile(String path, MemoFile file) async {
@@ -212,6 +215,8 @@ dynamic cdMobile(String path) {
   Directory.current = dir;
   _wd = Directory.current.path;
 }
+
+dynamic findFileMobile(value, {List<String>? paths}) {}
 
 //======================================== WEB ========================================\\
 
@@ -406,6 +411,33 @@ dynamic cdWeb(String path) {
   path = _normalizePathWeb(path);
 
   _wd = path;
+}
+
+dynamic findFileWeb(value, {List<String>? paths}) async {
+  try {
+    final response = await dio.get('$serverUrl/file/search',
+        queryParameters: {'value': value, if (paths != null) 'paths': paths});
+
+    return response.data
+        .map((e) =>
+            FileInfo(FileSystemEntityType.file, e['name'], e['_id'], e['path']))
+        .toList();
+  } on SocketException {
+    print('No Internet connection 😑');
+  } on HttpException {
+    print("Couldn't find the post 😱");
+  } on FormatException {
+    print("Bad response format 👎");
+  } on DioError catch (e) {
+    print(
+        """
+          Dio error: ${e.response?.statusCode}\n
+          Message: ${e.message}\n
+          Request: ${e.response}
+          """);
+  } catch (e) {
+    print('An error occured during addons fetch: $e');
+  }
 }
 
 String _normalizePathWeb(String path) =>
