@@ -114,7 +114,7 @@ exports.delete = async (req, res) => {
 }
 
 exports.search = (req, res) => {
-    search(req.query.value, '', req.auth ? req.auth.userId : null).then((files) => {
+    search(req.query.value, req.query.paths, req.auth ? req.auth.userId : null).then((files) => {
         res.status(201).json(files);
     }).catch((e) => {
         console.log('error:', e);
