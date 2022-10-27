@@ -11,36 +11,55 @@ int daysBetween(DateTime from, DateTime to) {
   return (to.difference(from).inHours / 24).round();
 }
 
-typedef AListEntry = Map<String, dynamic>;
+class AListEntry {
+  const AListEntry(this.langCode, this.entryId, this.entry, this.word);
+  AListEntry.fromJson(Map<String, dynamic> json)
+      : langCode = json['langCode'],
+        entryId = json['entryId'],
+        entry = json['entry'],
+        word = json['word'];
+
+  Map<String, dynamic> toJson() =>
+      {'langCode': langCode, 'entryId': entryId, 'entry': entry, 'word': word};
+
+  final String langCode;
+  final String entryId;
+  final dynamic entry;
+  final String word;
+}
 
 class AList extends fs.MemoFile {
   AList(super.name)
-      : schemasMapping = {},
+      : addonId = null,
         _entries = [],
         _tags = {};
 
   AList.from(AList list)
-      : schemasMapping = Map.from(list.schemasMapping),
+      : addonId = list.addonId,
         _entries = List.from(list._entries),
         _tags = Set.from(list._tags),
         super.from(list);
 
   AList.fromJson(Map<String, dynamic> json)
-      : schemasMapping = Map.from(json['file']['schemasMapping']),
-        _entries = List.from(json['file']['entries']),
+      : addonId = json['meta']['addonId'],
+        _entries = List.from(
+            json['file']['entries'].map((e) => AListEntry.fromJson(e))),
         _tags = Set.from(json['file']['tags']),
         super.fromJson(json);
 
   @override
+  Map<String, dynamic> metaToJson() => {'addonId': addonId};
+
+  @override
   Map<String, dynamic> toJsonEncodable() => {
-        'schemasMapping': schemasMapping,
         "entries": _entries,
         "tags": _tags.toList(),
       };
 
-  final Map<String, String> schemasMapping;
   final List<AListEntry> _entries;
   final Set<String> _tags;
+  String langCode = 'jpn-eng';
+  String? addonId;
 
   List<AListEntry> get entries => List.unmodifiable(_entries);
 
@@ -50,44 +69,16 @@ class AList extends fs.MemoFile {
 
   void addEntry(AListEntry entry) {
     _entries.add(entry);
-
-    schemasMapping.putIfAbsent(entry['schema'], () => 'Language');
   }
 
-  /// NOT IMPLEMENTED. Use fs instead
-  @override
-  write(String path, [fs.MemoFile? file]) {
-    // TODO: implement write
-    throw UnimplementedError();
-  }
-
-  /// NOT IMPLEMENTED. Use fs instead
-  @override
-  read(String path) {
-    // TODO: implement read
-    throw UnimplementedError();
-  }
-
-  /// NOT IMPLEMENTED. Use fs instead
-  @override
-  rm(String path) {
-    // TODO: implement rm
-    throw UnimplementedError();
+  Future<String> buildEntry(int index) async {
+    assert(addonId != null);
+    final addon = await Addon.fromId(addonId!);
+    return entryBuilder(addon.html, entries[index].entry);
   }
 }
 
 enum SortType { rct, asc, dsc }
-
-class AppData {
-  static Map<String, Color> colors = {
-    "bar": const Color(0xFFF3F3F3),
-    "container": const Color(0xFFEBEAEA),
-    "hintText": const Color(0xFF464646),
-    "buttonSelected": const Color(0xFFB01919),
-    "buttonIdle": const Color(0xFFBDBDBD),
-    "border": const Color(0xFFBFBFBF)
-  };
-}
 
 abstract class ATab {
   void reload();
@@ -122,7 +113,6 @@ class DataLoader {
 
     await Auth.init();
     await fs.init(isFirstRun == null || isFirstRun);
-    SchemaAddon.init();
     //if (!kIsWeb) await ReminderNotification.init();
 
     if (isFirstRun == null || isFirstRun) {
