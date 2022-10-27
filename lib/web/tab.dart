@@ -1,8 +1,12 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
-import 'package:memorize/web/node_editor.dart';
+import 'package:memorize/file_system.dart' as fs;
 import 'package:memorize/tab.dart';
+import 'package:objectid/objectid.dart';
+import 'package:overlayment/overlayment.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({Key? key, required this.title, String? listPath})
@@ -217,8 +221,9 @@ class _NavigationMenu extends State<NavigationMenu> {
                       isLogged ? 'Profile' : 'Login',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    // use _isLogged to avoid isLogged overhead
                     onTap: () {
-                      if (!isLogged) {
+                      if (!_isLogged) {
                         showDialog(
                             context: context,
                             builder: (context) => Dialog(
@@ -232,14 +237,14 @@ class _NavigationMenu extends State<NavigationMenu> {
                                   }
                                 })));
                       }
-                      widget.pageBuilderCallback(isLogged
+                      widget.pageBuilderCallback(_isLogged
                           ? ProfilePage(
                               onLogout: () =>
                                   widget.pageBuilderCallback(const HomePage()),
                             )
                           : null);
                     }),
-                if (isLogged)
+                if (_isLogged)
                   NavigationMenuItem(
                       child: const Text(
                         'Explorer',
@@ -250,13 +255,19 @@ class _NavigationMenu extends State<NavigationMenu> {
                       }),
                 NavigationMenuItem(
                     child: const Text(
-                      'Editor',
+                      'Upload',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     onTap: () {
-                      widget.pageBuilderCallback(const NodeEditor());
+                      widget.pageBuilderCallback(null);
+                      Overlayment.show(
+                          OverWindow(
+                              backgroundSettings: const BackgroundSettings(),
+                              alignment: Alignment.center,
+                              child: const AddonUploadPage()),
+                          context: context);
                     }),
-                if (isLogged)
+                if (_isLogged)
                   NavigationMenuItem(
                       child: const Text(
                         'Settings',
@@ -295,5 +306,142 @@ class NavigationMenuItem extends StatelessWidget {
                       BoxDecoration(borderRadius: BorderRadius.circular(20)),
                   child: Center(child: child),
                 ))));
+  }
+}
+
+class AddonUploadPage extends StatefulWidget {
+  const AddonUploadPage({super.key});
+
+  @override
+  State<StatefulWidget> createState() => _AddonUploadPage();
+}
+
+class _AddonUploadPage extends State<AddonUploadPage> {
+  Map<String, AddonArgFile?> files = {'html': null, 'js': null, 'css': null};
+  final Set<String> targets = {};
+  String filename = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Container(
+          alignment: Alignment.center,
+          child: Center(
+              child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Drop a file'),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: TextEditingController(text: filename),
+                      onChanged: (value) => filename = value,
+                    )),
+                MaterialButton(
+                    onPressed: () async {
+                      final res = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowMultiple: true,
+                          allowedExtensions: ['html', 'js', 'css']);
+
+                      if (res == null) return;
+
+                      for (int i = 0; i < files.length; ++i) {
+                        final filename = res.files[i].name;
+                        final bytes = res.files[i].bytes;
+                        final extension = res.files[i].extension;
+
+                        if (bytes != null && extension != null) {
+                          files[extension] = AddonArgFile(
+                              filename, String.fromCharCodes(bytes));
+                        }
+                      }
+
+                      filename = files['html']!
+                          .filename
+                          .replaceAll(RegExp(r'.html$'), '');
+                      final content = files['html']!.content;
+                      final exp = RegExp('<!-- TARGETS (.|\n)*-->');
+                      final match = exp.firstMatch(content)?.group(0);
+
+                      if (match == null) {
+                        throw "Lang target(s) must be specified";
+                      }
+
+                      targets.addAll(match
+                          .replaceAll(RegExp(r'\s+'), ' ')
+                          .replaceAll('\n', '')
+                          .replaceAll(RegExp(r'<!-- TARGETS\s*|-->'), '')
+                          .trim()
+                          .split(' ')
+                          .toSet());
+
+                      print('targets: $targets');
+
+                      setState(() {});
+                    },
+                    child: const Text('Choose'))
+              ])
+            ],
+          ))),
+      Row(
+        mainAxisSize: MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text('Targets: '),
+          ),
+          Padding(
+              padding: const EdgeInsets.all(10),
+              child: Text(targets.join(', '))),
+        ],
+      ),
+      Padding(
+          padding: const EdgeInsets.all(10),
+          child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: ListView(
+                shrinkWrap: true,
+                children: files.values
+                    .map((e) => Text(e?.filename ?? 'Unknown'))
+                    .toList(),
+              ))),
+      MaterialButton(
+          onPressed: () async {
+            if (filename.isEmpty) {
+              print('Filename must be specified');
+              return;
+            }
+
+            if (files['html'] == null) {
+              print('At least an html file must be choosen');
+              return;
+            }
+
+            final addon = Addon(filename,
+                html: files['html']!,
+                js: files['js'],
+                css: files['css'],
+                targets: targets)
+              ..upstream ??= ObjectId()
+              ..permissions = 50;
+
+            final addonsRegistered = await fs.findFileWeb(addon.name,
+                paths: ['/globalstorage/addon', '/userstorage/addon']);
+
+            for (fs.FileInfo e in addonsRegistered) {
+              if (e.name == addon.name) {
+                addon.upstream = ObjectId.fromHexString(e.id!);
+                print('exists');
+                break;
+              }
+            }
+
+            fs.writeFileWeb('/globalstorage/addon', addon);
+          },
+          child: const Text('Upload'))
+    ]);
   }
 }
