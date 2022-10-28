@@ -1,5 +1,6 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
-import 'package:memorize/data.dart';
 import 'package:memorize/list_explorer.dart';
 import 'package:memorize/tab.dart';
 
@@ -16,9 +17,10 @@ class MainPage extends StatefulWidget {
 
 class _MainPage extends State<MainPage> {
   late final String title;
-  List<AppBarItem> tabs = [];
-  late Widget _currTab;
+  late final List<Widget> tabs;
   int _currTabIndex = 1;
+  final navKey = GlobalKey<NavigatorState>();
+  late BuildContext _navCtx;
 
   @override
   void initState() {
@@ -26,24 +28,14 @@ class _MainPage extends State<MainPage> {
 
     title = widget.title;
 
-    if (tabs.isEmpty) {
-      tabs = [
-        AppBarItem(
-            icon: const Icon(Icons.account_circle),
-            tab: () => ProfilePage(
-                  onLogout: () => Navigator.of(context).pop(),
-                )),
-        AppBarItem(
-            icon: const Icon(Icons.list),
-            tab: () => ListExplorer(
-                  listPath: widget.listPath,
-                )),
-        AppBarItem(icon: const Icon(Icons.search), tab: () => SearchPage()),
-        AppBarItem(icon: const Icon(Icons.settings), tab: () => SettingsPage()),
-      ];
-    }
-
-    _currTab = tabs[_currTabIndex].tab() as Widget;
+    tabs = UnmodifiableListView([
+      ProfilePage(onLogout: () => Navigator.of(context).pop()),
+      ListExplorer(
+        listPath: widget.listPath,
+      ),
+      const SearchPage(),
+      const SettingsPage()
+    ]);
   }
 
   @override
@@ -53,43 +45,51 @@ class _MainPage extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    final appBarColor = Theme.of(context).colorScheme.secondaryContainer;
+    const appBarRadius = Radius.circular(50);
+
     return Scaffold(
-      body: SafeArea(child: _currTab),
-      bottomNavigationBar: _buildBottomBar(),
-    );
-  }
-
-  List<BottomNavigationBarItem> _buildBottomNavBarItems() {
-    List<BottomNavigationBarItem> ret = [];
-    for (AppBarItem t in tabs) {
-      ret.add(BottomNavigationBarItem(
-        icon: t.tabIcon,
-        label: '',
-      ));
-    }
-
-    return ret;
-  }
-
-  Widget _buildBottomBar() {
-    return Theme(
-        data: ThemeData(backgroundColor: Colors.black87),
-        child: BottomAppBar(
-            shape: const CircularNotchedRectangle(),
-            clipBehavior: Clip.antiAlias,
-            child: BottomNavigationBar(
-              currentIndex: _currTabIndex,
-              onTap: (value) {
-                if (_currTabIndex != value) {
-                  setState(() {
-                    _currTabIndex = value;
-                    _currTab = tabs[value].tab() as Widget;
-                  });
-                } else {
-                  (_currTab as ATab).reload();
-                }
-              },
-              items: _buildBottomNavBarItems(),
-            )));
+        extendBody: true,
+        body: SafeArea(
+            child: TabNavigator(
+                navigatorKey: navKey,
+                builder: (context) {
+                  _navCtx = context;
+                  return tabs[_currTabIndex];
+                })),
+        bottomNavigationBar: ClipRRect(
+          borderRadius: const BorderRadius.only(
+              topLeft: appBarRadius, topRight: appBarRadius),
+          child: BottomNavigationBar(
+            selectedItemColor:
+                Theme.of(context).colorScheme.onSecondaryContainer,
+            unselectedItemColor:
+                Theme.of(context).colorScheme.onSecondaryContainer,
+            currentIndex: _currTabIndex,
+            showSelectedLabels: true,
+            onTap: (value) => setState(() {
+              _currTabIndex = value;
+              Navigator.of(_navCtx).popUntil(ModalRoute.withName('/'));
+            }),
+            items: [
+              BottomNavigationBarItem(
+                  backgroundColor: appBarColor,
+                  label: 'Account',
+                  icon: const Icon(Icons.account_circle_outlined)),
+              BottomNavigationBarItem(
+                  backgroundColor: appBarColor,
+                  label: 'Lists',
+                  icon: const Icon(Icons.list_rounded)),
+              BottomNavigationBarItem(
+                  backgroundColor: appBarColor,
+                  label: 'Search',
+                  icon: const Icon(Icons.search_rounded)),
+              BottomNavigationBarItem(
+                  backgroundColor: appBarColor,
+                  label: 'Settings',
+                  icon: const Icon(Icons.settings)),
+            ],
+          ),
+        ));
   }
 }
