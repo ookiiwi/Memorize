@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
@@ -12,35 +13,37 @@ import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart' as fs;
 
-class ListPage extends StatefulWidget with ATab {
+class ListPage extends StatefulWidget {
   ListPage({
     Key? key,
+    required this.listname,
     this.createIfDontExists = true,
   })  : modifiable = true,
         readCallback = fs.readFile,
-        fileInfo = null,
-        super(key: key);
+        _fileInfo = null,
+        onVersionChanged = null,
+        super(key: key) {
+    if (listname.isEmpty) {
+      throw FlutterError('List name must not be empty');
+    }
+  }
 
-  ListPage.fromFile(
+  const ListPage.fromFile(
       {super.key,
       required fs.FileInfo fileInfo,
       this.createIfDontExists = true,
       this.modifiable = true,
       this.readCallback = fs.readFile,
       this.onVersionChanged})
-      : fileInfo = fileInfo;
+      : _fileInfo = fileInfo,
+        listname = '';
 
-  final fs.FileInfo? fileInfo;
+  final fs.FileInfo? _fileInfo;
+  final String listname;
   final bool createIfDontExists;
   final bool modifiable;
-  void Function() _reload = () {};
-  Future<dynamic> Function(String path, {String? version}) readCallback;
-  void Function(String? version)? onVersionChanged;
-
-  @override
-  void reload() {
-    _reload();
-  }
+  final Future<dynamic> Function(String path, {String? version}) readCallback;
+  final void Function(String? version)? onVersionChanged;
 
   @override
   State<ListPage> createState() => _ListPage();
@@ -57,18 +60,24 @@ class _ListPage extends State<ListPage> {
   final String _uploadWindowName = 'upload';
   Set<String> _forwardVersions = {};
   bool get isEditable => widget.modifiable && _list.version == null;
-  fs.FileInfo? get fileInfo => widget.fileInfo;
+  fs.FileInfo? get fileInfo => widget._fileInfo;
+
+  final List<String> moreDropdownItems = ['info', 'upload', 'settings'];
 
   @override
   void initState() {
     super.initState();
 
-    widget._reload = () => setState(() {});
-
     _nameIsValid = true; //TODO: check if name valid
 
     _loadList();
-    _fList.whenComplete(() => _checkUpdates());
+    _fList.then((value) {
+      if (widget.listname.isNotEmpty) {
+        value.name = widget.listname;
+        _writeList();
+      }
+      _checkUpdates();
+    });
   }
 
   @override
@@ -115,7 +124,7 @@ class _ListPage extends State<ListPage> {
       });
     } else {
       _list = AList('');
-      _fList = Future.value();
+      _fList = Future.value(_list);
     }
   }
 
@@ -146,6 +155,7 @@ class _ListPage extends State<ListPage> {
   Widget _buildElts() {
     return Column(
       children: [
+/*
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Expanded(
               child: Container(
@@ -175,6 +185,7 @@ class _ListPage extends State<ListPage> {
               margin: const EdgeInsets.symmetric(horizontal: 10),
               child: _buildVersionDropdown())
         ]),
+        */
         Expanded(
             child: RefreshIndicator(
                 onRefresh: (() async {
@@ -375,87 +386,20 @@ class _ListPage extends State<ListPage> {
         context: context);
   }
 
-  Widget _buildOptions() {
-    return Positioned(
-        left: 10,
-        right: 10,
-        bottom: 10,
-        height: 50,
-        child: ListView(
-            shrinkWrap: true,
-            scrollDirection: Axis.horizontal,
-            children: [
-              if (kDebugMode)
-                FloatingActionButton(
-                    onPressed: _showRawList,
-                    child: const Icon(Icons.info_outline_rounded)),
-              FloatingActionButton(
-                  onPressed: _showFileVersioning,
-                  child: const Icon(Icons.new_label_rounded)),
-              if (!kIsWeb && isEditable)
-                FloatingActionButton(
-                    onPressed: () => fs.writeFileWeb('.', _list),
-                    child: const Icon(Icons.cloud_upload)),
-              FloatingActionButton(
-                  onPressed: () {
-                    _showUploadWindow();
-                  },
-                  child: const Icon(Icons.upload)),
-              FloatingActionButton(
-                  onPressed: () {
-                    _showAddonConfig();
-                  },
-                  child: const Icon(Icons.settings)),
-              if (isEditable)
-                _openSelection
-                    ? FloatingActionButton(
-                        heroTag: "prout",
-                        onPressed: () => setState(() {
-                          _openSelection = false;
-
-                          if (_list.version != null) {
-                            _loadList();
-                            setState(() {});
-                          }
-
-                          for (int i in _selectedItems) {
-                            _list.entries.removeAt(i);
-                          }
-
-                          _writeList();
-                        }),
-                        child: const Icon(Icons.delete),
-                      )
-                    : FloatingActionButton(
-                        onPressed: () {
-                          if (_list.version != null) {
-                            _loadList();
-                          }
-
-                          Overlayment.show(
-                              OverWindow(
-                                  backgroundSettings:
-                                      const BackgroundSettings(),
-                                  alignment: Alignment.center,
-                                  child: SizedBox(
-                                      height: 200,
-                                      width: 200,
-                                      child: ListSearchPage(
-                                          onConfirm: (word, res) {
-                                        print('search res: $res');
-                                        _list.addEntry(AListEntry(
-                                            'jpn-eng',
-                                            res.keys.first,
-                                            res.values.first,
-                                            word));
-                                        _writeList();
-                                        Overlayment.dismissLast();
-                                        setState(() {});
-                                      }))),
-                              context: context);
-                        },
-                        child: const Icon(Icons.add))
-            ]));
+  void _showSearch() {
+    Overlayment.show(
+        context: context,
+        OverWindow(
+            alignment: Alignment.center,
+            child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.4,
+                width: MediaQuery.of(context).size.width * 0.6,
+                child: ListSearchPage(
+                    langCode: _list.langCode,
+                    onConfirm: (id, word, entry) {
+                      _list.addEntry(
+                          AListEntry(_list.langCode, id, entry, word));
+                    }))));
   }
 
   @override
@@ -468,10 +412,50 @@ class _ListPage extends State<ListPage> {
           } else {
             return Container(
                 color: Theme.of(context).backgroundColor,
-                child: PageView(
+                child: Column(
                   children: [
-                    Stack(children: [_buildElts(), _buildOptions()]),
-                    // TODO: Implement stats page
+                    Align(
+                        alignment: Alignment.centerRight,
+                        child: PopupMenuButton(
+                          color: Theme.of(context).colorScheme.secondary,
+                          position: PopupMenuPosition.under,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          splashRadius: 0,
+                          child: const Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Icon(
+                                Icons.more_horiz_rounded,
+                                size: 36,
+                              )),
+                          itemBuilder: (context) => <PopupMenuEntry>[
+                            ...moreDropdownItems.map((e) => PopupMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSecondary),
+                                )))
+                          ],
+                        )),
+                    Expanded(
+                        child: PageView(
+                      children: [
+                        Stack(children: [
+                          _buildElts(),
+                          //_buildOptions()
+                          Positioned(
+                              bottom: 20,
+                              right: 20,
+                              child: FloatingActionButton(
+                                  onPressed: () => _showSearch(),
+                                  child: const Icon(Icons.add)))
+                        ]),
+                        // TODO: Implement stats page
+                      ],
+                    ))
                   ],
                 ));
           }
@@ -479,10 +463,67 @@ class _ListPage extends State<ListPage> {
   }
 }
 
-class ListSearchPage extends StatefulWidget {
-  const ListSearchPage({Key? key, required this.onConfirm}) : super(key: key);
+class MenuItem {
+  final String text;
+  final IconData icon;
 
-  final void Function(String word, Map results) onConfirm;
+  const MenuItem({
+    required this.text,
+    required this.icon,
+  });
+}
+
+class MenuItems {
+  static const List<MenuItem> firstItems = [home, share, settings];
+  static const List<MenuItem> secondItems = [logout];
+
+  static const home = MenuItem(text: 'Home', icon: Icons.home);
+  static const share = MenuItem(text: 'Share', icon: Icons.share);
+  static const settings = MenuItem(text: 'Settings', icon: Icons.settings);
+  static const logout = MenuItem(text: 'Log Out', icon: Icons.logout);
+
+  static Widget buildItem(MenuItem item) {
+    return Row(
+      children: [
+        Icon(item.icon, color: Colors.white, size: 22),
+        const SizedBox(
+          width: 10,
+        ),
+        Text(
+          item.text,
+          style: const TextStyle(
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static onChanged(BuildContext context, MenuItem item) {
+    switch (item) {
+      case MenuItems.home:
+        //Do something
+        break;
+      case MenuItems.settings:
+        //Do something
+        break;
+      case MenuItems.share:
+        //Do something
+        break;
+      case MenuItems.logout:
+        //Do something
+        break;
+    }
+  }
+}
+
+class ListSearchPage extends StatefulWidget {
+  const ListSearchPage(
+      {Key? key, required this.langCode, required this.onConfirm})
+      : super(key: key);
+
+  final String langCode;
+  final void Function(String id, String word, String entry) onConfirm;
 
   @override
   State<ListSearchPage> createState() => _ListSearchPage();
@@ -501,7 +542,7 @@ class _ListSearchPage extends State<ListSearchPage> {
   void _find(String value) async {
     try {
       final response = await dio.get('$serverUrl/dict',
-          queryParameters: {'lang': 'jpn-eng', 'key': value});
+          queryParameters: {'lang': widget.langCode, 'key': value});
 
       setState(() => values = response.data);
     } on SocketException {
@@ -511,8 +552,7 @@ class _ListSearchPage extends State<ListSearchPage> {
     } on FormatException {
       print("Bad response format 👎");
     } on DioError catch (e) {
-      print(
-          """
+      print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -524,8 +564,8 @@ class _ListSearchPage extends State<ListSearchPage> {
 
   Future<String> _get(String id) async {
     try {
-      final response = await dio
-          .get('$serverUrl/dict/$id', queryParameters: {'lang': 'jpn-eng'});
+      final response = await dio.get('$serverUrl/dict/$id',
+          queryParameters: {'lang': widget.langCode});
 
       return response.data;
     } on SocketException {
@@ -535,8 +575,7 @@ class _ListSearchPage extends State<ListSearchPage> {
     } on FormatException {
       print("Bad response format 👎");
     } on DioError catch (e) {
-      print(
-          """
+      print("""
           Dio error: ${e.response?.statusCode}\n
           Message: ${e.message}\n
           Request: ${e.response}
@@ -568,8 +607,8 @@ class _ListSearchPage extends State<ListSearchPage> {
                         child: ElevatedButton(
                             onPressed: () async {
                               final id = values.keys.elementAt(i);
-                              widget.onConfirm(values.values.elementAt(i),
-                                  {id: await _get(id)});
+                              widget.onConfirm(id, values.values.elementAt(i),
+                                  await _get(id));
                             },
                             child: Text(values.values.elementAt(i)))))))
       ],

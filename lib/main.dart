@@ -29,15 +29,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Memorize',
+      title: 'Memo',
       theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: Colors.white,
-        colorScheme: const ColorScheme.dark(secondary: Colors.cyanAccent),
+        colorSchemeSeed: const Color(0xff006498), //Colors.teal,
+        brightness: Brightness.light,
+        useMaterial3: true,
         fontFamily: 'FiraSans',
       ),
+      initialRoute: '/',
       home: SplashScreen(builder: (context) {
-        return MainPage(title: 'Memorize', listPath: listToOpen);
+        return MainPage(title: 'Memo', listPath: listToOpen);
       }),
     );
   }

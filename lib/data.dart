@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:memorize/addon.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/file_system.dart' as fs;
@@ -79,26 +78,6 @@ class AList extends fs.MemoFile {
 }
 
 enum SortType { rct, asc, dsc }
-
-abstract class ATab {
-  void reload();
-}
-
-class AppBarItem {
-  AppBarItem(
-      {required this.icon,
-      required this.tab,
-      bool isMain = false,
-      this.onWillPop})
-      : tabIcon = isMain ? const Icon(Icons.home) : icon,
-        bMain = isMain;
-
-  Icon icon = const Icon(Icons.abc);
-  Icon tabIcon;
-  final ATab Function() tab;
-  final bool bMain;
-  final bool Function()? onWillPop;
-}
 
 class DataLoader {
   static bool _isDataLoaded = false;

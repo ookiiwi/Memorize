@@ -54,15 +54,8 @@ class TabNavigator extends StatelessWidget {
   }
 }
 
-class SettingsPage extends StatefulWidget with ATab {
-  SettingsPage({Key? key}) : super(key: key);
-
-  late final void Function() _reload;
-
-  @override
-  void reload() {
-    _reload();
-  }
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({Key? key}) : super(key: key);
 
   @override
   State<SettingsPage> createState() => _SettingsPage();
@@ -72,14 +65,6 @@ class _SettingsPage extends State<SettingsPage> {
   final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
   late BuildContext _navCtx;
   ModalRoute? _route;
-
-  @override
-  void initState() {
-    super.initState();
-    widget._reload = () {
-      _popHome();
-    };
-  }
 
   @override
   void didChangeDependencies() {
@@ -95,12 +80,6 @@ class _SettingsPage extends State<SettingsPage> {
     super.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
-  }
-
-  void _popHome() {
-    if (Navigator.of(_navCtx).canPop()) {
-      Navigator.of(_navCtx).pop();
-    }
   }
 
   Future<bool> _canPop() async {
@@ -171,13 +150,6 @@ class SettingsSection extends StatefulWidget {
 }
 
 class _SettingsSection extends State<SettingsSection> {
-  Widget _buildField({required Widget child}) {
-    return Container(
-        child: child,
-        decoration: BoxDecoration(
-            color: Colors.amber, borderRadius: BorderRadius.circular(10)));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -185,7 +157,7 @@ class _SettingsSection extends State<SettingsSection> {
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
-          children: [],
+          children: const [],
         ));
   }
 }
@@ -294,13 +266,10 @@ class _LoginPage extends State<LoginPage> {
   }
 }
 
-class ProfilePage extends StatefulWidget with ATab {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key, required this.onLogout}) : super(key: key);
 
   final void Function() onLogout;
-
-  @override
-  void reload() {}
 
   @override
   State<ProfilePage> createState() => _ProfilePage();
@@ -359,11 +328,8 @@ class _ProfilePage extends State<ProfilePage> {
   }
 }
 
-class SearchPage extends StatefulWidget with ATab {
-  SearchPage({Key? key}) : super(key: key);
-
-  @override
-  void reload() {}
+class SearchPage extends StatefulWidget {
+  const SearchPage({Key? key}) : super(key: key);
 
   @override
   State<StatefulWidget> createState() => _SearchPage();
@@ -462,7 +428,7 @@ class _SearchPage extends State<SearchPage> {
               SizedBox(
                   height: MediaQuery.of(context).size.height * 0.6,
                   width: MediaQuery.of(context).size.height * 0.3,
-                  child: ListExplorer(
+                  child: const ListExplorer(
                     rawView: true,
                   )),
               Positioned(
