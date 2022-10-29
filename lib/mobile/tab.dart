@@ -19,7 +19,7 @@ class _MainPage extends State<MainPage> {
   late final String title;
   late final List<Widget> tabs;
   int _currTabIndex = 1;
-  final navKey = GlobalKey<NavigatorState>();
+  var navKey = GlobalKey<NavigatorState>();
   late BuildContext _navCtx;
 
   @override
@@ -34,7 +34,6 @@ class _MainPage extends State<MainPage> {
         listPath: widget.listPath,
       ),
       const SearchPage(),
-      const SettingsPage()
     ]);
   }
 
@@ -46,6 +45,7 @@ class _MainPage extends State<MainPage> {
   @override
   Widget build(BuildContext context) {
     final appBarColor = Theme.of(context).colorScheme.secondaryContainer;
+    final onAppBarColor = Theme.of(context).colorScheme.onSecondaryContainer;
     const appBarRadius = Radius.circular(50);
 
     return Scaffold(
@@ -61,15 +61,18 @@ class _MainPage extends State<MainPage> {
           borderRadius: const BorderRadius.only(
               topLeft: appBarRadius, topRight: appBarRadius),
           child: BottomNavigationBar(
-            selectedItemColor:
-                Theme.of(context).colorScheme.onSecondaryContainer,
-            unselectedItemColor:
-                Theme.of(context).colorScheme.onSecondaryContainer,
+            backgroundColor: appBarColor,
+            selectedItemColor: onAppBarColor,
+            unselectedItemColor: onAppBarColor,
             currentIndex: _currTabIndex,
             showSelectedLabels: true,
             onTap: (value) => setState(() {
+              if (_currTabIndex == value) {
+                Navigator.of(_navCtx).popUntil(ModalRoute.withName('/'));
+              } else {
+                navKey = GlobalKey<NavigatorState>();
+              }
               _currTabIndex = value;
-              Navigator.of(_navCtx).popUntil(ModalRoute.withName('/'));
             }),
             items: [
               BottomNavigationBarItem(
@@ -84,10 +87,6 @@ class _MainPage extends State<MainPage> {
                   backgroundColor: appBarColor,
                   label: 'Search',
                   icon: const Icon(Icons.search_rounded)),
-              BottomNavigationBarItem(
-                  backgroundColor: appBarColor,
-                  label: 'Settings',
-                  icon: const Icon(Icons.settings)),
             ],
           ),
         ));
