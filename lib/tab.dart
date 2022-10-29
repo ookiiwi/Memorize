@@ -335,19 +335,38 @@ class SearchPage extends StatefulWidget {
   State<StatefulWidget> createState() => _SearchPage();
 }
 
+class SearchEntity {
+  SearchEntity(
+      {this.value = '',
+      this.cache,
+      required dynamic Function(String value) searchCallback}) {
+    this.searchCallback = (String value) {
+      if (value != this.value || cache == null) {
+        this.value = value;
+        cache = searchCallback(value);
+      }
+
+      return cache;
+    };
+  }
+
+  String value;
+  dynamic cache;
+  late final dynamic Function(String value) searchCallback;
+}
+
 class _SearchPage extends State<SearchPage> {
   final _navKey = GlobalKey<NavigatorState>();
   String _selectedTab = _tabs.keys.first;
-  List _data = [];
   String _lastSearch = '';
   Future _previewData = Future.value(null);
   bool get _displayPreviewOverlay => MediaQuery.of(context).size.width < 1000;
 
   String? _selectedVersion;
 
-  static final Map<String, dynamic> _tabs = {
-    'Lists': _fetchLists,
-    'Addons': _fetchAddons
+  static final Map<String, SearchEntity> _tabs = {
+    'Lists': SearchEntity(searchCallback: _fetchLists),
+    'Addons': SearchEntity(searchCallback: _fetchAddons)
   };
 
   static Future<List> _fetchLists(String value) async {
@@ -525,6 +544,7 @@ class _SearchPage extends State<SearchPage> {
       ret = ListPage.fromFile(
           fileInfo: data,
           modifiable: false,
+          readCallback: fs.readFileWeb,
           onVersionChanged: (value) =>
               setState(() => _selectedVersion = value));
     } else if (_selectedTab == tabs[1]) {
@@ -537,26 +557,6 @@ class _SearchPage extends State<SearchPage> {
     }
 
     return ret;
-  }
-
-  void _fetchSearch(String value) async {
-    final tabs = _tabs.keys.toList();
-    _lastSearch = value;
-
-    if (_selectedTab == tabs[0]) {
-      _data = await _fetchLists(value);
-    } else if (_selectedTab == tabs[1]) {
-      _data = await (_fetchAddons(value));
-    } else {
-      throw FlutterError('Unknown tab \'$_selectedTab\'');
-    }
-    setState(() {});
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchSearch(_lastSearch);
   }
 
   void _showPreviewOverlay() {
@@ -587,75 +587,114 @@ class _SearchPage extends State<SearchPage> {
                 Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Column(children: [
-                      Container(
-                        alignment: Alignment.topCenter,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 50),
-                        child: SearchWidget(
-                          height: 50,
-                          onChanged: _fetchSearch,
-                        ),
-                      ),
+                      Padding(
+                          padding: const EdgeInsets.only(
+                              right: 10, left: 10, bottom: 10),
+                          child: IntrinsicHeight(
+                              child: Row(children: [
+                            Expanded(
+                                child: Container(
+                                    height: MediaQuery.of(context).size.height *
+                                        0.05,
+                                    padding: const EdgeInsets.only(
+                                      right: 10,
+                                    ),
+                                    child: TextField(
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      decoration: InputDecoration(
+                                          border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(20))),
+                                      onChanged: (value) =>
+                                          setState(() => _lastSearch = value),
+                                    ))),
+                            Container(
+                                width: MediaQuery.of(context).size.width * 0.2,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceVariant,
+                                    borderRadius: BorderRadius.circular(10)),
+                                child: Center(child: Text(_selectedTab)))
+                          ]))),
                       Expanded(
-                          child: MultiTabPage(
-                              tabMargin:
-                                  const EdgeInsets.symmetric(vertical: 10),
-                              borderRadius: BorderRadius.circular(20),
-                              tabs: _tabs.keys,
-                              onChanged: (tab) {
-                                _previewData = Future.value(null);
-                                setState(() => _selectedTab = tab);
-                                _fetchSearch(_lastSearch);
-                              },
-                              tabBuilder: (context, i) {
-                                return Container(
-                                  color: Colors.amber,
-                                  padding: const EdgeInsets.all(10),
-                                  child: GridView.builder(
-                                      gridDelegate:
-                                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                                        maxCrossAxisExtent: 150.0,
-                                        mainAxisSpacing: 10.0,
-                                        crossAxisSpacing: 10.0,
-                                        childAspectRatio: 1.0,
-                                      ),
-                                      itemCount: _data.length,
-                                      itemBuilder: (context, i) =>
-                                          GestureDetector(
-                                            child: MaterialButton(
-                                                padding:
-                                                    const EdgeInsets.all(10),
-                                                color: Colors.blue,
-                                                shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            20)),
-                                                onPressed: () {
-                                                  final id = _data[i].id;
-                                                  print('get data ');
-                                                  setState(() {
-                                                    _previewData =
-                                                        (_selectedTab ==
-                                                                _tabs.keys.first
-                                                            ? Future.value(
-                                                                _data[i])
-                                                            : _fetchAddon(id));
+                          child: PageView.builder(
+                              onPageChanged: (value) => setState(() {
+                                    _selectedTab = _tabs.keys.elementAt(value);
+                                  }),
+                              itemCount: _tabs.length,
+                              itemBuilder: (context, i) => Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      FutureBuilder(
+                                          future: _tabs.values
+                                              .elementAt(i)
+                                              .searchCallback(_lastSearch),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.connectionState !=
+                                                ConnectionState.done) {
+                                              return const SizedBox();
+                                            } else {
+                                              final data =
+                                                  snapshot.data as List?;
 
-                                                    if (_displayPreviewOverlay) {
-                                                      _showPreviewOverlay();
-                                                    }
-                                                  });
-                                                },
-                                                child: Center(
-                                                    child:
-                                                        Text(_data[i].name))),
-                                          )),
-                                );
-                              },
-                              rightSection:
-                                  _displayPreviewOverlay // window's width < n
-                                      ? null
-                                      : _buildPreviewTab())),
+                                              assert(data != null);
+
+                                              return Expanded(
+                                                  child: Container(
+                                                      color: Colors.transparent,
+                                                      child: GridView.builder(
+                                                          gridDelegate:
+                                                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                                                            maxCrossAxisExtent:
+                                                                150.0,
+                                                            mainAxisSpacing:
+                                                                10.0,
+                                                            crossAxisSpacing:
+                                                                10.0,
+                                                            childAspectRatio:
+                                                                1.0,
+                                                          ),
+                                                          itemCount:
+                                                              data!.length,
+                                                          itemBuilder: (context,
+                                                                  i) =>
+                                                              GestureDetector(
+                                                                child:
+                                                                    MaterialButton(
+                                                                        padding:
+                                                                            const EdgeInsets.all(
+                                                                                10),
+                                                                        color: Theme.of(context)
+                                                                            .colorScheme
+                                                                            .secondaryContainer,
+                                                                        shape: RoundedRectangleBorder(
+                                                                            borderRadius: BorderRadius.circular(
+                                                                                20)),
+                                                                        onPressed:
+                                                                            () {
+                                                                          final id =
+                                                                              data[i].id;
+
+                                                                          setState(
+                                                                              () {
+                                                                            _previewData = (_selectedTab == _tabs.keys.first
+                                                                                ? Future.value(data[i])
+                                                                                : _fetchAddon(id));
+
+                                                                            _showPreviewOverlay();
+                                                                          });
+                                                                        },
+                                                                        child: Center(
+                                                                            child:
+                                                                                Text(data[i].name))),
+                                                              ))));
+                                            }
+                                          })
+                                    ],
+                                  ))),
                     ])),
               ],
             ));
