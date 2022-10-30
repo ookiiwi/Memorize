@@ -9,7 +9,7 @@ import 'package:memorize/file_system.dart' as fs;
 import 'package:memorize/addon.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/list_explorer.dart';
-import 'package:memorize/widget.dart';
+import 'package:memorize/profil.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
 import 'package:flutter/gestures.dart';
@@ -266,16 +266,18 @@ class _LoginPage extends State<LoginPage> {
   }
 }
 
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({Key? key, required this.onLogout}) : super(key: key);
+class AccountPage extends StatefulWidget {
+  const AccountPage({Key? key, required this.onLogout}) : super(key: key);
 
   final void Function() onLogout;
 
   @override
-  State<ProfilePage> createState() => _ProfilePage();
+  State<AccountPage> createState() => _AccountPage();
 }
 
-class _ProfilePage extends State<ProfilePage> {
+class _AccountPage extends State<AccountPage> {
+  static const padding = EdgeInsets.all(8.0);
+
   bool _isLogged = false;
 
   bool get isLogged {
@@ -297,34 +299,99 @@ class _ProfilePage extends State<ProfilePage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    isLogged;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return !isLogged
-        ? Center(
-            child: LoginPage(
-                onValidate: (value) => setState(() => _isLogged = value)))
-        : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GestureDetector(
-                  onTap: () {
-                    Auth.logout();
-                    setState(() {
-                      //widget.onLogout();
-                    });
-                  },
-                  child: Align(
-                      child: Container(
-                          padding: const EdgeInsets.all(10),
-                          child: Text('Loggout',
-                              style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .background)),
-                          decoration: BoxDecoration(
-                              color: Colors.lightBlue,
-                              borderRadius: BorderRadius.circular(20)))))
-            ],
-          );
+    print('build');
+    return Padding(
+        padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            //Profile
+            Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: MaterialButton(
+                    onPressed: () => Navigator.of(context)
+                        .push(MaterialPageRoute(
+                            builder: (context) => const ProfilePage()))
+                        .then((value) => setState(() {})),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          children: [
+                            Padding(
+                                padding: padding,
+                                child: Image.asset(
+                                  userData.profilIcon,
+                                  height: 32,
+                                  width: 32,
+                                )),
+                            const Padding(
+                                padding: padding,
+                                child: Text(
+                                  'Profile',
+                                  style: TextStyle(fontSize: 20),
+                                ))
+                          ],
+                        )))),
+            if (isLogged)
+              Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: MaterialButton(
+                      onPressed: () async {
+                        await Auth.logout();
+                        setState(() {});
+                      },
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: Row(
+                            children: const [
+                              Padding(
+                                  padding: padding,
+                                  child: Icon(Icons.logout_rounded)),
+                              Padding(
+                                  padding: padding,
+                                  child: Text(
+                                    'Logout',
+                                    style: TextStyle(fontSize: 20),
+                                  ))
+                            ],
+                          )))),
+            Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: MaterialButton(
+                    onPressed: () {},
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          children: const [
+                            Padding(
+                                padding: padding,
+                                child: Icon(Icons.info_outline_rounded)),
+                            Padding(
+                                padding: padding,
+                                child: Text(
+                                  'About',
+                                  style: TextStyle(fontSize: 20),
+                                ))
+                          ],
+                        )))),
+          ],
+        ));
   }
 }
 
