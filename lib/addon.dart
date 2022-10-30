@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:memorize/data.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:memorize/auth.dart';
 import 'package:memorize/file_system.dart' as fs;
 
 extension ExtString on String {
@@ -49,7 +49,7 @@ class Addon extends fs.MemoFile {
         super.fromJson(json);
 
   static Future<Addon> fromId(String id) async {
-    final json = await Auth.storage.read(key: id);
+    final json = await secureStorage.read(key: id);
     assert(json != null);
     return Addon.fromJson(jsonDecode(json!));
   }
@@ -69,13 +69,13 @@ class Addon extends fs.MemoFile {
   dynamic register() async {
     assert(!kIsWeb);
 
-    await Auth.storage.write(key: id.hexString, value: toString());
+    await secureStorage.write(key: id.hexString, value: toString());
 
     final addonList =
-        jsonDecode((await Auth.storage.read(key: 'addonList')) ?? '{}');
+        jsonDecode((await secureStorage.read(key: 'addonList')) ?? '{}');
 
     final Map<String, List> addonTargets = Map.from(
-        jsonDecode((await Auth.storage.read(key: 'addonTargets')) ?? '{}'));
+        jsonDecode((await secureStorage.read(key: 'addonTargets')) ?? '{}'));
 
     addonList[id.hexString] = name;
 
@@ -84,18 +84,18 @@ class Addon extends fs.MemoFile {
       addonTargets[target] = {...ids, id.hexString}.toList();
     }
 
-    await Auth.storage.write(key: 'addonList', value: jsonEncode(addonList));
-    await Auth.storage
-        .write(key: 'addonTargets', value: jsonEncode(addonTargets));
+    await secureStorage.write(key: 'addonList', value: jsonEncode(addonList));
+    await secureStorage.write(
+        key: 'addonTargets', value: jsonEncode(addonTargets));
   }
 
   static Future<Map<String, String>> ls(String target) async {
     final ret = <String, String>{};
-    final addonList =
-        Map.from(jsonDecode(await Auth.storage.read(key: 'addonList') ?? '{}'));
+    final addonList = Map.from(
+        jsonDecode(await secureStorage.read(key: 'addonList') ?? '{}'));
 
     final addonTargets = Map.from(
-        jsonDecode(await Auth.storage.read(key: 'addonTargets') ?? '{}'));
+        jsonDecode(await secureStorage.read(key: 'addonTargets') ?? '{}'));
 
     for (var e in addonTargets[target] ?? []) {
       ret[e] = addonList[e];

@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/file_system.dart' as fs;
 
 final dio = Dio();
@@ -25,14 +25,12 @@ class UserInfo {
 }
 
 class Auth extends ChangeNotifier {
-  static const storage = FlutterSecureStorage();
-
   static Future<void> init() async {
     await resetHeaders();
   }
 
   static resetHeaders() async {
-    final token = await storage.read(key: 'jwt');
+    final token = await secureStorage.read(key: 'jwt');
     dio.options.headers['authorization'] = "Bearer $token";
   }
 
@@ -102,7 +100,7 @@ class Auth extends ChangeNotifier {
       if (response.statusCode == 200) {
         ret = UserConnectionStatus.loggedIn;
         final token = response.data['token'];
-        await storage.write(key: 'jwt', value: token);
+        await secureStorage.write(key: 'jwt', value: token);
         await resetHeaders();
       }
     } on SocketException {
@@ -121,8 +119,8 @@ class Auth extends ChangeNotifier {
     return ret;
   }
 
-  static void logout() {
-    storage.delete(key: 'jwt');
+  static Future<void> logout() async {
+    await secureStorage.delete(key: 'jwt');
     dio.options.headers.remove('authorization');
   }
 }
