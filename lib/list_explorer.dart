@@ -27,26 +27,24 @@ class ListExplorer extends StatefulWidget {
   }
 }
 
-class _ListExplorer extends State<ListExplorer>
-    with RouteAware, TickerProviderStateMixin {
+class _ListExplorer extends State<ListExplorer> with TickerProviderStateMixin {
   List<fs.FileInfo> _items = [];
   Future<List> _fItems = Future.value([]);
   bool _openBtnMenu = false;
   static late BuildContext _navCtx;
-  //final double _searchHeight = 50;
-  final TextEditingController _controller = TextEditingController();
+  final _controller = TextEditingController();
   final List _selectedItems = [];
   bool _openSelection = false;
-  final GlobalKey key = GlobalKey();
-  final GlobalKey<NavigatorState> navKey = GlobalKey<NavigatorState>();
+  final key = GlobalKey();
+  final navKey = GlobalKey<NavigatorState>();
   late final AnimationController _addBtnAnimController;
   late final Animation<double> _addBtnAnim;
+  final double globalPadding = 10;
 
   String _listname = '';
   late Color addBtnColor;
   late Color containerColor;
 
-  //final NavigationHistoryObserver _navHistory = NavigationHistoryObserver();
   ModalRoute? _route;
 
   String get root => fs.root + '/list';
@@ -218,19 +216,21 @@ class _ListExplorer extends State<ListExplorer>
                                               });
                                             },
                                             child: const Text('Cancel'))),
-                                    Padding(
-                                        padding: const EdgeInsets.all(10),
+                                    Container(
+                                        margin: const EdgeInsets.all(15),
                                         child: FloatingActionButton(
                                             onPressed: () {
                                               if (_listname.isEmpty) return;
 
                                               Overlayment.dismissLast();
-                                              Navigator.of(_navCtx).push(
-                                                  MaterialPageRoute(
+                                              Navigator.of(_navCtx)
+                                                  .push(MaterialPageRoute(
                                                       builder: (context) =>
                                                           ListPage(
                                                               listname:
-                                                                  _listname)));
+                                                                  _listname)))
+                                                  .then(
+                                                      (value) => _updateData());
                                             },
                                             child: const Text(
                                               'Confirm',
@@ -272,10 +272,7 @@ class _ListExplorer extends State<ListExplorer>
       decoration: !roundBorders
           ? null
           : BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color:
-                  containerColor //Theme.of(context).colorScheme.tertiaryContainer,
-              ),
+              borderRadius: BorderRadius.circular(20), color: containerColor),
       child: Center(child: Text(info.name)),
     );
   }
@@ -285,7 +282,8 @@ class _ListExplorer extends State<ListExplorer>
     _navCtx = context;
 
     return Container(
-        padding: const EdgeInsets.all(10),
+        padding: EdgeInsets.only(
+            left: globalPadding, right: globalPadding, top: globalPadding),
         child: Stack(
           children: [
             Column(children: [
@@ -448,7 +446,7 @@ class _ListExplorer extends State<ListExplorer>
             if (!widget.rawView)
               Positioned(
                   right: 10,
-                  bottom: 10,
+                  bottom: kBottomNavigationBarHeight + 10,
                   child: ExpandedWidget(
                       key: key,
                       direction: AxisDirection.up,
