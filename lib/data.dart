@@ -1,8 +1,14 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:memorize/addon.dart';
-import 'package:memorize/auth.dart';
 import 'package:memorize/file_system.dart' as fs;
-import 'package:memorize/list_explorer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+late UserData userData;
+const secureStorage = FlutterSecureStorage();
+late final SharedPreferences sharedPrefInstance;
 
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
@@ -77,31 +83,42 @@ class AList extends fs.MemoFile {
   }
 }
 
-enum SortType { rct, asc, dsc }
+class UserData {
+  UserData({this.email, this.username, String? profilIcon}) {
+    profilIcon ??= getRandomIcon();
+    this.profilIcon = profilIcon;
 
-class DataLoader {
-  static bool _isDataLoaded = false;
+    print('profilIcon: ${this.profilIcon}');
+  }
+  UserData.fromJson(Map<String, dynamic> json)
+      : email = json['email'],
+        username = json['username'],
+        profilIcon = json['profilIcon'];
 
-  static load({bool force = false}) async {
-    if (_isDataLoaded && !force) return;
-    // TODO: check if user logged here
+  Map<String, dynamic> toJson() =>
+      {'email': email, 'username': username, 'profilIcon': profilIcon};
 
-    final pref = await SharedPreferences.getInstance();
-    final isFirstRun = pref.getBool('isFirstRun');
-    print('isFirstRun? $isFirstRun');
+  @override
+  String toString() => jsonEncode(this);
 
-    await Auth.init();
-    await fs.init(isFirstRun == null || isFirstRun);
-    //if (!kIsWeb) await ReminderNotification.init();
+  final String? email;
+  final String? username;
+  late final String profilIcon;
 
-    if (isFirstRun == null || isFirstRun) {
-      ListExplorer.init();
-      print('firstrun');
-      pref.setBool('isFirstRun', false);
-    } else {
-      print('not firstrun');
-    }
+  UserData copyWith({String? email, String? username, String? profilIcon}) {
+    print('proi: $profilIcon');
+    return UserData(
+        email: email ?? this.email,
+        username: username ?? this.username,
+        profilIcon: profilIcon ?? this.profilIcon);
+  }
 
-    _isDataLoaded = true;
+  static String getRandomIcon() {
+    final imagePaths =
+        jsonDecode(sharedPrefInstance.getString('profil_icons') ?? '[]');
+    print('len: ${imagePaths.length}');
+    final randIndex = Random().nextInt(imagePaths.length);
+
+    return imagePaths[randIndex];
   }
 }
