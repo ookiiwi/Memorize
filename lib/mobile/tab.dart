@@ -29,7 +29,7 @@ class _MainPage extends State<MainPage> {
     title = widget.title;
 
     tabs = UnmodifiableListView([
-      ProfilePage(onLogout: () => Navigator.of(context).pop()),
+      AccountPage(onLogout: () => Navigator.of(context).pop()),
       ListExplorer(
         listPath: widget.listPath,
       ),
@@ -51,6 +51,7 @@ class _MainPage extends State<MainPage> {
     return Scaffold(
         extendBody: true,
         body: SafeArea(
+            maintainBottomViewPadding: true,
             child: TabNavigator(
                 navigatorKey: navKey,
                 builder: (context) {
