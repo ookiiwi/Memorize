@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:memorize/auth.dart';
 import 'package:memorize/data.dart';
+import 'package:memorize/settings_ui.dart';
 import 'package:overlayment/overlayment.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -15,6 +16,14 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePage extends State<ProfilePage> {
   bool _isLogged = false;
+  final usernameFocusNode = FocusNode();
+  final emailFocusNode = FocusNode();
+
+  @override
+  void dispose() {
+    usernameFocusNode.dispose();
+    super.dispose();
+  }
 
   bool get isLogged {
     Auth.retrieveState().then((value) {
@@ -50,37 +59,83 @@ class _ProfilePage extends State<ProfilePage> {
                         })))));
   }
 
+  Widget _buildLabeledTextField(String title, String value, FocusNode focusNode,
+      {void Function(String value)? onSubmitted}) {
+    return SettingsTile(
+      onTap: (context) => setState(() {
+        focusNode.requestFocus();
+      }),
+      title: Text(title),
+      value: Expanded(
+        child: AbsorbPointer(
+          child: TextField(
+            textAlign: TextAlign.end,
+            enableInteractiveSelection: false,
+            focusNode: focusNode,
+            controller: TextEditingController(text: value),
+            style: TextStyle(color: Theme.of(context).colorScheme.outline),
+            decoration: const InputDecoration(
+                contentPadding: EdgeInsets.only(),
+                border: OutlineInputBorder(borderSide: BorderSide.none)),
+            onSubmitted: onSubmitted,
+            onEditingComplete: () => setState(() {
+              focusNode.unfocus();
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListView(shrinkWrap: true, children: [
-      FittedBox(
+    return SettingsList(
+      sections: [
+        FittedBox(
           child: Container(
-              margin:
-                  const EdgeInsets.symmetric(horizontal: 30.0, vertical: 10),
+            margin: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 10),
+            child: Container(
+              decoration: const BoxDecoration(shape: BoxShape.circle),
               child: MaterialButton(
-                  onPressed: () {
-                    _showIconExplorer();
-                  },
-                  color: Colors.amber,
-                  shape: const CircleBorder(),
-                  padding: const EdgeInsets.all(8.0),
-                  child: Image.asset(
-                    userData.profilIcon,
-                    height: 32,
-                    width: 32,
-                  )))),
-      if (!isLogged)
-        Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: LoginDialog(
-              onServerResponse: (info, value) async {
-                setState(() {
-                  userData = userData.copyWith(
-                      email: info.email!, username: info.username!);
-                });
-              },
-            )),
-    ]);
+                minWidth: 10,
+                onPressed: () {
+                  _showIconExplorer();
+                },
+                color: Colors.amber,
+                clipBehavior: Clip.hardEdge,
+                shape: const CircleBorder(),
+                padding: const EdgeInsets.all(8.0),
+                child: Image.asset(
+                  userData.profilIcon,
+                  height: 32,
+                  width: 32,
+                ),
+              ),
+            ),
+          ),
+        ),
+        SettingsSection(
+          title: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'ACCOUNT INFORMATION',
+                textScaleFactor: 1.5,
+                style: TextStyle(color: Theme.of(context).colorScheme.outline),
+              )),
+          tiles: [
+            _buildLabeledTextField(
+                'Email', userData.email ?? 'ERROR', emailFocusNode),
+            _buildLabeledTextField(
+                'Username', userData.username ?? 'ERROR', usernameFocusNode),
+            SettingsTile.navigation(
+              title: const Text('Change password'),
+              onTap: (context) => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => const ChangePasswordPage())),
+            )
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -235,5 +290,19 @@ class IconExplorer extends StatelessWidget {
                   height: 46,
                   width: 46,
                 ))));
+  }
+}
+
+class ChangePasswordPage extends StatelessWidget {
+  const ChangePasswordPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        children: [],
+      ),
+    );
   }
 }
