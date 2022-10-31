@@ -10,6 +10,10 @@ late UserData userData;
 const secureStorage = FlutterSecureStorage();
 late final SharedPreferences sharedPrefInstance;
 
+void writeUserData() {
+  secureStorage.write(key: 'userData', value: userData.toString());
+}
+
 int daysBetween(DateTime from, DateTime to) {
   from = DateTime(from.year, from.month, from.day);
   to = DateTime(to.year, to.month, to.day);
