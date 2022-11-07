@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:html/parser.dart';
-import 'package:memorize/auth.dart';
+import 'package:memorize/bloc/auth_bloc.dart';
+import 'package:memorize/bloc/connection_bloc.dart' as cb;
 import 'package:memorize/data.dart';
 import 'package:memorize/file_system.dart' as fs;
 import 'package:memorize/addon.dart';
@@ -12,7 +14,6 @@ import 'package:memorize/list_explorer.dart';
 import 'package:memorize/profil.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
-import 'package:flutter/gestures.dart';
 
 const String listPage = 'listPage';
 
@@ -24,33 +25,37 @@ class TabNavigator extends StatelessWidget {
       this.restorationScopeId,
       this.observers = const <NavigatorObserver>[]})
       : super(key: key);
+
   final GlobalKey<NavigatorState> navigatorKey;
   final WidgetBuilder builder;
   final String? restorationScopeId;
   final List<NavigatorObserver> observers;
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-        onWillPop: () async {
-          if (navigatorKey.currentState != null) {
-            navigatorKey.currentState!.maybePop();
-            return false;
-          }
-          return true;
+      onWillPop: () async {
+        if (navigatorKey.currentState != null) {
+          navigatorKey.currentState!.maybePop();
+          return false;
+        }
+        return true;
+      },
+      child: Navigator(
+        restorationScopeId: restorationScopeId,
+        initialRoute: '/',
+        key: navigatorKey,
+        observers: observers,
+        onGenerateRoute: (settings) {
+          return MaterialPageRoute(
+            settings: settings,
+            builder: (context) {
+              return builder(context);
+            },
+          );
         },
-        child: Navigator(
-          restorationScopeId: restorationScopeId,
-          initialRoute: '/',
-          key: navigatorKey,
-          observers: observers,
-          onGenerateRoute: (settings) {
-            return MaterialPageRoute(
-                settings: settings,
-                builder: (context) {
-                  return builder(context);
-                });
-          },
-        ));
+      ),
+    );
   }
 }
 
@@ -90,21 +95,25 @@ class _SettingsPage extends State<SettingsPage> {
       {required WidgetBuilder builder}) {
     return GestureDetector(
         onTap: () {
-          Navigator.of(context).push(PageRouteBuilder(
+          Navigator.of(context).push(
+            PageRouteBuilder(
               pageBuilder: (context, animation, secondaryAnimation) {
-            return Scaffold(body: SafeArea(child: builder(context)));
-          }, transitionsBuilder:
+                return Scaffold(body: SafeArea(child: builder(context)));
+              },
+              transitionsBuilder:
                   (context, animation, secondaryAnimation, child) {
-            const begin = Offset(1.0, 0.0);
-            const end = Offset(0.0, 0.0);
-            final tween = Tween(begin: begin, end: end);
-            final offsetAnimation = animation.drive(tween);
+                const begin = Offset(1.0, 0.0);
+                const end = Offset(0.0, 0.0);
+                final tween = Tween(begin: begin, end: end);
+                final offsetAnimation = animation.drive(tween);
 
-            return SlideTransition(
-              position: offsetAnimation,
-              child: child,
-            );
-          }));
+                return SlideTransition(
+                  position: offsetAnimation,
+                  child: child,
+                );
+              },
+            ),
+          );
         },
         child: Container(
           margin: const EdgeInsets.all(5),
@@ -112,34 +121,45 @@ class _SettingsPage extends State<SettingsPage> {
           height: MediaQuery.of(context).size.height * 0.08,
           width: MediaQuery.of(context).size.width,
           decoration: BoxDecoration(
-              color: Colors.amber, borderRadius: BorderRadius.circular(20)),
+            color: Colors.amber,
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: FittedBox(
-              alignment: Alignment.centerLeft,
-              fit: BoxFit.contain,
-              child: Text(text)),
+            alignment: Alignment.centerLeft,
+            fit: BoxFit.contain,
+            child: Text(text),
+          ),
         ));
   }
 
   @override
   Widget build(BuildContext context) {
     return TabNavigator(
-        navigatorKey: _navKey,
-        builder: (context) {
-          _navCtx = context;
-          return Container(
-              margin: const EdgeInsets.all(10),
-              height: MediaQuery.of(context).size.height,
-              width: MediaQuery.of(context).size.width,
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  _buildField(context, 'Notifications',
-                      builder: (context) => Container()),
-                  _buildField(context, 'About',
-                      builder: (context) => Container()),
-                ],
-              ));
-        });
+      navigatorKey: _navKey,
+      builder: (context) {
+        _navCtx = context;
+        return Container(
+          margin: const EdgeInsets.all(10),
+          height: MediaQuery.of(context).size.height,
+          width: MediaQuery.of(context).size.width,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              _buildField(
+                context,
+                'Notifications',
+                builder: (context) => Container(),
+              ),
+              _buildField(
+                context,
+                'About',
+                builder: (context) => Container(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -153,116 +173,13 @@ class _SettingsSection extends State<SettingsSection> {
   @override
   Widget build(BuildContext context) {
     return Container(
-        margin: const EdgeInsets.all(10),
-        height: MediaQuery.of(context).size.height,
-        width: MediaQuery.of(context).size.width,
-        child: ListView(
-          children: const [],
-        ));
-  }
-}
-
-class LoginPage extends StatefulWidget {
-  const LoginPage({Key? key, required this.onValidate}) : super(key: key);
-
-  final void Function(bool) onValidate;
-
-  @override
-  State<LoginPage> createState() => _LoginPage();
-}
-
-class _LoginPage extends State<LoginPage> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _pwdController = TextEditingController();
-  bool _register = false;
-
-  void _clearControllers() {
-    _emailController.clear();
-    _usernameController.clear();
-    _pwdController.clear();
-  }
-
-  Widget _buildTextField(BuildContext context, bool hideChar,
-      {String? hintText, TextEditingController? controller}) {
-    return Container(
-        width: 300,
-        margin: const EdgeInsets.all(10),
-        child: TextField(
-          controller: controller,
-          obscureText: hideChar,
-          decoration: InputDecoration(
-            fillColor: Theme.of(context).backgroundColor,
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-            hintText: hintText,
-          ),
-        ));
-  }
-
-  @override
-  Widget build(BuildContext ctx) {
-    return FittedBox(
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.amber,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_register)
-                  _buildTextField(context, false,
-                      hintText: 'email address', controller: _emailController),
-                _buildTextField(context, false,
-                    hintText: 'username', controller: _usernameController),
-                _buildTextField(context, true,
-                    hintText: 'password', controller: _pwdController),
-                GestureDetector(
-                    onTap: () async {
-                      final user = UserInfo(
-                        email: _emailController.text,
-                        username: _usernameController.text,
-                        pwd: _pwdController.text,
-                      );
-
-                      _clearControllers();
-
-                      final connStatus = await (_register
-                          ? Auth.register(user)
-                          : Auth.login(user));
-
-                      widget.onValidate(
-                          connStatus == UserConnectionStatus.loggedIn);
-                    },
-                    child: Container(
-                        height: 50,
-                        width: 100,
-                        margin: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(30)),
-                        child: Center(
-                            child: Text(_register ? "Register" : "Login")))),
-                RichText(
-                  text: TextSpan(
-                      style:
-                          const TextStyle(decoration: TextDecoration.underline),
-                      text: _register
-                          ? 'Already have an account ? '
-                          : 'Create an account',
-                      recognizer: TapGestureRecognizer()
-                        ..onTap = () => setState(() {
-                              _register = !_register;
-                              _clearControllers();
-                            })),
-                )
-              ],
-            )));
+      margin: const EdgeInsets.all(10),
+      height: MediaQuery.of(context).size.height,
+      width: MediaQuery.of(context).size.width,
+      child: ListView(
+        children: const [],
+      ),
+    );
   }
 }
 
@@ -277,121 +194,125 @@ class AccountPage extends StatefulWidget {
 
 class _AccountPage extends State<AccountPage> {
   static const padding = EdgeInsets.all(8.0);
-
-  bool _isLogged = false;
-
-  bool get isLogged {
-    Auth.retrieveState().then((value) {
-      final ret = value == UserConnectionStatus.loggedIn;
-
-      if (ret != _isLogged) {
-        setState(() => _isLogged = ret);
-      }
-    });
-
-    return _isLogged;
-  }
+  bool isLogged = false;
+  AuthBloc get authBloc => BlocProvider.of<AuthBloc>(context);
 
   @override
   void initState() {
     super.initState();
-    isLogged;
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    isLogged;
+    authBloc.add(InitializeAuth());
   }
 
   @override
   Widget build(BuildContext context) {
-    print('build');
-    return Padding(
-        padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            //Profile
-            Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: MaterialButton(
-                    onPressed: () => Navigator.of(context)
-                        .push(MaterialPageRoute(
-                            builder: (context) => const ProfilePage()))
-                        .then((value) => setState(() {})),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Row(
-                          children: [
-                            Padding(
-                                padding: padding,
-                                child: Image.asset(
-                                  userData.profilIcon,
-                                  height: 32,
-                                  width: 32,
-                                )),
-                            const Padding(
-                                padding: padding,
-                                child: Text(
-                                  'Profile',
-                                  style: TextStyle(fontSize: 20),
-                                ))
-                          ],
-                        )))),
-            if (isLogged)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: MaterialButton(
-                      onPressed: () async {
-                        await Auth.logout();
-                        setState(() {});
-                      },
+    return BlocBuilder<cb.ConnectionBloc, cb.ConnectionState>(
+      builder: (context, connState) => BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          isLogged = state is AuthAuthentificated;
+
+          return Padding(
+            padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                //Profile
+                if (isLogged || connState.connectivity)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: MaterialButton(
+                      onPressed: () => Navigator.of(context)
+                          .push(
+                            MaterialPageRoute(
+                              builder: (context) => const ProfilePage(),
+                            ),
+                          )
+                          .then((value) => setState(() {})),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                       color: Theme.of(context).colorScheme.secondaryContainer,
                       child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Row(
-                            children: const [
-                              Padding(
-                                  padding: padding,
-                                  child: Icon(Icons.logout_rounded)),
-                              Padding(
-                                  padding: padding,
-                                  child: Text(
-                                    'Logout',
-                                    style: TextStyle(fontSize: 20),
-                                  ))
-                            ],
-                          )))),
-            Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: MaterialButton(
-                    onPressed: () {},
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    color: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8.0),
                         child: Row(
                           children: const [
                             Padding(
-                                padding: padding,
-                                child: Icon(Icons.info_outline_rounded)),
+                              padding: padding,
+                              child: Icon(Icons.account_circle_outlined),
+                            ),
+                            Padding(
+                              padding: padding,
+                              child: Text(
+                                'Profile',
+                                style: TextStyle(fontSize: 20),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                if (isLogged)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: MaterialButton(
+                      onPressed: () async => authBloc.add(SignOut()),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          children: const [
+                            Padding(
+                              padding: padding,
+                              child: Icon(Icons.logout_rounded),
+                            ),
                             Padding(
                                 padding: padding,
                                 child: Text(
-                                  'About',
+                                  'Logout',
                                   style: TextStyle(fontSize: 20),
                                 ))
                           ],
-                        )))),
-          ],
-        ));
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: MaterialButton(
+                    onPressed: () {},
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Row(
+                        children: const [
+                          Padding(
+                            padding: padding,
+                            child: Icon(Icons.info_outline_rounded),
+                          ),
+                          Padding(
+                            padding: padding,
+                            child: Text(
+                              'About',
+                              style: TextStyle(fontSize: 20),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -403,10 +324,11 @@ class SearchPage extends StatefulWidget {
 }
 
 class SearchEntity {
-  SearchEntity(
-      {this.value = '',
-      this.cache,
-      required dynamic Function(String value) searchCallback}) {
+  SearchEntity({
+    this.value = '',
+    this.cache,
+    required dynamic Function(String value) searchCallback,
+  }) {
     this.searchCallback = (String value) {
       if (value != this.value || cache == null) {
         this.value = value;
@@ -439,15 +361,15 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchLists(String value) async {
     try {
       print('fetch lists');
-      final response =
-          await dio.get('$serverUrl/file/search', queryParameters: {
-        'value': value,
-        'paths': ['/globalstorage/list', '/userstorage/list']
-      });
+      //final response =
+      //    await dio.get('$serverUrl/file/search', queryParameters: {
+      //  'value': value,
+      //  'paths': ['/globalstorage/list', '/userstorage/list']
+      //});
 
-      print('content: ${response.data}');
+      //print('content: ${response.data}');
 
-      return response.data
+      return [] //response.data
           .map((e) => fs.FileInfo(
               FileSystemEntityType.file, e['name'], e['_id'], e['path']))
           .toList();
@@ -473,15 +395,15 @@ class _SearchPage extends State<SearchPage> {
   static Future<List> _fetchAddons(String value) async {
     try {
       print('fetch addons');
-      final response =
-          await dio.get('$serverUrl/file/search', queryParameters: {
-        'value': value,
-        'paths': ['/globalstorage/addon', '/userstorage/addon']
-      });
+      //final response =
+      //    await dio.get('$serverUrl/file/search', queryParameters: {
+      //  'value': value,
+      //  'paths': ['/globalstorage/addon', '/userstorage/addon']
+      //});
 
-      print('addons: ${response.data}');
+      //print('addons: ${response.data}');
 
-      return response.data
+      return [] //response.data
           .map((e) => fs.FileInfo(
               FileSystemEntityType.file, e['name'], e['_id'], e['path']))
           .toList();

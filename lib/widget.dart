@@ -100,13 +100,13 @@ class TextFieldDialog extends StatelessWidget {
   final String? confirmText;
   final String? cancelText;
   final void Function(bool value) hasConfirmed;
-  late BuildContext _ctx;
+  late final BuildContext _ctx;
 
   Widget _buildDialog() {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
-        fillColor: Colors.white,
+        fillColor: Theme.of(_ctx).backgroundColor,
         filled: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
@@ -121,6 +121,7 @@ class TextFieldDialog extends StatelessWidget {
     return ConfirmationButton(
         onTap: () {
           hasConfirmed(onTap());
+          controller?.clear();
           Navigator.of(_ctx).pop();
         },
         text: text);
@@ -252,26 +253,23 @@ class _ExpandedWidget extends State<ExpandedWidget>
         if (widget.direction == AxisDirection.up) _buildSizeTransition(),
         widget.header != null
             ? widget.header!
-            : Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                    onTap: () => setState(() {
-                          _isExpanded = !_isExpanded;
-                          _expandCheck();
-                        }),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(_isExpanded
-                            ? Icons.arrow_drop_down_rounded
-                            : Icons.arrow_right_rounded),
-                        FittedBox(
-                            child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 5),
-                                child: Text(widget.sectionTitle ?? '')))
-                      ],
-                    ))),
+            : GestureDetector(
+                onTap: () => setState(() {
+                      _isExpanded = !_isExpanded;
+                      _expandCheck();
+                    }),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
+                    Icon(_isExpanded
+                        ? Icons.arrow_drop_down_rounded
+                        : Icons.arrow_right_rounded),
+                    Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        child: Text(widget.sectionTitle ?? ''))
+                  ],
+                )),
         if (widget.direction == AxisDirection.down) _buildSizeTransition(),
       ],
     );
@@ -1008,4 +1006,68 @@ class _MultiTabPage extends State<MultiTabPage> {
       ],
     );
   }
+}
+
+class KeyboardVisibilityBuilder extends StatefulWidget {
+  const KeyboardVisibilityBuilder({super.key, required this.builder});
+
+  final Widget Function(BuildContext context, bool isKeyboardVisible) builder;
+
+  @override
+  State<StatefulWidget> createState() => _KeyboardVisibilityBuilder();
+}
+
+class _KeyboardVisibilityBuilder extends State<KeyboardVisibilityBuilder>
+    with WidgetsBindingObserver {
+  bool _isKbVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final isVisible = MediaQuery.of(context).viewInsets.bottom <= 0;
+
+    if (isVisible == _isKbVisible) return;
+    setState(() => _isKbVisible = isVisible);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _isKbVisible);
+  }
+}
+
+class HasConnectionSnackBar extends SnackBar {
+  HasConnectionSnackBar({super.key})
+      : super(
+          content: const Text('Back on track'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(8.0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        );
+}
+
+class NoConnectionSnackBar extends SnackBar {
+  NoConnectionSnackBar({super.key})
+      : super(
+          content: const Text('No connection'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(8.0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        );
 }

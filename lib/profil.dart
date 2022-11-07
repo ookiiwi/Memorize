@@ -1,10 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:memorize/auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:memorize/bloc/auth_bloc.dart';
+import 'package:memorize/bloc/connection_bloc.dart';
 import 'package:memorize/data.dart';
+import 'package:memorize/services/auth_service.dart';
 import 'package:memorize/settings_ui.dart';
+import 'package:memorize/widget.dart';
 import 'package:overlayment/overlayment.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -15,9 +18,20 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePage extends State<ProfilePage> {
-  bool _isLogged = false;
   final usernameFocusNode = FocusNode();
   final emailFocusNode = FocusNode();
+  Identity? newIdentity;
+  Identity? currentIdentity;
+  AuthBloc get authBloc => BlocProvider.of<AuthBloc>(context);
+  bool get connectivity =>
+      BlocProvider.of<ConnectionBloc>(context).state.connectivity;
+  late AuthBloc localAuthBloc;
+
+  @override
+  void initState() {
+    super.initState();
+    localAuthBloc = AuthBloc(authBloc.state);
+  }
 
   @override
   void dispose() {
@@ -25,96 +39,127 @@ class _ProfilePage extends State<ProfilePage> {
     super.dispose();
   }
 
-  bool get isLogged {
-    Auth.retrieveState().then((value) {
-      final ret = value == UserConnectionStatus.loggedIn;
-
-      if (ret != _isLogged) {
-        setState(() => _isLogged = ret);
-      }
-    });
-
-    return _isLogged;
-  }
-
   void _showIconExplorer() {
     Overlayment.show(
-        context: context,
-        OverWindow(
-            margin: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-            alignment: Alignment.center,
-            backgroundSettings: const BackgroundSettings(),
-            decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(20)),
-            child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.6,
-                width: MediaQuery.of(context).size.width * 0.8,
-                child: IconExplorer(
-                    onSelected: (value) => setState(() {
-                          userData = userData.copyWith(profilIcon: value);
-                          secureStorage.write(
-                              key: 'userData', value: userData.toString());
-                          Overlayment.dismissLast();
-                        })))));
-  }
-
-  Widget _buildLabeledTextField(String title, String value, FocusNode focusNode,
-      {void Function(String value)? onSubmitted}) {
-    return SettingsTile(
-      onTap: (context) => setState(() {
-        focusNode.requestFocus();
-      }),
-      title: Text(title),
-      value: Expanded(
-        child: AbsorbPointer(
-          child: TextField(
-            textAlign: TextAlign.end,
-            enableInteractiveSelection: false,
-            focusNode: focusNode,
-            controller: TextEditingController(text: value),
-            style: TextStyle(color: Theme.of(context).colorScheme.outline),
-            decoration: const InputDecoration(
-                contentPadding: EdgeInsets.only(),
-                border: OutlineInputBorder(borderSide: BorderSide.none)),
-            onSubmitted: onSubmitted,
-            onEditingComplete: () => setState(() {
-              focusNode.unfocus();
-            }),
+      context: context,
+      OverWindow(
+        margin: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
+        alignment: Alignment.center,
+        backgroundSettings: const BackgroundSettings(),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.6,
+          width: MediaQuery.of(context).size.width * 0.8,
+          child: IconExplorer(
+            onSelected: (value) => setState(
+              () {
+                setState(
+                    () => newIdentity = newIdentity?.copyWith(avatar: value));
+                Overlayment.dismissLast();
+              },
+            ),
           ),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return SettingsList(
-      sections: [
-        FittedBox(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 10),
-            child: Container(
-              decoration: const BoxDecoration(shape: BoxShape.circle),
-              child: MaterialButton(
-                minWidth: 10,
-                onPressed: () {
-                  _showIconExplorer();
-                },
-                color: Colors.amber,
-                clipBehavior: Clip.hardEdge,
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(8.0),
-                child: Image.asset(
-                  userData.profilIcon,
-                  height: 32,
-                  width: 32,
-                ),
-              ),
-            ),
+  Widget _buildLabeledTextField(String title, String value, FocusNode focusNode,
+      {bool enabled = true, void Function(String value)? onSubmitted}) {
+    return SettingsTile(
+      onTap: (context) => setState(() {
+        focusNode.requestFocus();
+      }),
+      title: Text(title),
+      value: Expanded(
+        child:
+            //IgnorePointer(
+            //  ignoring: false,
+            //  child:
+            TextField(
+          textAlign: TextAlign.end,
+          enabled: enabled,
+          focusNode: focusNode,
+          controller: TextEditingController(text: value),
+          style: TextStyle(color: Theme.of(context).colorScheme.outline),
+          decoration: const InputDecoration(
+            contentPadding: EdgeInsets.only(),
+            border: OutlineInputBorder(borderSide: BorderSide.none),
+          ),
+          onChanged: onSubmitted,
+          onEditingComplete: () => setState(
+            () {
+              focusNode.unfocus();
+            },
           ),
         ),
-        SettingsSection(
+      ),
+      //),
+    );
+  }
+
+  Widget buildSections() {
+    return BlocConsumer(
+      bloc: localAuthBloc,
+      listener: (context, state) {
+        bool? isCurrentRoute = ModalRoute.of(context)?.isCurrent;
+
+        if (state is AuthUpdateSettings && state.message == null) {
+          assert(newIdentity != null);
+
+          localAuthBloc.add(
+            UpdateProfile(
+              flowId: state.flowId,
+              identity: newIdentity!,
+            ),
+          );
+        } else if (state is AuthUnauthenticated &&
+            (isCurrentRoute == null || isCurrentRoute)) {
+          Overlayment.show(
+              OverWindow(
+                alignment: Alignment.center,
+                backgroundSettings: const BackgroundSettings(),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.5,
+                      maxWidth: MediaQuery.of(context).size.width * 0.6,
+                    ),
+                    child: BlocProvider.value(
+                      value: localAuthBloc,
+                      child: LoginDialog(
+                        email: currentIdentity?.email,
+                        username: currentIdentity?.username,
+                        showEmailField: false,
+                        showUsernameField: false,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              context: context);
+        }
+      },
+      buildWhen: (previous, current) {
+        if (previous is AuthSignIn && current is AuthAuthentificated) {
+          localAuthBloc.add(InitiateUpdateProfile());
+        } else if (previous is AuthUpdateSettings &&
+            current is AuthAuthentificated) {
+          currentIdentity = newIdentity?.copyWith();
+          authBloc.add(InitializeAuth());
+          Overlayment.dismissAll();
+        }
+
+        return true;
+      },
+      builder: (context, state) {
+        assert(authBloc.state is AuthAuthentificated);
+        assert(newIdentity != null);
+
+        return SettingsSection(
           title: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -124,25 +169,130 @@ class _ProfilePage extends State<ProfilePage> {
               )),
           tiles: [
             _buildLabeledTextField(
-                'Email', userData.email ?? 'ERROR', emailFocusNode),
+              'Email',
+              newIdentity!.email ?? 'ERROR',
+              emailFocusNode,
+              enabled: connectivity,
+              onSubmitted: (value) => newIdentity!.email = value,
+            ),
             _buildLabeledTextField(
-                'Username', userData.username ?? 'ERROR', usernameFocusNode),
+              'Username',
+              newIdentity!.username ?? 'ERROR',
+              usernameFocusNode,
+              enabled: connectivity,
+              onSubmitted: (value) => newIdentity!.username = value,
+            ),
             SettingsTile.navigation(
               title: const Text('Change password'),
-              onTap: (context) => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const ChangePasswordPage())),
-            )
+              onTap: connectivity
+                  ? (context) => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => BlocProvider(
+                            create: (_) => AuthBloc(localAuthBloc.state),
+                            child: ChangePasswordPage(
+                              onPasswordUpdated: () {
+                                Navigator.of(context).pop();
+                                authBloc.add(InitializeAuth());
+                              },
+                            ),
+                          ),
+                        ),
+                      )
+                  : (context) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        NoConnectionSnackBar(),
+                      );
+                    },
+            ),
           ],
-        ),
-      ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<AuthBloc, AuthState>(
+      buildWhen: (previous, current) {
+        if (previous != current &&
+            (current is AuthAuthentificated ||
+                current is AuthUnauthenticated)) {
+          localAuthBloc = AuthBloc(current);
+        }
+
+        return true;
+      },
+      builder: (context, state) {
+        bool isSignedIn = state is AuthAuthentificated;
+
+        if (state is AuthAuthentificated) {
+          newIdentity ??= state.identity.copyWith();
+          currentIdentity = state.identity.copyWith();
+        }
+
+        return Stack(
+          children: [
+            SettingsList(
+              sections: [
+                FittedBox(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 30.0, vertical: 10),
+                    child: Container(
+                      decoration: const BoxDecoration(shape: BoxShape.circle),
+                      child: MaterialButton(
+                        minWidth: 10,
+                        onPressed: () {
+                          _showIconExplorer();
+                        },
+                        color: Colors.amber,
+                        clipBehavior: Clip.hardEdge,
+                        shape: const CircleBorder(),
+                        padding: const EdgeInsets.all(8.0),
+                        child: Image.asset(
+                          newIdentity?.avatar ?? defaultAvatar,
+                          height: 32,
+                          width: 32,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (!isSignedIn) const LoginDialog(),
+                if (isSignedIn) buildSections(),
+              ],
+            ),
+            if (currentIdentity != newIdentity)
+              Container(
+                alignment: Alignment.bottomCenter,
+                margin: const EdgeInsets.only(
+                    bottom: kBottomNavigationBarHeight + 10),
+                child: FloatingActionButton(
+                  onPressed: () async =>
+                      localAuthBloc.add(InitiateUpdateProfile()),
+                  child: const Text('Apply'),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
 
 class LoginDialog extends StatefulWidget {
-  const LoginDialog({super.key, this.onServerResponse});
+  const LoginDialog({
+    super.key,
+    this.email,
+    this.username,
+    this.showEmailField = true,
+    this.showUsernameField = true,
+  });
 
-  final void Function(UserInfo userInfo, bool value)? onServerResponse;
+  final String? email;
+  final String? username;
+  final bool showEmailField;
+  final bool showUsernameField;
 
   @override
   State<StatefulWidget> createState() => _LoginDialog();
@@ -158,8 +308,8 @@ class _LoginDialog extends State<LoginDialog>
   String email = '';
   String username = '';
   String pwd = '';
-  Future? logResponse;
-  late UserInfo userInfo;
+
+  AuthBloc get authBloc => BlocProvider.of<AuthBloc>(context);
 
   @override
   void initState() {
@@ -168,93 +318,166 @@ class _LoginDialog extends State<LoginDialog>
         vsync: this, duration: const Duration(milliseconds: 500));
     _animation = CurvedAnimation(
         parent: _expandedController, curve: Curves.fastOutSlowIn);
+
+    if (widget.email != null) email = widget.email!;
+    if (widget.username != null) username = widget.username!;
   }
 
-  Widget _logResponseWidget() {
-    return FutureBuilder(
-        future: logResponse,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const CircularProgressIndicator();
-          } else {
-            if (widget.onServerResponse != null) {
-              SchedulerBinding.instance.addPostFrameCallback((_) => widget
-                      .onServerResponse!(
-                  userInfo, snapshot.data == UserConnectionStatus.loggedIn));
-            }
-            return const Icon(Icons.check);
-          }
-        });
+  Widget _buildAuthField({
+    String? hintText,
+    String? value,
+    void Function(String value)? onChanged,
+    String? errorText,
+    bool obscureText = false,
+    EdgeInsets padding = const EdgeInsets.all(8.0),
+  }) {
+    return Padding(
+        padding: padding,
+        child: TextField(
+          controller: TextEditingController(text: value),
+          onChanged: onChanged,
+          obscureText: obscureText,
+          decoration: InputDecoration(
+            errorText: errorText,
+            hintText: hintText,
+            errorMaxLines: 3,
+            border: const OutlineInputBorder(),
+          ),
+        ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      if (_doRegisterUser || !_doRegisterUserAnimEnded)
-        SizeTransition(
-            axisAlignment: -1.0,
-            sizeFactor: _animation,
-            child: Padding(
+    return BlocConsumer<AuthBloc, AuthState>(
+      listener: (context, state) {
+        bool? isCurrentRoute = ModalRoute.of(context)?.isCurrent;
+        if (isCurrentRoute != null && !isCurrentRoute) return;
+        if (state is! AuthSignUp || state.hasError) return;
+
+        authBloc.add(
+          _doRegisterUser
+              ? SignUp(
+                  flowId: state.flowId,
+                  email: email,
+                  username: username,
+                  password: pwd,
+                  avatar: defaultAvatar,
+                )
+              : SignIn(
+                  flowId: state.flowId,
+                  email: email,
+                  username: username,
+                  password: pwd,
+                ),
+        );
+      },
+      builder: (context, state) {
+        final AuthSignUp? errorState = state is AuthSignUp ? state : null;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (errorState?.generalError != null)
+              Padding(
                 padding: padding,
-                child: TextField(
-                    onChanged: (value) => email = value,
-                    decoration: InputDecoration(
-                        hintText: 'email',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20)))))),
-      Padding(
-          padding: padding,
-          child: TextField(
-              onChanged: (value) => username = value,
-              decoration: InputDecoration(
-                  hintText: _doRegisterUser ? 'username' : 'username/email',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20))))),
-      Padding(
-          padding: padding,
-          child: TextField(
+                child: Center(
+                  child: Text(
+                    errorState?.generalError ?? '',
+                    textAlign: TextAlign.center,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+              ),
+            if (widget.showEmailField &&
+                (_doRegisterUser || !_doRegisterUserAnimEnded))
+              SizeTransition(
+                axisAlignment: -1.0,
+                sizeFactor: _animation,
+                child: _buildAuthField(
+                  hintText: 'email',
+                  errorText: errorState?.emailError,
+                  value: email,
+                  onChanged: (value) => email = value,
+                ),
+              ),
+            if (widget.showUsernameField)
+              _buildAuthField(
+                hintText: 'username',
+                value: username,
+                errorText: errorState?.usernameError,
+                onChanged: (value) => username = value,
+              ),
+            _buildAuthField(
+              hintText: 'password',
+              value: pwd,
+              errorText: errorState?.passwordError,
+              obscureText: true,
               onChanged: (value) => pwd = value,
-              decoration: InputDecoration(
-                  hintText: 'password',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20))))),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const Spacer(),
-        Switch(
-            value: _doRegisterUser,
-            onChanged: (value) {
-              _doRegisterUser = value;
+            ),
+            if (state.message != null)
+              Padding(
+                padding: padding,
+                child: Text(
+                  state.message!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            if (widget.showEmailField)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  Switch(
+                    value: _doRegisterUser,
+                    onChanged: (value) {
+                      _doRegisterUser = value;
+                      email = widget.email ?? '';
+                      username = widget.username ?? '';
+                      pwd = '';
 
-              if (value) {
-                _expandedController.forward();
-              } else {
-                _doRegisterUserAnimEnded = false;
-                _expandedController
-                    .reverse()
-                    .whenCompleteOrCancel(() => setState(() {
-                          _doRegisterUserAnimEnded = true;
-                        }));
-              }
+                      if (value) {
+                        _expandedController.forward();
+                      } else {
+                        _doRegisterUserAnimEnded = false;
+                        _expandedController.reverse().whenCompleteOrCancel(
+                              () => setState(
+                                () => _doRegisterUserAnimEnded = true,
+                              ),
+                            );
+                      }
 
-              setState(() {});
-            }),
-        const Expanded(
-            child: Padding(padding: padding, child: Text('Register')))
-      ]),
-      Padding(
-          padding: padding,
-          child: FloatingActionButton(
-              onPressed: () async {
-                userInfo = UserInfo(email: email, username: username, pwd: pwd);
-                logResponse = (_doRegisterUser
-                    ? Auth.register(userInfo)
-                    : Auth.login(userInfo));
-                setState(() {});
-              },
-              child: logResponse != null
-                  ? _logResponseWidget()
-                  : const Icon(Icons.check)))
-    ]);
+                      setState(() {});
+                    },
+                  ),
+                  const Expanded(
+                    child: Padding(
+                      padding: padding,
+                      child: Text('Register'),
+                    ),
+                  ),
+                ],
+              ),
+            Padding(
+              padding: padding,
+              child: IgnorePointer(
+                ignoring: state is AuthSignIn && !state.hasError,
+                child: FloatingActionButton(
+                  onPressed: () async {
+                    authBloc.add(
+                      _doRegisterUser ? InitiateSignUp() : InitiateSignIn(),
+                    );
+                  },
+                  child: state is AuthSignIn && !state.hasError
+                      ? const CircularProgressIndicator()
+                      : const Icon(Icons.check),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -269,40 +492,164 @@ class IconExplorer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-        padding: const EdgeInsets.all(10),
-        child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 100.0,
-              mainAxisSpacing: 10.0,
-              crossAxisSpacing: 10.0,
-              childAspectRatio: 1.0,
-            ),
-            itemCount: iconPaths.length,
-            itemBuilder: (context, i) => MaterialButton(
-                onPressed: () {
-                  if (onSelected != null) onSelected!(iconPaths[i]);
-                  print('path: ${iconPaths[i]}');
-                },
-                shape: const CircleBorder(),
-                color: Theme.of(context).colorScheme.onPrimary,
-                child: Image.asset(
-                  iconPaths[i],
-                  height: 46,
-                  width: 46,
-                ))));
+      padding: const EdgeInsets.all(10),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 100.0,
+          mainAxisSpacing: 10.0,
+          crossAxisSpacing: 10.0,
+          childAspectRatio: 1.0,
+        ),
+        itemCount: iconPaths.length,
+        itemBuilder: (context, i) => MaterialButton(
+          onPressed: () {
+            if (onSelected != null) onSelected!(iconPaths[i]);
+          },
+          shape: const CircleBorder(),
+          color: Theme.of(context).colorScheme.onPrimary,
+          child: Image.asset(
+            iconPaths[i],
+            height: 46,
+            width: 46,
+          ),
+        ),
+      ),
+    );
   }
 }
 
-class ChangePasswordPage extends StatelessWidget {
-  const ChangePasswordPage({super.key});
+class ChangePasswordPage extends StatefulWidget {
+  const ChangePasswordPage({super.key, this.onPasswordUpdated});
+
+  final VoidCallback? onPasswordUpdated;
+
+  @override
+  State<StatefulWidget> createState() => _ChangePasswordPage();
+}
+
+class _ChangePasswordPage extends State<ChangePasswordPage> {
+  late final String? email;
+  late final String? username;
+  String oldPwd = '';
+  String newPwd = '';
+  final newPwdKey = GlobalKey();
+  final oldPwdKey = GlobalKey();
+  bool hasTryReAuth = false;
+
+  AuthBloc get authBloc => BlocProvider.of<AuthBloc>(context);
+
+  @override
+  void initState() {
+    super.initState();
+    final tmpState = authBloc.state;
+    assert(tmpState is AuthAuthentificated);
+    tmpState as AuthAuthentificated;
+
+    email = tmpState.identity.email;
+    username = tmpState.identity.username;
+
+    assert(email != null || username != null);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        children: [],
-      ),
+    return BlocBuilder<AuthBloc, AuthState>(
+      buildWhen: (p, c) {
+        bool ret = false;
+
+        if (c is AuthSignIn && !c.hasError) {
+          authBloc.add(
+            SignIn(
+              flowId: c.flowId,
+              email: email,
+              username: username,
+              password: oldPwd,
+            ),
+          );
+        } else if (p is AuthSignIn && c is AuthAuthentificated) {
+          authBloc.add(
+            InitiateUpdatePassword(),
+          );
+        } else if (c is AuthUpdateSettings && c.message == null) {
+          authBloc.add(
+            UpdatePassword(
+              flowId: c.flowId,
+              password: newPwd,
+            ),
+          );
+        } else if (p is AuthUpdateSettings && c is AuthAuthentificated) {
+          if (widget.onPasswordUpdated != null) widget.onPasswordUpdated!();
+        } else {
+          ret = true;
+        }
+
+        return ret;
+      },
+      builder: (context, state) {
+        return Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            children: [
+              if (state is AuthSignIn && state.generalError != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    state.generalError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: TextField(
+                  key: oldPwdKey,
+                  onChanged: (value) => oldPwd = value,
+                  decoration: InputDecoration(
+                    hintText: 'Old password',
+                    errorText: state is AuthSignIn ? state.passwordError : null,
+                    errorMaxLines: 3,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              Padding(
+                key: newPwdKey,
+                padding: const EdgeInsets.all(8.0),
+                child: TextField(
+                  onChanged: (value) => newPwd = value,
+                  decoration: InputDecoration(
+                    hintText: 'New password',
+                    errorText:
+                        state is AuthUpdateSettings ? state.message : null,
+                    errorMaxLines: 3,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              if (state is! AuthUpdateSettings && state.message != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    state.message!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              MaterialButton(
+                padding: const EdgeInsets.all(20),
+                color: Theme.of(context).colorScheme.primaryContainer,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                onPressed: () => authBloc.add(InitiateSignIn()),
+                child: const Text('Change password'),
+              )
+            ],
+          ),
+        );
+      },
     );
   }
 }

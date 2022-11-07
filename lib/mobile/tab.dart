@@ -1,6 +1,9 @@
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:memorize/bloc/auth_bloc.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/list_explorer.dart';
 import 'package:memorize/tab.dart';
 
@@ -48,48 +51,55 @@ class _MainPage extends State<MainPage> {
     final onAppBarColor = Theme.of(context).colorScheme.onSecondaryContainer;
     const appBarRadius = Radius.circular(50);
 
-    return Scaffold(
-        extendBody: true,
-        body: SafeArea(
-            maintainBottomViewPadding: true,
-            child: TabNavigator(
-                navigatorKey: navKey,
-                builder: (context) {
-                  _navCtx = context;
-                  return tabs[_currTabIndex];
-                })),
-        bottomNavigationBar: ClipRRect(
-          borderRadius: const BorderRadius.only(
-              topLeft: appBarRadius, topRight: appBarRadius),
-          child: BottomNavigationBar(
-            backgroundColor: appBarColor,
-            selectedItemColor: onAppBarColor,
-            unselectedItemColor: onAppBarColor,
-            currentIndex: _currTabIndex,
-            showSelectedLabels: true,
-            onTap: (value) => setState(() {
-              if (_currTabIndex == value) {
-                Navigator.of(_navCtx).popUntil(ModalRoute.withName('/'));
-              } else {
-                navKey = GlobalKey<NavigatorState>();
-              }
-              _currTabIndex = value;
-            }),
-            items: [
-              BottomNavigationBarItem(
-                  backgroundColor: appBarColor,
-                  label: 'Account',
-                  icon: const Icon(Icons.account_circle_outlined)),
-              BottomNavigationBarItem(
-                  backgroundColor: appBarColor,
-                  label: 'Lists',
-                  icon: const Icon(Icons.list_rounded)),
-              BottomNavigationBarItem(
-                  backgroundColor: appBarColor,
-                  label: 'Search',
-                  icon: const Icon(Icons.search_rounded)),
-            ],
-          ),
-        ));
+    return BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) => Scaffold(
+            extendBody: true,
+            body: SafeArea(
+                maintainBottomViewPadding: true,
+                child: TabNavigator(
+                    navigatorKey: navKey,
+                    builder: (context) {
+                      _navCtx = context;
+                      return tabs[_currTabIndex];
+                    })),
+            bottomNavigationBar: ClipRRect(
+              borderRadius: const BorderRadius.only(
+                  topLeft: appBarRadius, topRight: appBarRadius),
+              child: BottomNavigationBar(
+                backgroundColor: appBarColor,
+                selectedItemColor: onAppBarColor,
+                unselectedItemColor: onAppBarColor,
+                currentIndex: _currTabIndex,
+                showSelectedLabels: true,
+                onTap: (value) => setState(() {
+                  if (_currTabIndex == value) {
+                    Navigator.of(_navCtx).popUntil(ModalRoute.withName('/'));
+                  } else {
+                    navKey = GlobalKey<NavigatorState>();
+                  }
+                  _currTabIndex = value;
+                }),
+                items: [
+                  BottomNavigationBarItem(
+                      backgroundColor: appBarColor,
+                      label: 'Account',
+                      icon: Image.asset(
+                        state is AuthAuthentificated
+                            ? state.identity.avatar
+                            : defaultAvatar,
+                        height: 24,
+                        width: 24,
+                      )),
+                  BottomNavigationBarItem(
+                      backgroundColor: appBarColor,
+                      label: 'Lists',
+                      icon: const Icon(Icons.list_rounded)),
+                  BottomNavigationBarItem(
+                      backgroundColor: appBarColor,
+                      label: 'Search',
+                      icon: const Icon(Icons.search_rounded)),
+                ],
+              ),
+            )));
   }
 }
