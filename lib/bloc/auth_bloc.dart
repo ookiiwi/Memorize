@@ -25,9 +25,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignOut>(_onSignOut);
     on<UpdateProfile>(_onUpdateProfile);
     on<UpdatePassword>(_onUpdatePassword);
+    on<DeleteIdentity>(_onDeleteIdentity);
   }
 
-  static const _unhandleExceptionMessage = 'An error occured. Try again later';
+  static const _unhandleExceptionMessage = 'An error occured. Try again later.';
   final OfflineLogger? _offlineLogger;
 
   Future<void> _onInitializeAuth(
@@ -35,41 +36,36 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final rawSession = await SecureStorage.getSession();
-
-      // check if user's session exists locally
-      if (rawSession == null) {
-        print('no session');
-        emit(AuthUnauthenticated());
-        return;
-      }
-
-      var session = AuthAuthentificated.fromJson(jsonDecode(rawSession));
+      late final Identity identity;
 
       try {
-        final remoteSession = await _makeAuthAuthentificated(session.token);
+        final remoteSession = await AuthService.getCurrentSession();
 
         if (remoteSession == null) {
-          print('no remote session');
-          SecureStorage.deleteSession();
+          await SecureStorage.deleteSession();
           emit(AuthUnauthenticated());
           return;
         }
 
-        session = remoteSession;
+        identity = Identity.fromJson(remoteSession['identity']);
       } on IOException {
-        print('no internet');
-        // log offline action
+        final localIdentity = await SecureStorage.getSession();
+
+        //check if user's session exists locally
+        if (localIdentity == null) {
+          emit(AuthUnauthenticated());
+          return;
+        }
+
+        identity = Identity.fromJson(jsonDecode(localIdentity));
       }
 
-      emit(session);
+      emit(
+        AuthAuthentificated(identity),
+      );
     } on UnknownException catch (e) {
       emit(
         AuthUnauthenticated(message: e.message),
-      );
-    } on IOException {
-      emit(
-        AuthNoInternet(),
       );
     } catch (_) {
       emit(
@@ -96,11 +92,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(AuthUninitiated(
         message: e.message,
       ));
-    } on IOException {
-      emit(
-        AuthNoInternet(),
-      );
-    } catch (_) {
+    } catch (e) {
       emit(AuthUninitiated(
         message: _unhandleExceptionMessage,
       ));
@@ -109,21 +101,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _onSignUp(SignUp event, Emitter<AuthState> emit) async {
     try {
-      final token = await AuthService.signUp(
+      final rawIdentity = await AuthService.signUp(
         event.flowId,
-        event.email,
-        event.username,
         event.password,
-        event.avatar,
+        {
+          "traits.email": event.email,
+          "traits.username": event.username,
+          "traits.avatar": event.avatar,
+        },
       );
 
-      final auth = await _makeAuthAuthentificated(token);
+      final identity = Identity.fromJson(rawIdentity);
+      SecureStorage.persistSession(jsonEncode(identity));
 
-      if (auth == null) {
-        throw const UnknownException('Cannot get current session');
-      }
-
-      emit(auth);
+      emit(
+        AuthAuthentificated(identity),
+      );
     } on InvalidCredentialsException catch (e) {
       emit(AuthSignUp.withErrors(
         flowId: event.flowId,
@@ -159,7 +152,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final flowId = await AuthService.initiateLogin();
+      final flowId = await AuthService.initiateLogin(refresh: event.refresh);
       emit(AuthSignIn(
         flowId: flowId,
       ));
@@ -184,20 +177,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _onSignIn(SignIn event, Emitter<AuthState> emit) async {
     try {
-      final token = await AuthService.signIn(
+      final identifier = event.email == null || event.email!.isEmpty
+          ? event.username!
+          : event.email!;
+
+      final rawIdentity = await AuthService.signIn(
         event.flowId,
-        event.email,
-        event.username,
+        identifier,
         event.password,
       );
 
-      final auth = await _makeAuthAuthentificated(token);
+      final identity = Identity.fromJson(rawIdentity);
+      SecureStorage.persistSession(jsonEncode(identity));
 
-      if (auth == null) {
-        throw const UnknownException('Cannot get current session');
-      }
-
-      emit(auth);
+      emit(
+        AuthAuthentificated(identity),
+      );
     } on InvalidCredentialsException catch (e) {
       emit(AuthSignIn.withErrors(
         flowId: event.flowId,
@@ -238,10 +233,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _onSignOut(SignOut event, Emitter<AuthState> emit) async {
     try {
-      final token = await _getSessionToken();
-      await AuthService.signOut(token);
+      await AuthService.signOut();
       SecureStorage.deleteSession();
 
+      emit(
+        AuthUnauthenticated(),
+      );
+    } on UnauthorizedAccessException {
       emit(
         AuthUnauthenticated(),
       );
@@ -266,8 +264,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final token = await _getSessionToken();
-      final flowId = await AuthService.initiateSettingsFlow(token);
+      final flowId = await AuthService.initiateSettings();
 
       emit(
         AuthUpdateSettings(
@@ -298,18 +295,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final token = await _getSessionToken();
-      await AuthService.updateSettings(
+      final rawIdentity = await AuthService.updateSettings(
         event.flowId,
-        token,
         'profile',
-        event.identity.toJson(),
+        event.identity.toJson()..remove('id'),
       );
 
-      _makeAuthAuthentificated(token, event.identity);
+      final identity = Identity.fromJson(rawIdentity);
+      SecureStorage.persistSession(jsonEncode(identity));
 
-      //emit(AuthUpdatedSettings());
-      add(InitializeAuth());
+      emit(AuthAuthentificated(identity));
     } on InvalidCredentialsException catch (e) {
       emit(
         AuthUpdateSettings(
@@ -344,8 +339,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final token = await _getSessionToken();
-      final flowId = await AuthService.initiateSettingsFlow(token);
+      final flowId = await AuthService.initiateSettings();
 
       emit(
         AuthUpdateSettings(
@@ -376,17 +370,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      final token = await _getSessionToken();
-
-      await AuthService.updateSettings(
+      final rawIdentity = await AuthService.updateSettings(
         event.flowId,
-        token,
         'password',
         {'password': event.password},
       );
 
-      //emit(AuthUpdatedSettings());
-      add(InitializeAuth());
+      final identity = Identity.fromJson(rawIdentity);
+      SecureStorage.persistSession(jsonEncode(identity));
+
+      emit(AuthAuthentificated(identity));
     } on InvalidCredentialsException catch (e) {
       emit(
         AuthUpdateSettings(
@@ -423,54 +416,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  Future<AuthAuthentificated?> _makeAuthAuthentificated(String token,
-      [Identity? identity]) async {
+  Future<void> _onDeleteIdentity(
+    DeleteIdentity event,
+    Emitter<AuthState> emit,
+  ) async {
     try {
-      late final AuthAuthentificated? auth;
-      final session = await AuthService.getCurrentSession(token);
-
-      if (session != null) {
-        auth = AuthAuthentificated(
-          token,
-          Identity.fromJson(session['identity']),
-        );
-      } else {
-        auth = identity != null
-            ? AuthAuthentificated(
-                token,
-                identity,
-              )
-            : null;
-      }
-
-      if (auth != null) {
-        SecureStorage.persistSession(jsonEncode(auth));
-      }
-
-      return auth;
-    } on IOException {
-      if (identity != null) {
-        SecureStorage.persistSession(
-          jsonEncode(
-            AuthAuthentificated(token, identity),
-          ),
-        );
-      } else {
-        rethrow;
-      }
+      await AuthService.deleteIdentity(event.id);
+      emit(AuthUnauthenticated());
+    } on UnknownException catch (e) {
+      emit(
+        AuthUnauthenticated(message: e.message),
+      );
+    } catch (_) {
+      emit(
+        AuthUnauthenticated(message: _unhandleExceptionMessage),
+      );
     }
-
-    return null;
-  }
-
-  Future<String> _getSessionToken() async {
-    final rawSession = await SecureStorage.getSession();
-
-    if (rawSession == null) {
-      throw Exception(); // Missing token
-    }
-
-    final token = AuthAuthentificated.fromJson(jsonDecode(rawSession)).token;
-    return token;
   }
 }

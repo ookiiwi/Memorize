@@ -11,18 +11,20 @@ class AuthUnauthenticated extends AuthState {
 }
 
 class AuthAuthentificated extends AuthState {
-  AuthAuthentificated(this.token, this.identity);
-  AuthAuthentificated.fromJson(Map<String, dynamic> json)
-      : token = json['token'],
-        identity = Identity.fromJson(json['identity']);
+  AuthAuthentificated(
+      //this.token,
+      this.identity);
+  //AuthAuthentificated.fromJson(Map<String, dynamic> json)
+  //    : //token = json['token'],
+  //      identity = Identity.fromJson(json['identity']);
 
-  final String token;
+  //final String token;
   final Identity identity;
 
-  Map<String, dynamic> toJson() => {
-        'token': token,
-        'identity': identity.toJson(),
-      };
+  //Map<String, dynamic> toJson() => {
+  //      //'token': token,
+  //      'identity': identity.toJson(),
+  //    };
 }
 
 class AuthUninitiated extends AuthState {
@@ -77,25 +79,29 @@ class AuthSignIn extends AuthSignUp {
     super.email,
     super.username,
     super.password,
+    this.refresh = false,
   });
 
-  AuthSignIn.withErrors(
-      {required super.flowId,
-      super.email,
-      super.username,
-      super.password,
-      String? emailError,
-      String? usernameError,
-      String? passwordError,
-      String? generalError,
-      String? message})
-      : super.withErrors(
+  AuthSignIn.withErrors({
+    required super.flowId,
+    super.email,
+    super.username,
+    super.password,
+    this.refresh = false,
+    String? emailError,
+    String? usernameError,
+    String? passwordError,
+    String? generalError,
+    String? message,
+  }) : super.withErrors(
           emailError: emailError,
           usernameError: usernameError,
           passwordError: passwordError,
           generalError: generalError,
           message: message,
         );
+
+  final bool refresh;
 }
 
 class AuthUpdateSettings extends AuthState {

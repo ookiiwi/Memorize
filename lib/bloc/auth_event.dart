@@ -11,7 +11,11 @@ class InitializeAuth extends AuthEvent {}
 
 class InitiateSignUp extends AuthEvent {}
 
-class InitiateSignIn extends AuthEvent {}
+class InitiateSignIn extends AuthEvent {
+  const InitiateSignIn({this.refresh});
+
+  final bool? refresh;
+}
 
 class InitiateUpdateProfile extends AuthEvent {}
 
@@ -41,11 +45,12 @@ class SignUp extends AuthEvent {
 }
 
 class SignIn extends AuthEvent {
-  const SignIn(
-      {required this.flowId,
-      this.email,
-      this.username,
-      required this.password});
+  const SignIn({
+    required this.flowId,
+    this.email,
+    this.username,
+    required this.password,
+  });
 
   final String flowId;
   final String? email;
@@ -53,12 +58,7 @@ class SignIn extends AuthEvent {
   final String password;
 
   @override
-  List<Object?> get props => [
-        flowId,
-        email,
-        username,
-        password,
-      ];
+  List<Object?> get props => [flowId, email, username, password];
 }
 
 class SignOut extends AuthEvent {}
@@ -81,4 +81,10 @@ class UpdatePassword extends AuthEvent {
 
   @override
   List<Object?> get props => [flowId, password];
+}
+
+class DeleteIdentity extends AuthEvent {
+  const DeleteIdentity(this.id);
+
+  final String id;
 }
