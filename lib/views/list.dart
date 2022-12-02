@@ -1,29 +1,116 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:memorize/file_system.dart';
+import 'package:memorize/list.dart';
+import 'package:memorize/services/dict.dart';
+import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
+import 'package:memorize/widgets/search.dart';
 import 'package:mrx_charts/mrx_charts.dart';
+import 'package:xml/xml.dart';
 
 class ListViewer extends StatefulWidget {
-  const ListViewer({super.key, required this.name});
-  const ListViewer.fromFile({super.key, required dynamic fileInfo}) : name = '';
+  const ListViewer({super.key, required this.name}) : fileinfo = null;
+  const ListViewer.fromFile({super.key, required this.fileinfo}) : name = null;
 
-  final String name;
+  final String? name;
+  final FileInfo? fileinfo;
 
   @override
   State<StatefulWidget> createState() => _ListViewer();
 }
 
 class _ListViewer extends State<ListViewer> {
-  List _entries = List.filled(20, 'entry');
+  late final MemoList list;
+  late final Map<String, dynamic> model;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.name != null) {
+      assert(widget.name!.isNotEmpty);
+      list = MemoList(widget.name!, 'jpn-eng');
+
+      writeList();
+    } else {
+      assert(widget.fileinfo != null);
+
+      // load
+      final file = File(widget.fileinfo!.path);
+
+      if (!file.existsSync()) {
+        throw Exception(
+            'File not found. \'${widget.fileinfo!.name}\' does not exist');
+      }
+
+      final data = file.readAsStringSync();
+      list = MemoList.fromJson(jsonDecode(data));
+    }
+
+    // TODO: load model
+    model = const {
+      'pron': "//form[@type='r_ele']/orth", // ?
+      'orth': {
+        'reading': "//form[@type='r_ele']/orth", // ?
+        'text': "//form[@type='k_ele']/orth"
+      },
+      'sense': {
+        'root': "//sense",
+        'pos': "./note[@type='pos']", // ?
+        'usg': "./usg", // ?
+        'ref': "./ref", // ?
+        'trans': "./cit[@type='trans']/quote",
+      }
+    };
+  }
+
+  void writeList() {
+    final file = File('fe/${list.name}');
+    file.writeAsStringSync(jsonEncode(list));
+  }
 
   @override
   Widget build(BuildContext context) {
     return Material(
       child: PageView(children: [
-        EntryViewier(entries: _entries),
+        Stack(
+          children: [
+            EntryViewier(
+              list: list,
+              model: model,
+            ),
+            Positioned(
+              bottom: kBottomNavigationBarHeight + 10,
+              right: 20,
+              child: FloatingActionButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) {
+                      return EntrySearch(
+                        target: list.target,
+                        onItemSelected: (id) {
+                          final entry = ListEntry(id, 'jpn-eng');
+                          list.entries.add(entry);
+                          writeList();
+                          Navigator.of(context).maybePop();
+                        },
+                        model: model,
+                      );
+                    },
+                  ),
+                ).then((value) {
+                  if (mounted) setState(() {});
+                }),
+                child: const Icon(Icons.add),
+              ),
+            ),
+          ],
+        ),
         SafeArea(
           child: Column(
             children: [
@@ -75,9 +162,10 @@ class _ListViewer extends State<ListViewer> {
 class EntryViewier extends StatelessWidget {
   static final _popUpMenuItems = {'about': () {}};
 
-  const EntryViewier({super.key, this.entries = const []});
+  const EntryViewier({super.key, required this.list, required this.model});
 
-  final List entries;
+  final MemoList list;
+  final Map<String, dynamic> model;
 
   @override
   Widget build(BuildContext context) {
@@ -91,16 +179,18 @@ class EntryViewier extends StatelessWidget {
               IconButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                      builder: (context) => SafeArea(
-                              child: Quiz(
-                            onEnd: Navigator.of(context).pop,
-                          ))),
+                    builder: (context) => SafeArea(
+                      child: Quiz(
+                        onEnd: Navigator.of(context).pop,
+                      ),
+                    ),
+                  ),
                 ),
                 icon: const Icon(Icons.play_arrow_rounded),
               ),
-              const Center(
+              Center(
                 child: Text(
-                  'Title',
+                  list.name,
                   textScaleFactor: 1.5,
                 ),
               ),
@@ -126,34 +216,49 @@ class EntryViewier extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ListView.separated(
-                  separatorBuilder: (context, index) => Divider(
-                    color: Theme.of(context).colorScheme.onBackground,
-                  ),
-                  itemCount: entries.length,
-                  itemBuilder: (context, i) {
-                    return Container(
+          child: ListView.separated(
+            padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
+            separatorBuilder: (context, index) => Divider(
+              color: Theme.of(context).colorScheme.onBackground,
+            ),
+            itemCount: list.entries.length,
+            itemBuilder: (context, i) {
+              final entry = list.entries.elementAt(i);
+              Future<String> fEntry = Dict.get(entry.id, entry.target);
+
+              return FutureBuilder<String>(
+                future: fEntry,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else {
+                    String entry = snapshot.data as String;
+
+                    return MaterialButton(
                       padding: const EdgeInsets.all(8.0),
-                      child: Text(entries[i]),
+                      onPressed: () {
+                        Navigator.of(context)
+                            .push(MaterialPageRoute(builder: (context) {
+                          return Scaffold(
+                            body: Padding(
+                              padding: const EdgeInsets.only(top: 10.0),
+                              child: Entry(
+                                doc: XmlDocument.parse(entry),
+                                model: model,
+                              ),
+                            ),
+                          );
+                        }));
+                      },
+                      child: Entry.preview(
+                        doc: XmlDocument.parse(entry),
+                        model: model,
+                      ),
                     );
-                  },
-                ),
-              ),
-              Positioned(
-                right: 15,
-                bottom: kBottomNavigationBarHeight + 10,
-                child: FloatingActionButton(
-                  backgroundColor:
-                      Theme.of(context).colorScheme.secondaryContainer,
-                  onPressed: () {},
-                  child: const Icon(Icons.add),
-                ),
-              ),
-            ],
+                  }
+                },
+              );
+            },
           ),
         ),
       ],
@@ -270,5 +375,82 @@ class StatsViewer extends StatelessWidget {
               ),
             ],
           );
+  }
+}
+
+class EntrySearch extends StatefulWidget {
+  const EntrySearch(
+      {super.key,
+      this.onItemSelected,
+      required this.target,
+      required this.model});
+
+  final String target;
+  final Map<String, dynamic> model;
+  final void Function(String id)? onItemSelected;
+
+  @override
+  State<StatefulWidget> createState() => _EntrySearch();
+}
+
+class _EntrySearch extends State<EntrySearch> {
+  Future<Map<String, String>> fEntries = Future.value({});
+
+  Future<Map<String, String>> fetchResults(String value) async {
+    final ids = (await Dict.find(value, widget.target));
+
+    return Map.fromEntries(
+      await Future.wait(ids.entries.map(
+        (e) async => MapEntry(e.key, (await Dict.get(e.key, widget.target))),
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: SearchBar(
+            onChanged: (value) async {
+              fEntries = fetchResults(value);
+              setState(() {});
+            },
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder(
+              future: fEntries,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                } else {
+                  final entries = snapshot.data as Map<String, String>;
+
+                  return ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: entries.length,
+                      separatorBuilder: (context, index) => const Divider(
+                            thickness: 0.3,
+                          ),
+                      itemBuilder: (context, i) {
+                        return MaterialButton(
+                          onPressed: () {
+                            if (widget.onItemSelected != null) {
+                              widget.onItemSelected!(entries.keys.elementAt(i));
+                            }
+                          },
+                          child: Entry.preview(
+                            doc: XmlDocument.parse(entries.values.elementAt(i)),
+                            model: widget.model,
+                          ),
+                        );
+                      });
+                }
+              }),
+        )
+      ],
+    );
   }
 }
