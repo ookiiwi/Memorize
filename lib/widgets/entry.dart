@@ -8,15 +8,22 @@ class Entry extends StatefulWidget {
       {super.key,
       required this.doc,
       required this.model,
-      this.preset = 'details'});
-  const Entry.core({super.key, required this.doc, required this.model})
-      : preset = 'core';
+      this.preset = 'details'})
+      : coreReading = null;
+  const Entry.core({
+    super.key,
+    required this.doc,
+    required this.model,
+    this.coreReading = false,
+  }) : preset = 'core';
   const Entry.preview({super.key, required this.doc, required this.model})
-      : preset = 'preview';
+      : preset = 'preview',
+        coreReading = null;
 
   final XmlDocument doc;
   final Map<String, dynamic> model;
   final String preset;
+  final bool? coreReading;
 
   @override
   State<StatefulWidget> createState() => _Entry();
@@ -32,7 +39,7 @@ class _Entry extends State<Entry> {
           ..removeWhere((elt) => elt == null));
   }
 
-  List<OrthItem> buildOrthData() {
+  List<OrthItem> buildOrthData([bool skipReading = false]) {
     List<String> texts = List.from(doc
         .queryXPath(model['orth']['text'])
         .nodes
@@ -40,13 +47,14 @@ class _Entry extends State<Entry> {
         .toList()
       ..removeWhere((elt) => elt == null));
 
-    List<String?> readings = model['orth'].containsKey('reading')
-        ? doc
-            .queryXPath(model['orth']['reading'])
-            .nodes
-            .map((node) => node.text)
-            .toList()
-        : [];
+    List<String?> readings =
+        !skipReading && model['orth'].containsKey('reading')
+            ? doc
+                .queryXPath(model['orth']['reading'])
+                .nodes
+                .map((node) => node.text)
+                .toList()
+            : [];
 
     List<OrthItem> ret = [];
 
@@ -62,7 +70,12 @@ class _Entry extends State<Entry> {
   }
 
   Widget buildCore() {
-    return Container();
+    return Card(
+      child: Center(
+          child: OrthElement(
+        data: buildOrthData(!widget.coreReading!),
+      )),
+    );
   }
 
   Widget buildDetails() {
@@ -102,7 +115,7 @@ class _Entry extends State<Entry> {
   }
 
   Widget buildPreview() {
-    return Row(children: [OrthElement(data: buildOrthData())]);
+    return Row(children: [Card(child: OrthElement(data: buildOrthData()))]);
   }
 
   @override
@@ -143,23 +156,22 @@ class _OrthElement extends State<OrthElement> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (data.first.reading != null)
-                Text(
-                  data.first.reading!,
-                  textScaleFactor: 0.75,
-                ),
-              Text(
-                data.first.text,
-                textScaleFactor: 2,
-              ),
-            ],
-          )),
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (data.first.reading != null)
+            Text(
+              data.first.reading!,
+              textScaleFactor: 0.75,
+            ),
+          Text(
+            data.first.text,
+            textScaleFactor: 2,
+          ),
+        ],
+      ),
     );
   }
 }
