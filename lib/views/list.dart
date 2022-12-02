@@ -178,13 +178,42 @@ class EntryViewier extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => SafeArea(
-                      child: Quiz(
-                        onEnd: Navigator.of(context).pop,
+                  MaterialPageRoute(builder: (context) {
+                    final fEntries = Future.wait(list.entries.map(
+                      (e) async => XmlDocument.parse(
+                        await Dict.get(e.id, e.target),
                       ),
-                    ),
-                  ),
+                    ));
+
+                    return FutureBuilder<List<XmlDocument>>(
+                      future: fEntries,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        } else {
+                          final entries = snapshot.data as List<XmlDocument>;
+
+                          return SafeArea(
+                            child: Quiz(
+                              questions: entries
+                                  .map((e) => Entry.core(
+                                        doc: e,
+                                        model: model,
+                                        coreReading: false,
+                                      ))
+                                  .toList(),
+                              answers: entries
+                                  .map((e) =>
+                                      Card(child: Entry(doc: e, model: model)))
+                                  .toList(),
+                              onEnd: Navigator.of(context).pop,
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  }),
                 ),
                 icon: const Icon(Icons.play_arrow_rounded),
               ),
