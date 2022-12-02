@@ -1,9 +1,34 @@
-import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:flutter/material.dart';
+import 'package:appinio_swiper/appinio_swiper.dart';
 
 class Quiz extends StatefulWidget {
-  const Quiz({super.key, this.onEnd});
+  const Quiz(
+      {super.key,
+      required List<Widget> questions,
+      required List<Widget> answers,
+      this.onEnd})
+      : assert(questions.length == answers.length),
+        itemCount = questions.length,
+        questions = questions,
+        answers = answers,
+        questionBuilder = null,
+        answerBuilder = null;
 
+  const Quiz.builder(
+      {super.key,
+      required this.itemCount,
+      required this.questionBuilder,
+      required this.answerBuilder,
+      this.onEnd})
+      : assert(questionBuilder != null && answerBuilder != null),
+        questions = null,
+        answers = null;
+
+  final int itemCount;
+  final List<Widget>? questions;
+  final List<Widget>? answers;
+  final Widget Function(BuildContext context, int index)? questionBuilder;
+  final Widget Function(BuildContext context, int index)? answerBuilder;
   final VoidCallback? onEnd;
 
   @override
@@ -19,16 +44,20 @@ class _Quiz extends State<Quiz> {
   ScrollPhysics _physics = const AlwaysScrollableScrollPhysics();
   bool _isQuestions = true;
 
-  final _answers = List.filled(
-      4,
-      const Card(
-        color: Colors.green,
-        elevation: 10,
-      ),
-      growable: true);
-
   int page = 0;
-  final int cardCount = 4;
+  int get itemCount => widget.itemCount;
+
+  List<Widget> buildAnswers() {
+    assert(widget.answerBuilder != null);
+
+    final List<Widget> ret = [];
+
+    for (int i = 0; i < itemCount; ++i) {
+      ret.add(widget.answerBuilder!(context, i));
+    }
+
+    return ret;
+  }
 
   List<Widget> buildQuestionsNav() {
     return [
@@ -69,29 +98,27 @@ class _Quiz extends State<Quiz> {
         child: PageView.builder(
           controller: _controller,
           physics: _physics,
-          itemCount: cardCount + 1,
+          itemCount: itemCount + 1,
           onPageChanged: (value) => setState(() {
-            if (value == cardCount) {
+            if (value == itemCount) {
               _physics = const NeverScrollableScrollPhysics();
               _isQuestions = false;
               page = 0;
             } else {
-              page = value.clamp(0, cardCount - 1);
+              page = value.clamp(0, itemCount - 1);
             }
           }),
           itemBuilder: (context, i) {
-            if (i < cardCount) {
-              return const Card(
-                color: Colors.amber,
-                elevation: 10,
-              );
+            if (i < itemCount) {
+              return widget.questions?[i] ??
+                  widget.questionBuilder!(context, i);
             } else {
               return AppinioSwiper(
                 onEnd: widget.onEnd ?? emptyFunction,
                 controller: _answersCtrl,
                 onSwipe: (i, dir) =>
-                    setState(() => page += page != cardCount - 1 ? 1 : 0),
-                cards: _answers,
+                    setState(() => page += (page != itemCount - 1 ? 1 : 0)),
+                cards: widget.answers ?? buildAnswers(),
               );
             }
           },
@@ -99,7 +126,7 @@ class _Quiz extends State<Quiz> {
       ),
       Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text('${page + 1}/$cardCount'),
+        child: Text('${page + 1}/$itemCount'),
       ),
       Padding(
         padding: const EdgeInsets.all(8.0),
