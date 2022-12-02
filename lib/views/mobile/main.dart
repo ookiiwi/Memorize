@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:memorize/file_system.dart';
 import 'package:memorize/views/auth.dart';
+import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
-import 'package:memorize/views/search.dart';
 import 'package:memorize/views/account.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
@@ -23,7 +24,15 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
         body: SafeArea(bottom: false, child: child),
         bottomNavigationBar: BottomNavBar(
           backgroundColor: appBarColor,
-          onTap: (i) => context.go('/${_routes[i]}'),
+          onTap: (i) {
+            final location = '/${_routes[i]}';
+
+            if (GoRouter.of(context).location == location) {
+              GoRouter.of(context).refresh();
+            }
+
+            context.go(location);
+          },
           items: [
             Icon(Icons.home_rounded, color: appBarIconColor),
             Icon(Icons.search_rounded, color: appBarIconColor),
@@ -39,8 +48,18 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
         builder: (context, state) => const HomePage(),
       ),
       GoRoute(
+          path: '/list',
+          builder: (context, state) {
+            final Map extra = state.extra as Map;
+
+            return extra.containsKey('fileinfo')
+                ? ListViewer.fromFile(fileinfo: extra['fileinfo'] as FileInfo)
+                : ListViewer(name: extra['name']);
+          }),
+      GoRoute(
         path: '/search',
-        builder: (context, state) => const Search(),
+        //builder: (context, state) => const Search(),
+        builder: (context, state) => Container(color: Colors.amber),
       ),
       GoRoute(
         path: '/account',
