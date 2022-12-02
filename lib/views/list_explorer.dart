@@ -1,17 +1,12 @@
-import 'dart:math';
-
-import 'package:animations/animations.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
-import 'package:memorize/views/list.dart';
-import 'package:memorize/tab.dart';
 import 'package:memorize/widget.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
-import 'package:memorize/file_system.dart' as fs;
+import 'package:memorize/file_system.dart';
 
 class ListExplorer extends StatefulWidget {
   const ListExplorer({Key? key}) : super(key: key);
@@ -22,14 +17,20 @@ class ListExplorer extends StatefulWidget {
   static void init() {
     if (kIsWeb) return;
 
-    fs.mkdirMobile('list');
+    final dir = Directory('fe');
+    final dirFile = File('fe/.entries');
+
+    if (!dir.existsSync()) dir.createSync();
+    if (!dirFile.existsSync()) {
+      dirFile
+        ..createSync()
+        ..writeAsStringSync('{}');
+    }
   }
 }
 
 class _ListExplorer extends State<ListExplorer> {
-  List<fs.FileInfo> _items =
-      List.filled(20, fs.FileInfo(FileSystemEntityType.file, 'list'));
-  Future<List> _fItems = Future.value([]);
+  late Future<List<FileInfo>> _fItems;
   bool _openBtnMenu = false;
   final _controller = TextEditingController();
   bool _openSelection = false;
@@ -44,7 +45,7 @@ class _ListExplorer extends State<ListExplorer> {
 
   ModalRoute? _route;
 
-  String get root => fs.root + '/list';
+  String get root => './fe';
 
   void _popFromAddBtn() {
     setState(() {
@@ -56,7 +57,7 @@ class _ListExplorer extends State<ListExplorer> {
   void initState() {
     super.initState();
 
-    fs.cd((kIsWeb ? '/userstorage/' : '') + 'list');
+    _updateData();
   }
 
   @override
@@ -74,29 +75,39 @@ class _ListExplorer extends State<ListExplorer> {
     _controller.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
-    fs.cd(fs.root);
     super.dispose();
   }
 
   void _updateData() {
-    _fItems = fs.ls()
-      ..then((value) {
-        if (mounted) {
-          setState(() {
-            //_items = value;
-          });
-        }
-      });
+    _fItems = Future.value(
+      List.from(
+        Directory(root).listSync().map((e) {
+          final name = e.path.split('/').last.trim();
+
+          if (name.startsWith('.')) {
+            return null;
+          }
+
+          return FileInfo(
+            name,
+            e.path,
+            e.statSync().type,
+          );
+        }).toList()
+          ..removeWhere((e) => e == null),
+      ),
+    );
   }
 
   Future<bool> _canPop() async {
     if (_openBtnMenu) _popFromAddBtn();
     if (Navigator.of(context).canPop()) {
       return true;
-    } else if (fs.wd != root) {
-      fs.cd('..');
-      _updateData();
     }
+    //else if (fs.wd != root) {
+    //  fs.cd('..');
+    //  _updateData();
+    //}
     return false;
   }
 
@@ -123,102 +134,107 @@ class _ListExplorer extends State<ListExplorer> {
 
   Widget _buildAddBtns() {
     return Container(
-        margin: const EdgeInsets.only(bottom: 5),
-        child: Column(children: [
-          Container(
-              margin: const EdgeInsets.all(5),
-              child: FloatingActionButton(
-                heroTag: "dirAddBtn",
-                backgroundColor: addBtnColor,
-                onPressed: () {
-                  showDialog(
-                      context: context,
-                      builder: (ctx) => TextFieldDialog(
-                            controller: _controller,
-                            hintText: 'dirname',
-                            hasConfirmed: (value) {
-                              setState(() {
-                                _openBtnMenu = !_openBtnMenu;
-                                if (value && _controller.text.isNotEmpty) {
-                                  fs.mkdir(_controller.text);
-                                  _updateData();
-                                }
-                              });
-                            },
-                          ));
-                },
-                child: const Icon(Icons.folder),
-              )),
-          FloatingActionButton(
-              backgroundColor: addBtnColor,
-              onPressed: () {
-                setState(() => _openBtnMenu = !_openBtnMenu);
+      margin: const EdgeInsets.only(bottom: 5),
+      child: Column(children: [
+        Container(
+          margin: const EdgeInsets.all(5),
+          child: FloatingActionButton(
+            heroTag: "dirAddBtn",
+            backgroundColor: addBtnColor,
+            onPressed: () {
+              showDialog(
+                  context: context,
+                  builder: (ctx) => TextFieldDialog(
+                        controller: _controller,
+                        hintText: 'dirname',
+                        hasConfirmed: (value) {
+                          setState(() {
+                            _openBtnMenu = !_openBtnMenu;
+                            if (value && _controller.text.isNotEmpty) {
+                              //fs.mkdir(_controller.text);
+                              _updateData();
+                            }
+                          });
+                        },
+                      ));
+            },
+            child: const Icon(Icons.folder),
+          ),
+        ),
+        FloatingActionButton(
+          backgroundColor: addBtnColor,
+          onPressed: () {
+            setState(() => _openBtnMenu = !_openBtnMenu);
 
-                Overlayment.show(
-                    OverWindow(
-                        backgroundSettings: const BackgroundSettings(),
-                        alignment: Alignment.center,
+            Overlayment.show(
+              OverWindow(
+                backgroundSettings: const BackgroundSettings(),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Theme.of(context).backgroundColor),
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.8,
+                  child: Column(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).backgroundColor),
-                        child: SizedBox(
-                            width: MediaQuery.of(context).size.width * 0.8,
-                            child: Column(
-                              children: [
-                                Container(
-                                    margin: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(30),
-                                        color: Colors.white),
-                                    child: TextField(
-                                      decoration: InputDecoration(
-                                          fillColor:
-                                              Theme.of(context).backgroundColor,
-                                          filled: true,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(30),
-                                          )),
-                                      onChanged: (value) => _listname = value,
-                                    )),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Padding(
-                                        padding: const EdgeInsets.all(10),
-                                        child: FloatingActionButton(
-                                            onPressed: () {
-                                              setState(() {
-                                                Overlayment.dismissLast();
-                                              });
-                                            },
-                                            child: const Text('Cancel'))),
-                                    Container(
-                                        margin: const EdgeInsets.all(15),
-                                        child: FloatingActionButton(
-                                            onPressed: () {
-                                              if (_listname.isEmpty) return;
+                            borderRadius: BorderRadius.circular(30),
+                            color: Colors.white),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            fillColor: Theme.of(context).backgroundColor,
+                            filled: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          onChanged: (value) => _listname = value,
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: FloatingActionButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      Overlayment.dismissLast();
+                                    });
+                                  },
+                                  child: const Text('Cancel'))),
+                          Container(
+                            margin: const EdgeInsets.all(15),
+                            child: FloatingActionButton(
+                              onPressed: () {
+                                if (_listname.isEmpty) return;
 
-                                              Overlayment.dismissLast();
-                                              Navigator.of(context)
-                                                  .push(MaterialPageRoute(
-                                                      builder: (context) =>
-                                                          ListViewer(
-                                                              name: _listname)))
-                                                  .then(
-                                                      (value) => _updateData());
-                                            },
-                                            child: const Text(
-                                              'Confirm',
-                                            ))),
-                                  ],
-                                )
-                              ],
-                            ))),
-                    context: context);
-              },
-              child: const Icon(Icons.list))
-        ]));
+                                Overlayment.dismissLast();
+                                context.push(
+                                  '/list',
+                                  extra: {'name': _listname},
+                                );
+                              },
+                              child: const Text(
+                                'Confirm',
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+              ),
+              context: context,
+            );
+          },
+          child: const Icon(Icons.list),
+        )
+      ]),
+    );
   }
 
   @override
@@ -245,7 +261,8 @@ class _ListExplorer extends State<ListExplorer> {
                           color:
                               Theme.of(context).colorScheme.secondaryContainer,
                         ),
-                        child: Text(fs.wd.replaceAll(root, '')),
+                        //child: Text(fs.wd.replaceAll(root, '')),
+                        child: const Text('PATH'),
                       ),
                     ),
                     Padding(
@@ -301,18 +318,20 @@ class _ListExplorer extends State<ListExplorer> {
                   decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
                       color: Theme.of(context).colorScheme.background),
-                  child: FutureBuilder(
+                  child: FutureBuilder<List<FileInfo>>(
                     future: _fItems,
                     builder: ((context, snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(child: CircularProgressIndicator());
                       } else {
+                        final items = snapshot.data as List<FileInfo>;
+
                         return PageView.builder(
                           itemCount: 1,
                           itemBuilder: (ctx, i) {
                             return Container(
                               color: Colors.transparent,
-                              child: ListExplorerItems(items: _items),
+                              child: ListExplorerItems(items: items),
                             );
                           },
                         );
@@ -351,7 +370,7 @@ class _ListExplorer extends State<ListExplorer> {
 class ListExplorerItems extends StatefulWidget {
   const ListExplorerItems({super.key, this.items = const []});
 
-  final List items;
+  final List<FileInfo> items;
 
   @override
   State createState() => _ListExplorerItems();
@@ -361,11 +380,16 @@ class _ListExplorerItems extends State<ListExplorerItems> {
   late final Color itemColor = Theme.of(context).colorScheme.primaryContainer;
   List get items => widget.items;
 
-  Widget buildItem(dynamic item) {
-    return Container(
-      decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20), color: itemColor),
-      child: Center(child: Text(item.name)),
+  Widget buildItem(FileInfo item) {
+    return GestureDetector(
+      onTap: () => context.push('/list', extra: {'fileinfo': item}),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: itemColor,
+        ),
+        child: Center(child: Text(item.name)),
+      ),
     );
   }
 
@@ -379,28 +403,7 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         childAspectRatio: 1.0,
       ),
       itemCount: items.length,
-      itemBuilder: (context, i) {
-        return items[i].type == FileSystemEntityType.directory
-            ? buildItem(items[i])
-            : OpenContainer(
-                routeSettings: const RouteSettings(name: listPage),
-                closedElevation: 0,
-                closedColor: itemColor,
-                closedShape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                transitionType: ContainerTransitionType.fade,
-                transitionDuration: const Duration(seconds: 1),
-                openBuilder: (context, action) {
-                  return ListViewer.fromFile(
-                    fileInfo: items[i]..path = items[i].id ?? items[i].name,
-                    //createIfDontExists: false,
-                  );
-                },
-                closedBuilder: (context, action) {
-                  return buildItem(items[i]);
-                });
-      },
+      itemBuilder: (context, i) => buildItem(items[i]),
     );
   }
 }
