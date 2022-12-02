@@ -5,27 +5,26 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
 import 'package:memorize/bloc/connection_bloc.dart' as cb;
-import 'package:memorize/data.dart';
-import 'package:memorize/file_system.dart' as fs;
-import 'package:memorize/list_explorer.dart';
 import 'package:memorize/loggers/offline_logger.dart';
+import 'package:memorize/views/list_explorer.dart';
 
-import 'package:memorize/mobile/tab.dart'
-    if (dart.library.js) 'package:memorize/web/tab.dart';
-import 'package:memorize/profil.dart';
+import 'package:memorize/views/mobile/main.dart'
+    if (dart.library.js) 'package:memorize/views/web/main.dart';
 import 'package:memorize/services/auth_service.dart';
 import 'package:memorize/storage.dart';
 import 'package:memorize/widget.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:universal_io/io.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   Provider.debugCheckInvalidValueType = null;
+  usePathUrlStrategy();
 
   runApp(
     MultiBlocProvider(
@@ -35,7 +34,7 @@ void main() {
         ),
         BlocProvider(
           create: (_) => AuthBloc(
-            AuthUnauthenticated(),
+            AuthUninitalized(),
             offlineLogger: OfflineLogger(
               onChange: (logger) async {
                 await SecureStorage.persistOfflineLogs(jsonEncode(logger));
@@ -44,7 +43,7 @@ void main() {
           )..add(InitializeAuth()),
         ),
       ],
-      child: MyApp(),
+      child: SplashScreen(builder: (context) => MyApp()),
     ),
   );
 }
@@ -90,39 +89,6 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  final _router = GoRouter(
-    initialLocation: '/home',
-    routes: [
-      ShellRoute(
-        builder: (context, state, child) {
-          return SplashScreen(
-            builder: (context) => MainPage(title: 'Memo', child: child),
-          );
-        },
-        routes: [
-          GoRoute(
-            path: '/',
-            redirect: (context, state) => '/home',
-          ),
-          GoRoute(
-            path: '/home',
-            builder: (context, state) => const HomePage(),
-          ),
-          GoRoute(
-            path: '/profile',
-            builder: (context, state) => const ProfilePage(),
-            routes: [
-              GoRoute(
-                path: 'change_password',
-                builder: (context, state) => const ChangePasswordPage(),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
-  );
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Brightness>(
@@ -136,7 +102,7 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
           fontFamily: 'FiraSans',
         ),
-        routerConfig: _router,
+        routerConfig: router,
       ),
     );
   }
@@ -153,7 +119,6 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreen extends State<SplashScreen> {
   late final StreamSubscription<ConnectivityResult> subscription;
-  static const _firstRunKey = 'isFirstRun';
   late final Future<void> _dataLoaded;
   bool _connectivityChecked = false;
 
@@ -213,37 +178,30 @@ class _SplashScreen extends State<SplashScreen> {
   }
 
   Future<void> loadData() async {
-    sharedPrefInstance = await SharedPreferences.getInstance();
-    final isFirstRun = sharedPrefInstance.getBool(_firstRunKey) ?? true;
-
-    await initData();
-    await fs.init(isFirstRun);
-
-    if (isFirstRun) {
-      ListExplorer.init();
-
-      sharedPrefInstance.setBool(_firstRunKey, false);
-    }
     await initConstants();
 
     if (kIsWeb) _updateConnState(await Connectivity().checkConnectivity());
+    final appRoot = await getApplicationDocumentsDirectory();
+    Directory.current = appRoot;
+    ListExplorer.init();
+
+    // wait for auth init to complete
+    await BlocProvider.of<AuthBloc>(context).stream.first;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _dataLoaded,
-      builder: (BuildContext ctx, AsyncSnapshot snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        } else {
-          return Scaffold(body: widget.builder(context));
-        }
-      },
+    return Material(
+      child: FutureBuilder(
+        future: _dataLoaded,
+        builder: (BuildContext ctx, AsyncSnapshot snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          } else {
+            return widget.builder(context);
+          }
+        },
+      ),
     );
   }
 }
