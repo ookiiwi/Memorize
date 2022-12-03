@@ -11,7 +11,7 @@ class Selectable<T> extends StatefulWidget {
   final T value;
   final Widget child;
   final bool isSelected;
-  final SelectionController? controller;
+  final SelectionController<T>? controller;
 
   @override
   State<StatefulWidget> createState() => _Selectable();
@@ -24,17 +24,11 @@ class _Selectable extends State<Selectable> {
   void onChanged(bool? value) {
     if (value == null) return;
 
-    setState(() {
-      isSelected = value;
-
-      //if (widget.onSelected != null) {
-      //  widget.onSelected!(isSelected);
-      //}
-
-      isSelected
+    setState(
+      () => (isSelected = value)
           ? controller?.selectItem(widget.value)
-          : controller?.unselectItem(widget.value);
-    });
+          : controller?.unselectItem(widget.value),
+    );
   }
 
   @override
