@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
-import 'package:memorize/widget.dart';
+import 'package:memorize/widget.dart' show TextFieldDialog;
+import 'package:memorize/widgets/selectable.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
@@ -30,12 +31,13 @@ class ListExplorer extends StatefulWidget {
 }
 
 class _ListExplorer extends State<ListExplorer> {
-  late Future<List<FileInfo>> _fItems;
-  bool _openBtnMenu = false;
-  final _controller = TextEditingController();
-  bool _openSelection = false;
   final key = GlobalKey();
+  late Future<List<FileInfo>> _fItems;
+  final _controller = TextEditingController();
   final double globalPadding = 10;
+  final _selectionController = SelectionController<FileInfo>();
+  final _menuBtnCtrl = MenuButtonController();
+  List<Widget> Function()? _menuBuilder;
 
   double _addBtnTurns = 0.0;
 
@@ -47,17 +49,21 @@ class _ListExplorer extends State<ListExplorer> {
 
   String get root => './fe';
 
-  void _popFromAddBtn() {
-    setState(() {
-      _openBtnMenu = _openSelection = false;
-    });
-  }
-
   @override
   void initState() {
     super.initState();
 
     _updateData();
+
+    _selectionController.addListener(() {
+      bool isEnabled = _selectionController.isEnabled;
+
+      if (isEnabled) {
+        _menuBuilder = buildSelectionButtons;
+      }
+
+      isEnabled ? _openMenu() : _closeMenu();
+    });
   }
 
   @override
@@ -100,7 +106,6 @@ class _ListExplorer extends State<ListExplorer> {
   }
 
   Future<bool> _canPop() async {
-    if (_openBtnMenu) _popFromAddBtn();
     if (Navigator.of(context).canPop()) {
       return true;
     }
@@ -111,130 +116,139 @@ class _ListExplorer extends State<ListExplorer> {
     return false;
   }
 
-  Widget _buildAddBtn() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 5, left: 5, right: 5),
-      child: FloatingActionButton(
-        heroTag: "listMenuBtn",
+  List<Widget> buildAddButtons() {
+    return [
+      FloatingActionButton(
+        heroTag: "dirAddBtn",
         backgroundColor: addBtnColor,
         onPressed: () {
-          setState(() {
-            _openBtnMenu = !_openBtnMenu;
-            _addBtnTurns += 3.0 / 8.0 * (_addBtnTurns == 0.0 ? 1 : -1);
-          });
+          _closeMenu();
+
+          showDialog(
+            context: context,
+            builder: (ctx) => TextFieldDialog(
+              controller: _controller,
+              hintText: 'dirname',
+              hasConfirmed: (value) {
+                setState(() {
+                  if (value && _controller.text.isNotEmpty) {
+                    //fs.mkdir(_controller.text);
+                    _updateData();
+                  }
+                });
+              },
+            ),
+          );
         },
-        child: AnimatedRotation(
-          turns: _addBtnTurns,
-          duration: const Duration(milliseconds: 200),
-          child: const Icon(Icons.add),
-        ),
+        child: const Icon(Icons.folder),
       ),
-    );
-  }
+      FloatingActionButton(
+        backgroundColor: addBtnColor,
+        onPressed: () {
+          _closeMenu();
 
-  Widget _buildAddBtns() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 5),
-      child: Column(children: [
-        Container(
-          margin: const EdgeInsets.all(5),
-          child: FloatingActionButton(
-            heroTag: "dirAddBtn",
-            backgroundColor: addBtnColor,
-            onPressed: () {
-              showDialog(
-                  context: context,
-                  builder: (ctx) => TextFieldDialog(
-                        controller: _controller,
-                        hintText: 'dirname',
-                        hasConfirmed: (value) {
-                          setState(() {
-                            _openBtnMenu = !_openBtnMenu;
-                            if (value && _controller.text.isNotEmpty) {
-                              //fs.mkdir(_controller.text);
-                              _updateData();
-                            }
-                          });
-                        },
-                      ));
-            },
-            child: const Icon(Icons.folder),
-          ),
-        ),
-        FloatingActionButton(
-          backgroundColor: addBtnColor,
-          onPressed: () {
-            setState(() => _openBtnMenu = !_openBtnMenu);
-
-            Overlayment.show(
-              OverWindow(
-                backgroundSettings: const BackgroundSettings(),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: Theme.of(context).backgroundColor),
-                child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.8,
-                  child: Column(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
+          Overlayment.show(
+            OverWindow(
+              backgroundSettings: const BackgroundSettings(),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: Theme.of(context).backgroundColor),
+              child: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.8,
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(30),
+                          color: Colors.white),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          fillColor: Theme.of(context).backgroundColor,
+                          filled: true,
+                          border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(30),
-                            color: Colors.white),
-                        child: TextField(
-                          decoration: InputDecoration(
-                            fillColor: Theme.of(context).backgroundColor,
-                            filled: true,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
                           ),
-                          onChanged: (value) => _listname = value,
                         ),
+                        onChanged: (value) => _listname = value,
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: FloatingActionButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      Overlayment.dismissLast();
-                                    });
-                                  },
-                                  child: const Text('Cancel'))),
-                          Container(
-                            margin: const EdgeInsets.all(15),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Padding(
+                            padding: const EdgeInsets.all(10),
                             child: FloatingActionButton(
-                              onPressed: () {
-                                if (_listname.isEmpty) return;
+                                onPressed: () {
+                                  setState(() {
+                                    Overlayment.dismissLast();
+                                  });
+                                },
+                                child: const Text('Cancel'))),
+                        Container(
+                          margin: const EdgeInsets.all(15),
+                          child: FloatingActionButton(
+                            onPressed: () {
+                              if (_listname.isEmpty) return;
 
-                                Overlayment.dismissLast();
-                                context.push(
-                                  '/list',
-                                  extra: {'name': _listname},
-                                );
-                              },
-                              child: const Text(
-                                'Confirm',
-                              ),
+                              Overlayment.dismissLast();
+                              context.push(
+                                '/list',
+                                extra: {'name': _listname},
+                              );
+                            },
+                            child: const Text(
+                              'Confirm',
                             ),
                           ),
-                        ],
-                      )
-                    ],
-                  ),
+                        ),
+                      ],
+                    )
+                  ],
                 ),
               ),
-              context: context,
-            );
-          },
-          child: const Icon(Icons.list),
-        )
-      ]),
-    );
+            ),
+            context: context,
+          );
+        },
+        child: const Icon(Icons.list),
+      )
+    ];
+  }
+
+  List<Widget> buildSelectionButtons() {
+    return [
+      FloatingActionButton(
+        backgroundColor: addBtnColor,
+        onPressed: () {
+          for (var e in _selectionController.selection) {
+            File(e.path).deleteSync();
+          }
+
+          _updateData();
+          _closeMenu();
+        },
+        child: const Icon(Icons.delete),
+      ),
+    ];
+  }
+
+  void _openMenu() {
+    _addBtnTurns = 0.0;
+    _addBtnTurns += 3.0 / 8.0;
+    _menuBtnCtrl.open();
+
+    setState(() {});
+  }
+
+  void _closeMenu() {
+    _addBtnTurns = 0.0;
+    _menuBtnCtrl.close();
+    _selectionController.isEnabled = false;
+    _selectionController.selection.clear();
+
+    setState(() {});
   }
 
   @override
@@ -242,9 +256,9 @@ class _ListExplorer extends State<ListExplorer> {
     return BlocBuilder<AuthBloc, AuthState>(
       builder: (context, state) => Container(
         padding: EdgeInsets.only(
+          top: globalPadding,
           left: globalPadding,
           right: globalPadding,
-          top: globalPadding,
         ),
         child: Stack(children: [
           Column(
@@ -331,7 +345,10 @@ class _ListExplorer extends State<ListExplorer> {
                           itemBuilder: (ctx, i) {
                             return Container(
                               color: Colors.transparent,
-                              child: ListExplorerItems(items: items),
+                              child: ListExplorerItems(
+                                selectionController: _selectionController,
+                                items: items,
+                              ),
                             );
                           },
                         );
@@ -345,20 +362,28 @@ class _ListExplorer extends State<ListExplorer> {
           Positioned(
             right: 10,
             bottom: kBottomNavigationBarHeight + 10,
-            child: ExpandedWidget(
-              key: key,
-              direction: AxisDirection.up,
-              isExpanded: _openBtnMenu || _openSelection,
-              duration: const Duration(milliseconds: 500),
-              child: _buildAddBtns(),
-              header: AnimatedSwitcher(
-                key: const ValueKey<int>(10),
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(opacity: animation, child: child);
+            child: MenuButton(
+              controller: _menuBtnCtrl,
+              button: FloatingActionButton(
+                heroTag: "listMenuBtn",
+                backgroundColor: addBtnColor,
+                onPressed: () {
+                  if (_selectionController.isEnabled) {
+                    _selectionController.isEnabled = false;
+                    _closeMenu();
+                    return;
+                  }
+
+                  _menuBuilder = buildAddButtons;
+                  _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
                 },
-                duration: const Duration(milliseconds: 300),
-                child: _buildAddBtn(),
+                child: AnimatedRotation(
+                  turns: _addBtnTurns,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(Icons.add),
+                ),
               ),
+              menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
             ),
           ),
         ]),
@@ -368,9 +393,15 @@ class _ListExplorer extends State<ListExplorer> {
 }
 
 class ListExplorerItems extends StatefulWidget {
-  const ListExplorerItems({super.key, this.items = const []});
+  const ListExplorerItems(
+      {super.key,
+      this.items = const [],
+      this.selectionController,
+      this.onSelectionToggled});
 
   final List<FileInfo> items;
+  final SelectionController? selectionController;
+  final void Function(bool value)? onSelectionToggled;
 
   @override
   State createState() => _ListExplorerItems();
@@ -378,7 +409,10 @@ class ListExplorerItems extends StatefulWidget {
 
 class _ListExplorerItems extends State<ListExplorerItems> {
   late final Color itemColor = Theme.of(context).colorScheme.primaryContainer;
-  List get items => widget.items;
+  List<FileInfo> get items => widget.items;
+
+  late final selectionController =
+      widget.selectionController ?? SelectionController();
 
   Widget buildItem(FileInfo item) {
     return GestureDetector(
@@ -395,15 +429,111 @@ class _ListExplorerItems extends State<ListExplorerItems> {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 150.0,
-        mainAxisSpacing: 10.0,
-        crossAxisSpacing: 10.0,
-        childAspectRatio: 1.0,
+    return GestureDetector(
+      onTap: () {
+        if (!selectionController.isEnabled) return;
+        selectionController.isEnabled = false;
+      },
+      child: AnimatedBuilder(
+        animation: selectionController,
+        builder: (context, _) => GridView.builder(
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 150.0,
+            mainAxisSpacing: 10.0,
+            crossAxisSpacing: 10.0,
+            childAspectRatio: 1.0,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+
+            return Selectable(
+              value: item,
+              controller: selectionController,
+              child: buildItem(item),
+            );
+          },
+        ),
       ),
-      itemCount: items.length,
-      itemBuilder: (context, i) => buildItem(items[i]),
+    );
+  }
+}
+
+class MenuButtonController with ChangeNotifier {
+  bool _isOpened = false;
+  bool get isOpened => _isOpened;
+
+  void open() {
+    _isOpened = true;
+    notifyListeners();
+  }
+
+  void close() {
+    _isOpened = false;
+    notifyListeners();
+  }
+}
+
+class MenuButton extends StatefulWidget {
+  const MenuButton(
+      {super.key,
+      required this.button,
+      this.menuButtons = const [],
+      this.duration = const Duration(milliseconds: 200),
+      this.controller,
+      this.padding = const EdgeInsets.all(5.0)});
+
+  final Widget button;
+  final List<Widget> menuButtons;
+  final Duration duration;
+  final MenuButtonController? controller;
+  final EdgeInsets padding;
+
+  @override
+  State<StatefulWidget> createState() => _MenuButton();
+}
+
+class _MenuButton extends State<MenuButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animationCtrl =
+      AnimationController(vsync: this, duration: widget.duration);
+  late final Animation<double> _animation =
+      CurvedAnimation(parent: _animationCtrl, curve: Curves.fastOutSlowIn);
+
+  late final controller = widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller?.addListener(() {
+      if (controller!.isOpened) {
+        _animationCtrl.forward();
+      } else if (!controller!.isOpened) {
+        _animationCtrl.reverse();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizeTransition(
+          sizeFactor: _animation,
+          axisAlignment: 1.0,
+          child: Column(
+              children: widget.menuButtons
+                  .map((e) => Padding(
+                        padding: widget.padding,
+                        child: e,
+                      ))
+                  .toList()),
+        ),
+        Padding(
+          padding: widget.padding,
+          child: widget.button,
+        )
+      ],
     );
   }
 }
