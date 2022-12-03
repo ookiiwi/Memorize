@@ -15,10 +15,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   AuthBloc(super.initialState, {OfflineLogger? offlineLogger})
       : _offlineLogger = offlineLogger {
     on<InitializeAuth>(_onInitializeAuth);
-    on<InitiateSignUp>(_onInitiateSignUp);
-    on<InitiateSignIn>(_onInitiateSignIn);
-    on<InitiateUpdateProfile>(_onInitiateUpdateProfile);
-    on<InitiateUpdatePassword>(_onInitiateUpdatePassword);
 
     on<SignUp>(_onSignUp);
     on<SignIn>(_onSignIn);
@@ -36,17 +32,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
+      print('init');
       late final Identity identity;
 
       try {
         final remoteSession = await AuthService.getCurrentSession();
+        print('session: $remoteSession');
 
         if (remoteSession == null) {
           await SecureStorage.deleteSession();
           emit(AuthUnauthenticated());
           return;
         }
-
         identity = Identity.fromJson(remoteSession['identity']);
       } on IOException {
         final localIdentity = await SecureStorage.getSession();
@@ -60,49 +57,40 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         identity = Identity.fromJson(jsonDecode(localIdentity));
       }
 
-      emit(
-        AuthAuthentificated(identity),
-      );
+      emit(AuthAuthentificated(identity));
     } on UnknownException catch (e) {
-      emit(
-        AuthUnauthenticated(message: e.message),
-      );
+      emit(AuthUnauthenticated(message: e.message));
     } catch (_) {
-      emit(
-        AuthUnauthenticated(message: _unhandleExceptionMessage),
-      );
+      emit(AuthUnauthenticated(message: _unhandleExceptionMessage));
     }
   }
 
-  Future<void> _onInitiateSignUp(
-    InitiateSignUp event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<AuthState> _initiateSignUp() async {
     try {
       final flowId = await AuthService.initiateRegistration();
 
-      emit(AuthSignUp(
-        flowId: flowId,
-      ));
+      return AuthSignUp(flowId: flowId);
     } on InitiateWithValidSessionException catch (e) {
-      emit(AuthUninitiated(
-        message: e.message,
-      ));
+      return AuthUninitiated(message: e.message);
     } on UnknownException catch (e) {
-      emit(AuthUninitiated(
-        message: e.message,
-      ));
-    } catch (e) {
-      emit(AuthUninitiated(
-        message: _unhandleExceptionMessage,
-      ));
+      return AuthUninitiated(message: e.message);
+    } catch (_) {
+      return AuthUninitiated(message: _unhandleExceptionMessage);
     }
   }
 
   Future<void> _onSignUp(SignUp event, Emitter<AuthState> emit) async {
+    final initState = await _initiateSignUp();
+
+    if (initState is! AuthSignUp || initState.hasError) {
+      // TODO: save flow id if auth signup
+      emit(initState);
+      return;
+    }
+
     try {
       final rawIdentity = await AuthService.signUp(
-        event.flowId,
+        initState.flowId,
         event.password,
         {
           "traits.email": event.email,
@@ -119,7 +107,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
     } on InvalidCredentialsException catch (e) {
       emit(AuthSignUp.withErrors(
-        flowId: event.flowId,
+        flowId: initState.flowId,
         email: event.email,
         username: event.username,
         password: event.password,
@@ -147,43 +135,35 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  Future<void> _onInitiateSignIn(
-    InitiateSignIn event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<AuthState> _initiateSignIn([bool? refresh]) async {
     try {
-      final flowId = await AuthService.initiateLogin(refresh: event.refresh);
-      emit(AuthSignIn(
-        flowId: flowId,
-      ));
+      final flowId = await AuthService.initiateLogin(refresh: refresh);
+      return AuthSignIn(flowId: flowId);
     } on InitiateWithValidSessionException catch (e) {
-      emit(
-        AuthUninitiated(message: e.message),
-      );
+      return AuthUninitiated(message: e.message);
     } on UnknownException catch (e) {
-      emit(
-        AuthUninitiated(message: e.message),
-      );
+      return AuthUninitiated(message: e.message);
     } on IOException {
-      emit(
-        AuthNoInternet(),
-      );
+      return AuthNoInternet();
     } catch (_) {
-      emit(AuthUninitiated(
-        message: _unhandleExceptionMessage,
-      ));
+      return AuthUninitiated(message: _unhandleExceptionMessage);
     }
   }
 
   Future<void> _onSignIn(SignIn event, Emitter<AuthState> emit) async {
-    try {
-      final identifier = event.email == null || event.email!.isEmpty
-          ? event.username!
-          : event.email!;
+    final initState = await _initiateSignIn();
 
+    if (initState is! AuthSignIn || initState.hasError) {
+      // TODO: save flow
+
+      emit(initState);
+      return;
+    }
+
+    try {
       final rawIdentity = await AuthService.signIn(
-        event.flowId,
-        identifier,
+        initState.flowId,
+        event.identifier,
         event.password,
       );
 
@@ -195,9 +175,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
     } on InvalidCredentialsException catch (e) {
       emit(AuthSignIn.withErrors(
-        flowId: event.flowId,
-        email: event.email,
-        username: event.username,
+        flowId: initState.flowId,
+        identifier: event.identifier,
         password: event.password,
         emailError: e.errors['traits.email'],
         usernameError: e.errors['traits.username'],
@@ -210,9 +189,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
     } on UnknownException catch (e) {
       emit(AuthSignIn.withErrors(
-        flowId: event.flowId,
-        email: event.email,
-        username: event.username,
+        flowId: initState.flowId,
+        identifier: event.identifier,
         password: event.password,
         message: e.message,
       ));
@@ -222,9 +200,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
     } catch (e) {
       emit(AuthSignIn.withErrors(
-        flowId: event.flowId,
-        email: event.email,
-        username: event.username,
+        flowId: initState.flowId,
+        identifier: event.identifier,
         password: event.password,
         message: _unhandleExceptionMessage, // TODO: log e
       ));
@@ -259,34 +236,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  Future<void> _onInitiateUpdateProfile(
-    InitiateUpdateProfile event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<AuthState> _onInitiateUpdateProfile() async {
     try {
       final flowId = await AuthService.initiateSettings();
 
-      emit(
-        AuthUpdateSettings(
-          flowId: flowId,
-        ),
-      );
+      return AuthUpdateSettings(flowId: flowId);
     } on UnknownException catch (e) {
-      emit(
-        AuthUninitiated(
-          message: e.message,
-        ),
-      );
+      return AuthUninitiated(message: e.message);
     } on IOException {
-      emit(
-        AuthNoInternet(),
-      );
+      return AuthNoInternet();
     } catch (_) {
-      emit(
-        AuthUninitiated(
-          message: _unhandleExceptionMessage,
-        ),
-      );
+      return AuthUninitiated(message: _unhandleExceptionMessage);
     }
   }
 
@@ -294,9 +254,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     UpdateProfile event,
     Emitter<AuthState> emit,
   ) async {
+    final initState = await _onInitiateUpdateProfile();
+
+    if (initState is! AuthUpdateSettings || initState.message != null) {
+      // TODO: save flow
+
+      emit(initState);
+      return;
+    }
+
     try {
       final rawIdentity = await AuthService.updateSettings(
-        event.flowId,
+        initState.flowId,
         'profile',
         event.identity.toJson()..remove('id'),
       );
@@ -308,7 +277,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } on InvalidCredentialsException catch (e) {
       emit(
         AuthUpdateSettings(
-          flowId: event.flowId,
+          flowId: initState.flowId,
           message: jsonEncode(e.errors),
         ),
       );
@@ -322,46 +291,29 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       );
     } on UnknownException catch (e) {
       emit(
-        AuthUpdateSettings(flowId: event.flowId, message: e.message),
+        AuthUpdateSettings(flowId: initState.flowId, message: e.message),
       );
     } catch (_) {
       emit(
         AuthUpdateSettings(
-          flowId: event.flowId,
+          flowId: initState.flowId,
           message: _unhandleExceptionMessage,
         ),
       );
     }
   }
 
-  Future<void> _onInitiateUpdatePassword(
-    InitiateUpdatePassword event,
-    Emitter<AuthState> emit,
-  ) async {
+  Future<AuthState> _initiateUpdatePassword() async {
     try {
       final flowId = await AuthService.initiateSettings();
 
-      emit(
-        AuthUpdateSettings(
-          flowId: flowId,
-        ),
-      );
+      return AuthUpdateSettings(flowId: flowId);
     } on UnknownException catch (e) {
-      emit(
-        AuthUninitiated(
-          message: e.message,
-        ),
-      );
+      return AuthUninitiated(message: e.message);
     } on IOException {
-      emit(
-        AuthNoInternet(),
-      );
+      return AuthNoInternet();
     } catch (_) {
-      emit(
-        AuthUninitiated(
-          message: _unhandleExceptionMessage,
-        ),
-      );
+      return AuthUninitiated(message: _unhandleExceptionMessage);
     }
   }
 
@@ -369,9 +321,18 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     UpdatePassword event,
     Emitter<AuthState> emit,
   ) async {
+    final initState = await _initiateUpdatePassword();
+
+    if (initState is! AuthUpdateSettings || initState.message != null) {
+      // TODO: save flow
+
+      emit(initState);
+      return;
+    }
+
     try {
       final rawIdentity = await AuthService.updateSettings(
-        event.flowId,
+        initState.flowId,
         'password',
         {'password': event.password},
       );
@@ -383,7 +344,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } on InvalidCredentialsException catch (e) {
       emit(
         AuthUpdateSettings(
-          flowId: event.flowId,
+          flowId: initState.flowId,
           message: e.errors['password'],
         ),
       );
@@ -398,7 +359,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } on UnknownException catch (e) {
       emit(
         AuthUpdateSettings(
-          flowId: event.flowId,
+          flowId: initState.flowId,
           message: e.message,
         ),
       );
@@ -409,7 +370,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } catch (_) {
       emit(
         AuthUpdateSettings(
-          flowId: event.flowId,
+          flowId: initState.flowId,
           message: _unhandleExceptionMessage,
         ),
       );
@@ -424,13 +385,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       await AuthService.deleteIdentity(event.id);
       emit(AuthUnauthenticated());
     } on UnknownException catch (e) {
-      emit(
-        AuthUnauthenticated(message: e.message),
-      );
+      emit(AuthUnauthenticated(message: e.message));
     } catch (_) {
-      emit(
-        AuthUnauthenticated(message: _unhandleExceptionMessage),
-      );
+      emit(AuthUnauthenticated(message: _unhandleExceptionMessage));
     }
   }
 }

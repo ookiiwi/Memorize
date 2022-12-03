@@ -6,36 +6,25 @@ abstract class AuthState {
   final String? message;
 }
 
+class AuthUninitalized extends AuthState {}
+
 class AuthUnauthenticated extends AuthState {
   AuthUnauthenticated({super.message});
 }
 
 class AuthAuthentificated extends AuthState {
-  AuthAuthentificated(
-      //this.token,
-      this.identity);
-  //AuthAuthentificated.fromJson(Map<String, dynamic> json)
-  //    : //token = json['token'],
-  //      identity = Identity.fromJson(json['identity']);
+  AuthAuthentificated(this.identity);
 
-  //final String token;
   final Identity identity;
-
-  //Map<String, dynamic> toJson() => {
-  //      //'token': token,
-  //      'identity': identity.toJson(),
-  //    };
 }
 
 class AuthUninitiated extends AuthState {
   AuthUninitiated({super.message});
 }
 
-class AuthSignUp extends AuthState {
-  AuthSignUp({
+abstract class AuthSign extends AuthState {
+  AuthSign({
     required this.flowId,
-    this.email,
-    this.username,
     this.password,
   })  : emailError = null,
         usernameError = null,
@@ -43,10 +32,8 @@ class AuthSignUp extends AuthState {
         generalError = null,
         hasError = false;
 
-  AuthSignUp.withErrors({
+  AuthSign.withErrors({
     required this.flowId,
-    this.email,
-    this.username,
     this.password,
     this.emailError,
     this.usernameError,
@@ -63,8 +50,6 @@ class AuthSignUp extends AuthState {
             'At least one error must be specified');
 
   final String flowId;
-  final String? email;
-  final String? username;
   final String? password;
   final String? emailError;
   final String? usernameError;
@@ -73,34 +58,51 @@ class AuthSignUp extends AuthState {
   final bool hasError;
 }
 
-class AuthSignIn extends AuthSignUp {
+class AuthSignUp extends AuthSign {
+  AuthSignUp({
+    required super.flowId,
+    this.email,
+    this.username,
+    super.password,
+  });
+
+  AuthSignUp.withErrors({
+    required super.flowId,
+    this.email,
+    this.username,
+    super.password,
+    super.emailError,
+    super.usernameError,
+    super.passwordError,
+    super.generalError,
+    super.message,
+  }) : super.withErrors();
+
+  final String? email;
+  final String? username;
+}
+
+class AuthSignIn extends AuthSign {
   AuthSignIn({
     required super.flowId,
-    super.email,
-    super.username,
+    this.identifier,
     super.password,
     this.refresh = false,
   });
 
   AuthSignIn.withErrors({
     required super.flowId,
-    super.email,
-    super.username,
+    this.identifier,
     super.password,
     this.refresh = false,
-    String? emailError,
-    String? usernameError,
-    String? passwordError,
-    String? generalError,
-    String? message,
-  }) : super.withErrors(
-          emailError: emailError,
-          usernameError: usernameError,
-          passwordError: passwordError,
-          generalError: generalError,
-          message: message,
-        );
+    super.emailError,
+    super.usernameError,
+    super.passwordError,
+    super.generalError,
+    super.message,
+  }) : super.withErrors();
 
+  final String? identifier;
   final bool refresh;
 }
 
@@ -109,10 +111,6 @@ class AuthUpdateSettings extends AuthState {
 
   final String flowId;
 }
-
-//class AuthUpdatedSettings extends AuthState {
-//  AuthUpdatedSettings({super.message});
-//}
 
 class AuthNoInternet extends AuthState {
   AuthNoInternet({super.message});
