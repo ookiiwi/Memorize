@@ -7,9 +7,11 @@ import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/services/dict.dart';
+import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/search.dart';
+import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
 
@@ -27,6 +29,8 @@ class ListViewer extends StatefulWidget {
 class _ListViewer extends State<ListViewer> {
   late final MemoList list;
   late final Map<String, dynamic> model;
+
+  final _selectionController = SelectionController();
 
   @override
   void initState() {
@@ -83,29 +87,34 @@ class _ListViewer extends State<ListViewer> {
             EntryViewier(
               list: list,
               model: model,
+              selectionController: _selectionController,
             ),
             Positioned(
               bottom: kBottomNavigationBarHeight + 10,
               right: 20,
               child: FloatingActionButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) {
-                      return EntrySearch(
-                        target: list.target,
-                        onItemSelected: (id) {
-                          final entry = ListEntry(id, 'jpn-eng');
-                          list.entries.add(entry);
-                          writeList();
-                          Navigator.of(context).maybePop();
-                        },
-                        model: model,
-                      );
-                    },
-                  ),
-                ).then((value) {
-                  if (mounted) setState(() {});
-                }),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) {
+                        return EntrySearch(
+                          target: list.target,
+                          onItemSelected: (id) {
+                            final entry = ListEntry(id, 'jpn-eng');
+                            list.entries.add(entry);
+                            writeList();
+                            Navigator.of(context).maybePop();
+                          },
+                          model: model,
+                        );
+                      },
+                    ),
+                  ).then((value) {
+                    if (mounted) setState(() {});
+                  });
+
+                  _selectionController.isEnabled = false;
+                },
                 child: const Icon(Icons.add),
               ),
             ),
@@ -159,138 +168,201 @@ class _ListViewer extends State<ListViewer> {
   }
 }
 
-class EntryViewier extends StatelessWidget {
-  static final _popUpMenuItems = {'about': () {}};
-
-  const EntryViewier({super.key, required this.list, required this.model});
+class EntryViewier extends StatefulWidget {
+  const EntryViewier(
+      {super.key,
+      required this.list,
+      required this.model,
+      this.selectionController});
 
   final MemoList list;
   final Map<String, dynamic> model;
+  final SelectionController? selectionController;
+
+  @override
+  State<StatefulWidget> createState() => _EntryViewier();
+}
+
+class _EntryViewier extends State<EntryViewier> {
+  static final _popUpMenuItems = {'about': () {}};
+
+  late final list = widget.list;
+  late final model = widget.model;
+  late final selectionController = widget.selectionController;
+  bool _openSelection = false;
+
+  late final fEntries = buildEntries(list.entries);
+  Map<String, String> entries = {};
+
+  Future<MapEntry<String, String>> buildEntry(ListEntry entry) async =>
+      MapEntry(
+        entry.id,
+        await Dict.get(entry.id, entry.target),
+      );
+
+  Future<Map<String, String>> buildEntries(Iterable<ListEntry> entries) async =>
+      Map.fromEntries(
+          await Future.wait(entries.map((e) async => await buildEntry(e))));
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(
-          height: kToolbarHeight,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) {
-                    final fEntries = Future.wait(list.entries.map(
-                      (e) async => XmlDocument.parse(
-                        await Dict.get(e.id, e.target),
-                      ),
-                    ));
-
-                    return FutureBuilder<List<XmlDocument>>(
-                      future: fEntries,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        } else {
-                          final entries = snapshot.data as List<XmlDocument>;
-
-                          return SafeArea(
-                            child: Quiz(
-                              questions: entries
-                                  .map((e) => Entry.core(
-                                        doc: e,
-                                        model: model,
-                                        coreReading: false,
-                                      ))
-                                  .toList(),
-                              answers: entries
-                                  .map((e) =>
-                                      Card(child: Entry(doc: e, model: model)))
-                                  .toList(),
-                              onEnd: Navigator.of(context).pop,
-                            ),
-                          );
-                        }
-                      },
-                    );
-                  }),
-                ),
-                icon: const Icon(Icons.play_arrow_rounded),
-              ),
-              Center(
-                child: Text(
-                  list.name,
-                  textScaleFactor: 1.5,
-                ),
-              ),
-              PopupMenuButton(
-                position: PopupMenuPosition.under,
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                itemBuilder: (context) => _popUpMenuItems.entries
-                    .map(
-                      (e) => PopupMenuItem(
-                        value: e.value,
-                        child: Text(
-                          e.key,
-                          style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSecondaryContainer),
+    return GestureDetector(
+      onTap: () => setState(() => _openSelection = false),
+      child: Column(
+        children: [
+          SizedBox(
+            height: kToolbarHeight,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) {
+                      final fEntries = Future.wait(list.entries.map(
+                        (e) async => XmlDocument.parse(
+                          await Dict.get(e.id, e.target),
                         ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-            separatorBuilder: (context, index) => Divider(
-              color: Theme.of(context).colorScheme.onBackground,
+                      ));
+
+                      return FutureBuilder<List<XmlDocument>>(
+                        future: fEntries,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          } else {
+                            final entries = snapshot.data as List<XmlDocument>;
+
+                            return SafeArea(
+                              child: Quiz(
+                                questions: entries
+                                    .map((e) => Entry.core(
+                                          doc: e,
+                                          model: model,
+                                          coreReading: false,
+                                        ))
+                                    .toList(),
+                                answers: entries
+                                    .map((e) => Card(
+                                        child: Entry(doc: e, model: model)))
+                                    .toList(),
+                                onEnd: Navigator.of(context).pop,
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    }),
+                  ),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                ),
+                Center(
+                  child: Text(
+                    list.name,
+                    textScaleFactor: 1.5,
+                  ),
+                ),
+                PopupMenuButton(
+                  position: PopupMenuPosition.under,
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  itemBuilder: (context) => _popUpMenuItems.entries
+                      .map(
+                        (e) => PopupMenuItem(
+                          value: e.value,
+                          child: Text(
+                            e.key,
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSecondaryContainer),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
             ),
-            itemCount: list.entries.length,
-            itemBuilder: (context, i) {
-              final entry = list.entries.elementAt(i);
-              Future<String> fEntry = Dict.get(entry.id, entry.target);
+          ),
+          Expanded(
+            child: FutureBuilder<Map<String, String>>(
+              future: fEntries,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                } else {
+                  return AnimatedBuilder(
+                    animation: selectionController ?? ValueNotifier(null),
+                    builder: (context, _) => ListView.separated(
+                      padding: const EdgeInsets.only(
+                          bottom: kBottomNavigationBarHeight),
+                      separatorBuilder: (context, index) => Divider(
+                        color: Theme.of(context).colorScheme.onBackground,
+                      ),
+                      itemCount: list.entries.length,
+                      itemBuilder: (context, i) {
+                        entries = snapshot.data!;
+                        final values = entries.values.toList();
 
-              return FutureBuilder<String>(
-                future: fEntry,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else {
-                    String entry = snapshot.data as String;
-
-                    return MaterialButton(
-                      padding: const EdgeInsets.all(8.0),
-                      onPressed: () {
-                        Navigator.of(context)
-                            .push(MaterialPageRoute(builder: (context) {
-                          return Scaffold(
-                            body: Padding(
-                              padding: const EdgeInsets.only(top: 10.0),
-                              child: Entry(
-                                doc: XmlDocument.parse(entry),
+                        return Stack(children: [
+                          AbsorbPointer(
+                            absorbing: _openSelection,
+                            child: MaterialButton(
+                              padding: const EdgeInsets.all(8.0),
+                              onLongPress: () =>
+                                  setState((() => _openSelection = true)),
+                              onPressed: () {
+                                Navigator.of(context)
+                                    .push(MaterialPageRoute(builder: (context) {
+                                  return Scaffold(
+                                    body: Padding(
+                                      padding: const EdgeInsets.only(top: 10.0),
+                                      child: Entry(
+                                        doc: XmlDocument.parse(values[i]),
+                                        model: model,
+                                      ),
+                                    ),
+                                  );
+                                }));
+                              },
+                              child: Entry.preview(
+                                doc: XmlDocument.parse(values[i]),
                                 model: model,
                               ),
                             ),
-                          );
-                        }));
+                          ),
+                          if (_openSelection)
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    final entry = list.entries.elementAt(i);
+
+                                    entries.remove(entry.id);
+                                    list.entries.remove(entry);
+
+                                    // write list
+                                    final file = File(
+                                        "${ListExplorer.current}/${list.name}");
+
+                                    file.writeAsStringSync(jsonEncode(list));
+                                  });
+                                },
+                                icon: const Icon(Icons.cancel_outlined),
+                              ),
+                            )
+                        ]);
                       },
-                      child: Entry.preview(
-                        doc: XmlDocument.parse(entry),
-                        model: model,
-                      ),
-                    );
-                  }
-                },
-              );
-            },
+                    ),
+                  );
+                }
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
