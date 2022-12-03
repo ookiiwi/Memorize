@@ -12,6 +12,8 @@ import 'package:memorize/file_system.dart';
 class ListExplorer extends StatefulWidget {
   const ListExplorer({Key? key}) : super(key: key);
 
+  static String current = 'fe';
+
   @override
   State<ListExplorer> createState() => _ListExplorer();
 
