@@ -58,6 +58,12 @@ class _Entry extends State<Entry> {
 
     List<OrthItem> ret = [];
 
+    //no text means that the reading is the word
+    if (texts.isEmpty) {
+      texts.addAll((readings..removeWhere((e) => e == null)) as List<String>);
+      readings.clear();
+    }
+
     if (readings.length < texts.length) {
       readings.addAll(List.filled(texts.length - readings.length, null));
     }
@@ -72,9 +78,10 @@ class _Entry extends State<Entry> {
   Widget buildCore() {
     return Card(
       child: Center(
-          child: OrthElement(
-        data: buildOrthData(!widget.coreReading!),
-      )),
+        child: OrthElement(
+          data: buildOrthData(!widget.coreReading!),
+        ),
+      ),
     );
   }
 
