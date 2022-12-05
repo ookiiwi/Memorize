@@ -16,10 +16,10 @@ import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
 
 class ListViewer extends StatefulWidget {
-  const ListViewer({super.key, required this.name}) : fileinfo = null;
-  const ListViewer.fromFile({super.key, required this.fileinfo}) : name = null;
+  const ListViewer({super.key, required this.list}) : fileinfo = null;
+  const ListViewer.fromFile({super.key, required this.fileinfo}) : list = null;
 
-  final String? name;
+  final MemoList? list;
   final FileInfo? fileinfo;
 
   @override
@@ -36,10 +36,11 @@ class _ListViewer extends State<ListViewer> {
   void initState() {
     super.initState();
 
-    if (widget.name != null) {
-      assert(widget.name!.isNotEmpty);
-      list = MemoList(widget.name!, 'jpn-eng');
-
+    if (widget.list != null) {
+      //assert(widget.name!.isNotEmpty);
+      //list = MemoList(widget.name!, 'jpn-eng');
+//
+      list = widget.list!;
       writeList();
     } else {
       assert(widget.fileinfo != null);
@@ -100,7 +101,7 @@ class _ListViewer extends State<ListViewer> {
                         return EntrySearch(
                           target: list.target,
                           onItemSelected: (id) {
-                            final entry = ListEntry(id, 'jpn-eng');
+                            final entry = ListEntry(id, list.target);
                             list.entries.add(entry);
                             writeList();
                             Navigator.of(context).maybePop();
@@ -184,14 +185,20 @@ class EntryViewier extends StatefulWidget {
 }
 
 class _EntryViewier extends State<EntryViewier> {
-  static final _popUpMenuItems = {'about': () {}};
+  late final _popUpMenuItems = {
+    'about': () {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => AboutPage(list: list)),
+      );
+    }
+  };
 
   late final list = widget.list;
   late final model = widget.model;
   late final selectionController = widget.selectionController;
   bool _openSelection = false;
 
-  late final fEntries = buildEntries(list.entries);
+  late var fEntries = buildEntries(list.entries);
   Map<String, String> entries = {};
 
   Future<MapEntry<String, String>> buildEntry(ListEntry entry) async =>
@@ -203,6 +210,14 @@ class _EntryViewier extends State<EntryViewier> {
   Future<Map<String, String>> buildEntries(Iterable<ListEntry> entries) async =>
       Map.fromEntries(
           await Future.wait(entries.map((e) async => await buildEntry(e))));
+
+  @override
+  void didUpdateWidget(covariant EntryViewier oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (list.entries.length != entries.length) {
+      fEntries = buildEntries(list.entries);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +281,7 @@ class _EntryViewier extends State<EntryViewier> {
                 PopupMenuButton(
                   position: PopupMenuPosition.under,
                   color: Theme.of(context).colorScheme.secondaryContainer,
+                  onSelected: (void Function() value) => value(),
                   itemBuilder: (context) => _popUpMenuItems.entries
                       .map(
                         (e) => PopupMenuItem(
@@ -291,6 +307,8 @@ class _EntryViewier extends State<EntryViewier> {
                 if (snapshot.connectionState != ConnectionState.done) {
                   return const Center(child: CircularProgressIndicator());
                 } else {
+                  entries = snapshot.data!;
+                  final values = entries.values.toList();
                   return AnimatedBuilder(
                     animation: selectionController ?? ValueNotifier(null),
                     builder: (context, _) => ListView.separated(
@@ -299,11 +317,8 @@ class _EntryViewier extends State<EntryViewier> {
                       separatorBuilder: (context, index) => Divider(
                         color: Theme.of(context).colorScheme.onBackground,
                       ),
-                      itemCount: list.entries.length,
+                      itemCount: values.length,
                       itemBuilder: (context, i) {
-                        entries = snapshot.data!;
-                        final values = entries.values.toList();
-
                         return Stack(children: [
                           AbsorbPointer(
                             absorbing: _openSelection,
@@ -552,6 +567,51 @@ class _EntrySearch extends State<EntrySearch> {
               }),
         )
       ],
+    );
+  }
+}
+
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key, required this.list});
+
+  final MemoList list;
+
+  @override
+  Widget build(BuildContext context) {
+    // TODO: implement build
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
+        title: const Text('About'),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'Default target',
+                  style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onBackground
+                          .withOpacity(0.6)),
+                ),
+              ),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(list.target),
+              ),
+            ],
+          )
+        ],
+      ),
     );
   }
 }
