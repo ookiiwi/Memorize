@@ -8,7 +8,7 @@ class Dict {
   static Future<Map<String, String>> find(String value, String target) async {
     try {
       final response = await _dio.get('/dict', queryParameters: {
-        'lang': target,
+        'target': target,
         'key': value,
       });
 
@@ -29,7 +29,7 @@ class Dict {
     try {
       final response = await _dio.get(
         '/dict/$id',
-        queryParameters: {'lang': target},
+        queryParameters: {'target': target},
       );
 
       return response.data;
