@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
+import 'package:memorize/list.dart';
 import 'package:memorize/widget.dart' show TextFieldDialog;
 import 'package:memorize/widgets/selectable.dart';
 import 'package:overlayment/overlayment.dart';
@@ -44,6 +45,7 @@ class _ListExplorer extends State<ListExplorer> {
   double _addBtnTurns = 0.0;
 
   String _listname = '';
+  String _listTarget = 'jpn-eng';
   late final Color addBtnColor =
       Theme.of(context).colorScheme.secondaryContainer;
 
@@ -160,22 +162,41 @@ class _ListExplorer extends State<ListExplorer> {
                 width: MediaQuery.of(context).size.width * 0.8,
                 child: Column(
                   children: [
-                    Container(
-                      margin: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(30),
-                          color: Colors.white),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          fillColor: Theme.of(context).backgroundColor,
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30),
+                    Row(children: [
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              color: Colors.white),
+                          child: TextField(
+                            decoration: InputDecoration(
+                              fillColor: Theme.of(context).backgroundColor,
+                              filled: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                            onChanged: (value) => _listname = value,
                           ),
                         ),
-                        onChanged: (value) => _listname = value,
                       ),
-                    ),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          controller: TextEditingController(text: _listTarget),
+                          onChanged: (value) => _listTarget = value,
+                        ),
+                      ),
+                      //PopupMenuButton(
+                      //    initialValue: 'jpn-eng',
+                      //    icon: Text('jpn-eng'),
+                      //    position: PopupMenuPosition.under,
+                      //    itemBuilder: (context) => ['jpn-eng', 'jpn-fra']
+                      //        .map((e) =>
+                      //            PopupMenuItem(value: e, child: Text(e)))
+                      //        .toList())
+                    ]),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -197,7 +218,9 @@ class _ListExplorer extends State<ListExplorer> {
                               Overlayment.dismissLast();
                               context.push(
                                 '/list',
-                                extra: {'name': _listname},
+                                extra: {
+                                  'list': MemoList(_listname, _listTarget)
+                                },
                               );
                             },
                             child: const Text(
