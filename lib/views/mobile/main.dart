@@ -54,7 +54,7 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
 
             return extra.containsKey('fileinfo')
                 ? ListViewer.fromFile(fileinfo: extra['fileinfo'] as FileInfo)
-                : ListViewer(name: extra['name']);
+                : ListViewer(list: extra['list']);
           }),
       GoRoute(
         path: '/search',
