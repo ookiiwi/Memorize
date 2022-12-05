@@ -30,6 +30,14 @@ class _ListViewer extends State<ListViewer> {
   late final MemoList list;
   late final Map<String, dynamic> model;
 
+  late final _popUpMenuItems = {
+    'about': () {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => AboutPage(list: list)),
+      );
+    }
+  };
+
   final _selectionController = SelectionController();
 
   @override
@@ -37,9 +45,6 @@ class _ListViewer extends State<ListViewer> {
     super.initState();
 
     if (widget.list != null) {
-      //assert(widget.name!.isNotEmpty);
-      //list = MemoList(widget.name!, 'jpn-eng');
-//
       list = widget.list!;
       writeList();
     } else {
@@ -79,10 +84,106 @@ class _ListViewer extends State<ListViewer> {
     file.writeAsStringSync(jsonEncode(list));
   }
 
+  void lanchQuiz() {
+    if (list.entries.isEmpty) return; // don't launch quiz if list is empty
+
+    final fEntries = Future.wait(list.entries
+        .map((e) async => XmlDocument.parse(await Dict.get(e.id, e.target))));
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FutureBuilder<List<XmlDocument>>(
+          future: fEntries,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            } else {
+              final entries = snapshot.data as List<XmlDocument>;
+
+              return SafeArea(
+                child: Quiz(
+                  questions: entries
+                      .map((e) => Entry.core(
+                            doc: e,
+                            model: model,
+                            coreReading: false,
+                          ))
+                      .toList(),
+                  answers: entries
+                      .map((e) => Card(child: Entry(doc: e, model: model)))
+                      .toList(),
+                  onEnd: Navigator.of(context).pop,
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
+
+    _selectionController.isEnabled = false;
+  }
+
+  void openSearchPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) {
+          return EntrySearch(
+            target: list.target,
+            onItemSelected: (id) {
+              final entry = ListEntry(id, list.target);
+              list.entries.add(entry);
+              writeList();
+              Navigator.of(context).maybePop();
+            },
+            model: model,
+          );
+        },
+      ),
+    ).then((value) {
+      if (mounted) setState(() {});
+    });
+
+    _selectionController.isEnabled = false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Material(
-      child: PageView(children: [
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
+        title: Text(list.name),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: openSearchPage,
+            icon: const Icon(Icons.add),
+          ),
+          PopupMenuButton(
+            position: PopupMenuPosition.under,
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            onSelected: (void Function() value) => value(),
+            itemBuilder: (context) => _popUpMenuItems.entries
+                .map(
+                  (e) => PopupMenuItem(
+                    value: e.value,
+                    child: Text(
+                      e.key,
+                      style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSecondaryContainer),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+      body: PageView(children: [
         Stack(
           children: [
             EntryViewier(
@@ -94,29 +195,8 @@ class _ListViewer extends State<ListViewer> {
               bottom: kBottomNavigationBarHeight + 10,
               right: 20,
               child: FloatingActionButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) {
-                        return EntrySearch(
-                          target: list.target,
-                          onItemSelected: (id) {
-                            final entry = ListEntry(id, list.target);
-                            list.entries.add(entry);
-                            writeList();
-                            Navigator.of(context).maybePop();
-                          },
-                          model: model,
-                        );
-                      },
-                    ),
-                  ).then((value) {
-                    if (mounted) setState(() {});
-                  });
-
-                  _selectionController.isEnabled = false;
-                },
-                child: const Icon(Icons.add),
+                onPressed: lanchQuiz,
+                child: const Icon(Icons.play_arrow_rounded),
               ),
             ),
           ],
@@ -185,14 +265,6 @@ class EntryViewier extends StatefulWidget {
 }
 
 class _EntryViewier extends State<EntryViewier> {
-  late final _popUpMenuItems = {
-    'about': () {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => AboutPage(list: list)),
-      );
-    }
-  };
-
   late final list = widget.list;
   late final model = widget.model;
   late final selectionController = widget.selectionController;
@@ -225,81 +297,6 @@ class _EntryViewier extends State<EntryViewier> {
       onTap: () => setState(() => _openSelection = false),
       child: Column(
         children: [
-          SizedBox(
-            height: kToolbarHeight,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) {
-                      final fEntries = Future.wait(list.entries.map(
-                        (e) async => XmlDocument.parse(
-                          await Dict.get(e.id, e.target),
-                        ),
-                      ));
-
-                      return FutureBuilder<List<XmlDocument>>(
-                        future: fEntries,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState !=
-                              ConnectionState.done) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          } else {
-                            final entries = snapshot.data as List<XmlDocument>;
-
-                            return SafeArea(
-                              child: Quiz(
-                                questions: entries
-                                    .map((e) => Entry.core(
-                                          doc: e,
-                                          model: model,
-                                          coreReading: false,
-                                        ))
-                                    .toList(),
-                                answers: entries
-                                    .map((e) => Card(
-                                        child: Entry(doc: e, model: model)))
-                                    .toList(),
-                                onEnd: Navigator.of(context).pop,
-                              ),
-                            );
-                          }
-                        },
-                      );
-                    }),
-                  ),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                ),
-                Center(
-                  child: Text(
-                    list.name,
-                    textScaleFactor: 1.5,
-                  ),
-                ),
-                PopupMenuButton(
-                  position: PopupMenuPosition.under,
-                  color: Theme.of(context).colorScheme.secondaryContainer,
-                  onSelected: (void Function() value) => value(),
-                  itemBuilder: (context) => _popUpMenuItems.entries
-                      .map(
-                        (e) => PopupMenuItem(
-                          value: e.value,
-                          child: Text(
-                            e.key,
-                            style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSecondaryContainer),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            ),
-          ),
           Expanded(
             child: FutureBuilder<Map<String, String>>(
               future: fEntries,
@@ -309,6 +306,7 @@ class _EntryViewier extends State<EntryViewier> {
                 } else {
                   entries = snapshot.data!;
                   final values = entries.values.toList();
+
                   return AnimatedBuilder(
                     animation: selectionController ?? ValueNotifier(null),
                     builder: (context, _) => ListView.separated(
@@ -329,14 +327,9 @@ class _EntryViewier extends State<EntryViewier> {
                               onPressed: () {
                                 Navigator.of(context)
                                     .push(MaterialPageRoute(builder: (context) {
-                                  return Scaffold(
-                                    body: Padding(
-                                      padding: const EdgeInsets.only(top: 10.0),
-                                      child: Entry(
-                                        doc: XmlDocument.parse(values[i]),
-                                        model: model,
-                                      ),
-                                    ),
+                                  return EntryView(
+                                    entries: list.entries,
+                                    entry: entries.keys.elementAt(i),
                                   );
                                 }));
                               },
@@ -377,6 +370,104 @@ class _EntryViewier extends State<EntryViewier> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class EntryView extends StatefulWidget {
+  const EntryView({super.key, this.entries = const [], this.entry = ''});
+
+  final String entry;
+  final Iterable<ListEntry> entries;
+
+  @override
+  State<StatefulWidget> createState() => _EntryView();
+}
+
+class _EntryView extends State<EntryView> {
+  static const model = {
+    'pron': "//form[@type='r_ele']/orth", // ?
+    'orth': {
+      'reading': "//form[@type='r_ele']/orth", // ?
+      'text': "//form[@type='k_ele']/orth"
+    },
+    'sense': {
+      'root': "//sense",
+      'pos': "./note[@type='pos']", // ?
+      'usg': "./usg", // ?
+      'ref': "./ref", // ?
+      'trans': "./cit[@type='trans']/quote",
+    }
+  };
+
+  bool _snapToGrid = true;
+  late final fEntries = buildEntries(widget.entries);
+  late final _controller = PageController(
+      initialPage: widget.entries.toList().indexWhere(
+            (e) => e.id == widget.entry,
+          ));
+
+  Future<String> buildEntry(ListEntry entry) async =>
+      await Dict.get(entry.id, entry.target);
+
+  Future<List<String>> buildEntries(Iterable<ListEntry> entries) async =>
+      await Future.wait(entries.map((e) async => await buildEntry(e)));
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        scrolledUnderElevation: 0.0,
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
+        title: const Text('Entries'),
+        actions: [
+          IconButton(
+            onPressed: () => setState(() => _snapToGrid = !_snapToGrid),
+            icon: Icon(
+              _snapToGrid ? Icons.circle_rounded : Icons.circle_outlined,
+            ),
+          )
+        ],
+      ),
+      body: FutureBuilder<List<String>>(
+        future: fEntries,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          } else {
+            final entries = snapshot.data as List<String>;
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 10.0),
+              child: PageView.builder(
+                controller: _controller,
+                scrollDirection: Axis.vertical,
+                pageSnapping: _snapToGrid,
+                itemCount: entries.length,
+                itemBuilder: (context, i) {
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: MediaQuery.of(context).size.height -
+                          kToolbarHeight -
+                          kBottomNavigationBarHeight,
+                      minWidth: MediaQuery.of(context).size.width,
+                    ),
+                    child: Entry(
+                      doc: XmlDocument.parse(entries[i]),
+                      model: model,
+                    ),
+                  );
+                },
+              ),
+            );
+          }
+        },
       ),
     );
   }
@@ -524,49 +615,60 @@ class _EntrySearch extends State<EntrySearch> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: SearchBar(
+    return Scaffold(
+      appBar: AppBar(
+        scrolledUnderElevation: 0.0,
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        titleSpacing: 0.0,
+        title: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: TextField(
+            textAlignVertical: TextAlignVertical.center,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.all(8.0),
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
+            ),
             onChanged: (value) async {
               fEntries = fetchResults(value);
               setState(() {});
             },
           ),
         ),
-        Expanded(
-          child: FutureBuilder(
-              future: fEntries,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                } else {
-                  final entries = snapshot.data as Map<String, String>;
+      ),
+      body: FutureBuilder(
+          future: fEntries,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            } else {
+              final entries = snapshot.data as Map<String, String>;
 
-                  return ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: entries.length,
-                      separatorBuilder: (context, index) => const Divider(
-                            thickness: 0.3,
-                          ),
-                      itemBuilder: (context, i) {
-                        return MaterialButton(
-                          onPressed: () {
-                            if (widget.onItemSelected != null) {
-                              widget.onItemSelected!(entries.keys.elementAt(i));
-                            }
-                          },
-                          child: Entry.preview(
-                            doc: XmlDocument.parse(entries.values.elementAt(i)),
-                            model: widget.model,
-                          ),
-                        );
-                      });
-                }
-              }),
-        )
-      ],
+              return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: entries.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(thickness: 0.3),
+                  itemBuilder: (context, i) {
+                    return MaterialButton(
+                      onPressed: () {
+                        if (widget.onItemSelected != null) {
+                          widget.onItemSelected!(entries.keys.elementAt(i));
+                        }
+                      },
+                      child: Entry.preview(
+                        doc: XmlDocument.parse(entries.values.elementAt(i)),
+                        model: widget.model,
+                      ),
+                    );
+                  });
+            }
+          }),
     );
   }
 }
