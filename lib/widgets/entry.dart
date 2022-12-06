@@ -48,7 +48,7 @@ class _Entry extends State<Entry> {
       ..removeWhere((elt) => elt == null));
 
     List<String?> readings =
-        !skipReading && model['orth'].containsKey('reading')
+        (!skipReading || texts.isEmpty) && model['orth'].containsKey('reading')
             ? doc
                 .queryXPath(model['orth']['reading'])
                 .nodes
