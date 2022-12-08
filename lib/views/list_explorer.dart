@@ -46,12 +46,10 @@ class _ListExplorer extends State<ListExplorer> {
 
   String _listname = '';
   String _listTarget = 'jpn-eng';
-  late final Color addBtnColor =
-      Theme.of(context).colorScheme.secondaryContainer;
 
   ModalRoute? _route;
 
-  String get root => './fe';
+  String get root => 'fe';
 
   @override
   void initState() {
@@ -124,7 +122,6 @@ class _ListExplorer extends State<ListExplorer> {
     return [
       FloatingActionButton(
         heroTag: "dirAddBtn",
-        backgroundColor: addBtnColor,
         onPressed: () {
           _closeMenu();
 
@@ -147,7 +144,6 @@ class _ListExplorer extends State<ListExplorer> {
         child: const Icon(Icons.folder),
       ),
       FloatingActionButton(
-        backgroundColor: addBtnColor,
         onPressed: () {
           _closeMenu();
 
@@ -188,14 +184,6 @@ class _ListExplorer extends State<ListExplorer> {
                           onChanged: (value) => _listTarget = value,
                         ),
                       ),
-                      //PopupMenuButton(
-                      //    initialValue: 'jpn-eng',
-                      //    icon: Text('jpn-eng'),
-                      //    position: PopupMenuPosition.under,
-                      //    itemBuilder: (context) => ['jpn-eng', 'jpn-fra']
-                      //        .map((e) =>
-                      //            PopupMenuItem(value: e, child: Text(e)))
-                      //        .toList())
                     ]),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -245,7 +233,6 @@ class _ListExplorer extends State<ListExplorer> {
   List<Widget> buildSelectionButtons() {
     return [
       FloatingActionButton(
-        backgroundColor: addBtnColor,
         onPressed: () {
           for (var e in _selectionController.selection) {
             File(e.path).deleteSync();
@@ -276,6 +263,82 @@ class _ListExplorer extends State<ListExplorer> {
     setState(() {});
   }
 
+  Widget buildSearchFilter() {
+    return PopupMenuButton(
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 15),
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      splashRadius: 0,
+      child: AbsorbPointer(
+        child: FloatingActionButton(
+          onPressed: () {},
+          child: const Icon(Icons.filter_list_rounded),
+        ),
+      ),
+      itemBuilder: (context) => List.from(
+        ['asc', 'dsc', 'recent']
+            .map((e) => PopupMenuItem(value: e, child: Text(e))),
+      ),
+    );
+  }
+
+  Widget buildHeader() {
+    final primaryColor = Theme.of(context).colorScheme.secondaryContainer;
+    final onPrimaryColor = Theme.of(context).colorScheme.onSecondaryContainer;
+
+    return IntrinsicHeight(
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          popupMenuTheme: PopupMenuThemeData(
+            color: primaryColor,
+            textStyle: TextStyle(color: onPrimaryColor),
+          ),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(
+            foregroundColor: onPrimaryColor,
+            backgroundColor: primaryColor,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: 5),
+                child: FloatingActionButton(
+                  onPressed: null,
+                  child: Text('target'),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 5),
+                child: FloatingActionButton(
+                    splashColor: Colors.transparent,
+                    onPressed: () {},
+                    child: Text('collection')),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: FloatingActionButton(
+                onPressed: () {},
+                child: const Icon(Icons.search),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: buildSearchFilter(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext ctx) {
     return BlocBuilder<AuthBloc, AuthState>(
@@ -288,68 +351,8 @@ class _ListExplorer extends State<ListExplorer> {
         child: Stack(children: [
           Column(
             children: [
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        alignment: Alignment.centerLeft,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color:
-                              Theme.of(context).colorScheme.secondaryContainer,
-                        ),
-                        //child: Text(fs.wd.replaceAll(root, '')),
-                        child: const Text('PATH'),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: FloatingActionButton(
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceVariant,
-                        onPressed: () {},
-                        child: const Icon(Icons.search),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: PopupMenuButton(
-                        position: PopupMenuPosition.under,
-                        offset: const Offset(0, 15),
-                        color: Theme.of(context).colorScheme.surfaceVariant,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        splashRadius: 0,
-                        child: AbsorbPointer(
-                          child: FloatingActionButton(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surfaceVariant,
-                            onPressed: () {},
-                            child: const Icon(Icons.filter_list_rounded),
-                          ),
-                        ),
-                        itemBuilder: (context) => List.from(
-                          ['asc', 'dsc', 'recent'].map(
-                            (e) => PopupMenuItem(
-                              value: e,
-                              child: Text(
-                                e,
-                                style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              buildHeader(),
+
               //page view
               Expanded(
                 child: Container(
@@ -391,7 +394,6 @@ class _ListExplorer extends State<ListExplorer> {
               controller: _menuBtnCtrl,
               button: FloatingActionButton(
                 heroTag: "listMenuBtn",
-                backgroundColor: addBtnColor,
                 onPressed: () {
                   if (_selectionController.isEnabled) {
                     _selectionController.isEnabled = false;
@@ -433,7 +435,6 @@ class ListExplorerItems extends StatefulWidget {
 }
 
 class _ListExplorerItems extends State<ListExplorerItems> {
-  late final Color itemColor = Theme.of(context).colorScheme.primaryContainer;
   List<FileInfo> get items => widget.items;
 
   late final selectionController =
@@ -445,9 +446,16 @@ class _ListExplorerItems extends State<ListExplorerItems> {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: itemColor,
+          color: Theme.of(context).colorScheme.primaryContainer,
         ),
-        child: Center(child: Text(item.name)),
+        child: Center(
+          child: Text(
+            item.name,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -459,25 +467,35 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         if (!selectionController.isEnabled) return;
         selectionController.isEnabled = false;
       },
-      child: AnimatedBuilder(
-        animation: selectionController,
-        builder: (context, _) => GridView.builder(
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 150.0,
-            mainAxisSpacing: 10.0,
-            crossAxisSpacing: 10.0,
-            childAspectRatio: 1.0,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          checkboxTheme: CheckboxThemeData(
+            fillColor: MaterialStateProperty.all(
+                Theme.of(context).colorScheme.surfaceVariant),
+            checkColor: MaterialStateProperty.all(
+                Theme.of(context).colorScheme.onSurfaceVariant),
           ),
-          itemCount: items.length,
-          itemBuilder: (context, i) {
-            final item = items[i];
+        ),
+        child: AnimatedBuilder(
+          animation: selectionController,
+          builder: (context, _) => GridView.builder(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 150.0,
+              mainAxisSpacing: 10.0,
+              crossAxisSpacing: 10.0,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final item = items[i];
 
-            return Selectable(
-              value: item,
-              controller: selectionController,
-              child: buildItem(item),
-            );
-          },
+              return Selectable(
+                value: item,
+                controller: selectionController,
+                child: buildItem(item),
+              );
+            },
+          ),
         ),
       ),
     );
