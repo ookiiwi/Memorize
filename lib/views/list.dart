@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/main.dart';
 import 'package:memorize/services/dict.dart';
 import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
-import 'package:memorize/widgets/search.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
@@ -84,11 +84,15 @@ class _ListViewer extends State<ListViewer> {
     file.writeAsStringSync(jsonEncode(list));
   }
 
-  void lanchQuiz() {
+  void launchQuiz() {
     if (list.entries.isEmpty) return; // don't launch quiz if list is empty
 
     final fEntries = Future.wait(list.entries
         .map((e) async => XmlDocument.parse(await Dict.get(e.id, e.target))));
+
+    final reversedTheme = MyApp.of(context).themeMode == ThemeMode.light
+        ? MyApp.of(context).flexDarkTheme
+        : MyApp.of(context).flexLightTheme;
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -103,14 +107,35 @@ class _ListViewer extends State<ListViewer> {
               return SafeArea(
                 child: Quiz(
                   questions: entries
-                      .map((e) => Entry.core(
-                            doc: e,
-                            model: model,
-                            coreReading: false,
-                          ))
+                      .map(
+                        (e) => Theme(
+                          data: reversedTheme,
+                          child: Card(
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
+                            margin: const EdgeInsets.all(12.0),
+                            child: Center(
+                              child: Entry.core(
+                                doc: e,
+                                model: model,
+                                coreReading: false,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
                       .toList(),
-                  answers: entries
-                      .map((e) => Card(child: Entry(doc: e, model: model)))
+                  answers: entries.reversed
+                      .map(
+                        (e) => Theme(
+                          data: reversedTheme,
+                          child: Card(
+                            color:
+                                Theme.of(context).colorScheme.primaryContainer,
+                            child: Entry(doc: e, model: model),
+                          ),
+                        ),
+                      )
                       .toList(),
                   onEnd: Navigator.of(context).pop,
                 ),
@@ -164,7 +189,9 @@ class _ListViewer extends State<ListViewer> {
           ),
           PopupMenuButton(
             position: PopupMenuPosition.under,
-            color: Theme.of(context).colorScheme.secondaryContainer,
+            color: Theme.of(context).colorScheme.secondary,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             onSelected: (void Function() value) => value(),
             itemBuilder: (context) => _popUpMenuItems.entries
                 .map(
@@ -173,9 +200,7 @@ class _ListViewer extends State<ListViewer> {
                     child: Text(
                       e.key,
                       style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer),
+                          color: Theme.of(context).colorScheme.onSecondary),
                     ),
                   ),
                 )
@@ -195,7 +220,7 @@ class _ListViewer extends State<ListViewer> {
               bottom: kBottomNavigationBarHeight + 10,
               right: 20,
               child: FloatingActionButton(
-                onPressed: lanchQuiz,
+                onPressed: launchQuiz,
                 child: const Icon(Icons.play_arrow_rounded),
               ),
             ),
@@ -313,7 +338,9 @@ class _EntryViewier extends State<EntryViewier> {
                       padding: const EdgeInsets.only(
                           bottom: kBottomNavigationBarHeight),
                       separatorBuilder: (context, index) => Divider(
-                        color: Theme.of(context).colorScheme.onBackground,
+                        indent: 12,
+                        endIndent: 12,
+                        color: Theme.of(context).colorScheme.outline,
                       ),
                       itemCount: values.length,
                       itemBuilder: (context, i) {
@@ -428,7 +455,7 @@ class _EntryView extends State<EntryView> {
           IconButton(
             onPressed: () => setState(() => _snapToGrid = !_snapToGrid),
             icon: Icon(
-              _snapToGrid ? Icons.circle_rounded : Icons.circle_outlined,
+              _snapToGrid ? Icons.grid_on : Icons.grid_off,
             ),
           )
         ],
@@ -622,23 +649,28 @@ class _EntrySearch extends State<EntrySearch> {
           onPressed: () => Navigator.of(context).maybePop(),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
-        titleSpacing: 0.0,
-        title: Padding(
-          padding: const EdgeInsets.only(right: 10),
-          child: TextField(
-            textAlignVertical: TextAlignVertical.center,
-            decoration: InputDecoration(
-              contentPadding: const EdgeInsets.all(8.0),
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
+        actions: [
+          AbsorbPointer(
+            child: IconButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const SizedBox(),
             ),
-            onChanged: (value) async {
-              fEntries = fetchResults(value);
-              setState(() {});
-            },
+          )
+        ],
+        centerTitle: true,
+        title: TextField(
+          textAlignVertical: TextAlignVertical.center,
+          decoration: InputDecoration(
+            contentPadding: const EdgeInsets.all(8.0),
+            hintText: 'Search',
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none),
           ),
+          onChanged: (value) async {
+            fEntries = fetchResults(value);
+            setState(() {});
+          },
         ),
       ),
       body: FutureBuilder(
@@ -680,7 +712,6 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // TODO: implement build
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
