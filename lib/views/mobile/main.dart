@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:memorize/file_system.dart';
+import 'package:memorize/main.dart';
 import 'package:memorize/views/auth.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
@@ -10,7 +11,7 @@ import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final _routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['home', 'search', 'account', 'settings'];
+const _routes = ['home', 'search', /*'account',*/ 'settings'];
 final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
   ShellRoute(
     navigatorKey: _routerNavKey,
@@ -36,8 +37,8 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
           items: [
             Icon(Icons.home_rounded, color: appBarIconColor),
             Icon(Icons.search_rounded, color: appBarIconColor),
-            Icon(Icons.account_circle_rounded, color: appBarIconColor),
-            Icon(Icons.settings, color: appBarIconColor)
+            //Icon(Icons.account_circle_rounded, color: appBarIconColor),
+            Icon(Icons.settings, color: appBarIconColor),
           ],
         ),
       );
@@ -74,7 +75,7 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsPage(),
-      )
+      ),
     ],
   )
 ]);
@@ -84,10 +85,21 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool lightBrightness = MyApp.of(context).themeMode == ThemeMode.light;
+
     return Scaffold(
       extendBody: true,
       appBar: AppBar(
         actions: [
+          IconButton(
+            onPressed: () {
+              lightBrightness = !lightBrightness;
+              MyApp.of(context).themeMode =
+                  lightBrightness ? ThemeMode.light : ThemeMode.dark;
+            },
+            icon: Icon(
+                lightBrightness ? Icons.light_mode : Icons.nightlight_round),
+          ),
           IconButton(
             onPressed: () {},
             icon: const Icon(Icons.notifications),
