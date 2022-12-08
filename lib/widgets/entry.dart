@@ -76,13 +76,7 @@ class _Entry extends State<Entry> {
   }
 
   Widget buildCore() {
-    return Card(
-      child: Center(
-        child: OrthElement(
-          data: buildOrthData(!widget.coreReading!),
-        ),
-      ),
-    );
+    return OrthElement(data: buildOrthData(!widget.coreReading!));
   }
 
   Widget buildDetails() {
@@ -122,7 +116,7 @@ class _Entry extends State<Entry> {
   }
 
   Widget buildPreview() {
-    return Row(children: [Card(child: OrthElement(data: buildOrthData()))]);
+    return Row(children: [OrthElement(data: buildOrthData())]);
   }
 
   @override
@@ -222,14 +216,14 @@ class SenseElement extends StatelessWidget {
           ),
         RichText(
           text: TextSpan(
-            style: TextStyle(color: Theme.of(context).colorScheme.onBackground),
             children: [
               if (usg.isNotEmpty)
                 TextSpan(
                   text: usg + ' ',
                   style: TextStyle(fontSize: 11, color: metaTextColor),
                 ),
-              TextSpan(text: trans),
+              TextSpan(
+                  text: trans, style: Theme.of(context).textTheme.bodyText1),
               if (ref.isNotEmpty)
                 TextSpan(
                   text: ' ' * 3 + ref,
