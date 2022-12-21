@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/widget.dart' show TextFieldDialog;
 import 'package:memorize/widgets/selectable.dart';
 import 'package:overlayment/overlayment.dart';
@@ -49,13 +50,32 @@ class _ListExplorer extends State<ListExplorer> {
 
   ModalRoute? _route;
 
+  String _target = 'jpn-eng';
+
+  String get _collection {
+    final tmp = Directory.current.path
+        .replaceFirst(RegExp('.*/$_target'), '')
+        .split('/')
+      ..removeWhere((e) => e.isEmpty);
+
+    return tmp.isEmpty ? 'default' : tmp.last;
+  }
+
   String get root => 'fe';
+  late final String _initDir;
 
   @override
   void initState() {
     super.initState();
 
     _updateData();
+    _initDir = Directory.current.path;
+
+    final dir =
+        Directory('$root/jpn-eng'); // WARNING: target not checked by Dict.check
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    Dict.check(_target);
+    Directory.current = dir;
 
     _selectionController.addListener(() {
       bool isEnabled = _selectionController.isEnabled;
@@ -83,13 +103,31 @@ class _ListExplorer extends State<ListExplorer> {
     _controller.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
+    Directory.current = _initDir;
     super.dispose();
   }
 
+  void _changeTarget(String target) {
+    if (target == _target) return;
+
+    Dict.check(target);
+    _target = target;
+
+    final dir = Directory(target);
+
+    if (!dir.existsSync()) dir.createSync();
+    Directory.current = dir;
+
+    setState(() {});
+    _updateData();
+  }
+
   void _updateData() {
+    assert(!Directory.current.path.endsWith(root));
+
     _fItems = Future.value(
       List.from(
-        Directory(root).listSync().map((e) {
+        Directory.current.listSync().map((e) {
           final name = e.path.split('/').last.trim();
 
           if (name.startsWith('.')) {
@@ -133,7 +171,11 @@ class _ListExplorer extends State<ListExplorer> {
               hasConfirmed: (value) {
                 setState(() {
                   if (value && _controller.text.isNotEmpty) {
-                    //fs.mkdir(_controller.text);
+                    final dir = Directory(_controller.text);
+
+                    assert(!dir.existsSync());
+
+                    dir.createSync();
                     _updateData();
                   }
                 });
@@ -304,22 +346,57 @@ class _ListExplorer extends State<ListExplorer> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Expanded(
+            Expanded(
               child: Padding(
-                padding: EdgeInsets.only(right: 5),
-                child: FloatingActionButton(
-                  onPressed: null,
-                  child: Text('target'),
+                padding: const EdgeInsets.only(right: 5),
+                child: PopupMenuButton<String>(
+                  position: PopupMenuPosition.under,
+                  splashRadius: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  offset: const Offset(0, 15),
+                  itemBuilder: (context) => ['jpn-eng']
+                      .map((e) => PopupMenuItem<String>(
+                            onTap: () {
+                              _changeTarget(e);
+                            },
+                            child: Text(e),
+                          ))
+                      .toList(),
+                  child: FloatingActionButton(
+                    onPressed: null,
+                    child: Text(_target),
+                  ),
+                  onSelected: (value) {},
                 ),
               ),
             ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(left: 5),
-                child: FloatingActionButton(
-                    splashColor: Colors.transparent,
-                    onPressed: () {},
-                    child: Text('collection')),
+                child: PopupMenuButton<String>(
+                  position: PopupMenuPosition.under,
+                  splashRadius: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  offset: const Offset(0, 15),
+                  itemBuilder: (context) {
+                    return [
+                      PopupMenuItem(
+                          enabled: !Directory.current.path.endsWith(_target),
+                          onTap: () {
+                            Directory.current = '..';
+                            _updateData();
+                            setState(() {});
+                          },
+                          child: const Text('..'))
+                    ];
+                  },
+                  child: FloatingActionButton(
+                    onPressed: null,
+                    child: Text(_collection),
+                  ),
+                ),
               ),
             ),
             Padding(
@@ -376,6 +453,17 @@ class _ListExplorer extends State<ListExplorer> {
                               child: ListExplorerItems(
                                 selectionController: _selectionController,
                                 items: items,
+                                onItemTap: (info) {
+                                  if (info.type ==
+                                      FileSystemEntityType.directory) {
+                                    Directory.current = info.path;
+                                    _updateData();
+                                    setState(() {});
+                                  } else {
+                                    context.push('/list',
+                                        extra: {'fileinfo': info});
+                                  }
+                                },
                               ),
                             );
                           },
@@ -419,16 +507,18 @@ class _ListExplorer extends State<ListExplorer> {
   }
 }
 
-class ListExplorerItems extends StatefulWidget {
+class ListExplorerItems<T> extends StatefulWidget {
   const ListExplorerItems(
       {super.key,
       this.items = const [],
+      this.onItemTap,
       this.selectionController,
       this.onSelectionToggled});
 
   final List<FileInfo> items;
   final SelectionController? selectionController;
   final void Function(bool value)? onSelectionToggled;
+  final void Function(FileInfo info)? onItemTap;
 
   @override
   State createState() => _ListExplorerItems();
@@ -442,7 +532,11 @@ class _ListExplorerItems extends State<ListExplorerItems> {
 
   Widget buildItem(FileInfo item) {
     return GestureDetector(
-      onTap: () => context.push('/list', extra: {'fileinfo': item}),
+      onTap: () {
+        if (widget.onItemTap != null) {
+          widget.onItemTap!(item);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
