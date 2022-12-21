@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:appinio_swiper/appinio_swiper.dart';
 
+enum QuizMode {
+  random,
+  //randomInvert,
+  //randomMixed,
+  linear,
+  //linearInvert,
+  //linearMixed
+}
+
 class Quiz extends StatefulWidget {
   const Quiz(
       {super.key,
+      this.mode = QuizMode.linear,
       required List<Widget> questions,
       required List<Widget> answers,
       this.onEnd})
-      : assert(questions.length == answers.length),
+      : assert(questions.length == answers.length && questions.length != 0),
         itemCount = questions.length,
         questions = questions,
         answers = answers,
@@ -17,6 +27,7 @@ class Quiz extends StatefulWidget {
   const Quiz.builder(
       {super.key,
       required this.itemCount,
+      this.mode = QuizMode.linear,
       required this.questionBuilder,
       required this.answerBuilder,
       this.onEnd})
@@ -25,6 +36,7 @@ class Quiz extends StatefulWidget {
         answers = null;
 
   final int itemCount;
+  final QuizMode mode;
   final List<Widget>? questions;
   final List<Widget>? answers;
   final Widget Function(BuildContext context, int index)? questionBuilder;
@@ -46,6 +58,13 @@ class _Quiz extends State<Quiz> {
 
   int page = 0;
   int get itemCount => widget.itemCount;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // check modes
+  }
 
   List<Widget> buildAnswers() {
     assert(widget.answerBuilder != null);
