@@ -2,18 +2,36 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
-import 'package:memorize/services/dict.dart';
+import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
+
+// TODO: get from server
+// for testing only
+//const schema = {
+//  'pron': "//form[@type='r_ele']/orth", // ?
+//  'orth': {
+//    'ruby': "//form[@type='r_ele']/orth[1]", // ?
+//    'text': "//form[@type='k_ele']/orth"
+//  },
+//  'sense': {
+//    'root': "//sense",
+//    'pos': "./note[@type='pos']", // ?
+//    'usg': "./usg", // ?
+//    'ref': "./ref", // ?
+//    'trans': "./cit[@type='trans']/quote",
+//  }
+//};
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.list}) : fileinfo = null;
@@ -28,7 +46,6 @@ class ListViewer extends StatefulWidget {
 
 class _ListViewer extends State<ListViewer> {
   late final MemoList list;
-  late final Map<String, dynamic> model;
 
   late final _popUpMenuItems = {
     'about': () {
@@ -62,33 +79,19 @@ class _ListViewer extends State<ListViewer> {
       list = MemoList.fromJson(jsonDecode(data));
     }
 
-    // TODO: load model
-    model = const {
-      'pron': "//form[@type='r_ele']/orth", // ?
-      'orth': {
-        'reading': "//form[@type='r_ele']/orth", // ?
-        'text': "//form[@type='k_ele']/orth"
-      },
-      'sense': {
-        'root': "//sense",
-        'pos': "./note[@type='pos']", // ?
-        'usg': "./usg", // ?
-        'ref': "./ref", // ?
-        'trans': "./cit[@type='trans']/quote",
-      }
-    };
+    // TODO: load schema
   }
 
   void writeList() {
-    final file = File('fe/${list.name}');
+    final file = File(list.name);
     file.writeAsStringSync(jsonEncode(list));
   }
 
-  void launchQuiz() {
+  void launchQuiz(QuizMode mode) {
     if (list.entries.isEmpty) return; // don't launch quiz if list is empty
 
     final fEntries = Future.wait(list.entries
-        .map((e) async => XmlDocument.parse(await Dict.get(e.id, e.target))));
+        .map((e) async => e.copyWith(data: Dict.get(e.id, e.target))));
 
     final reversedTheme = MyApp.of(context).themeMode == ThemeMode.light
         ? MyApp.of(context).flexDarkTheme
@@ -96,35 +99,35 @@ class _ListViewer extends State<ListViewer> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => FutureBuilder<List<XmlDocument>>(
+        builder: (context) => FutureBuilder<List<ListEntry>>(
           future: fEntries,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             } else {
-              final entries = snapshot.data as List<XmlDocument>;
+              final entries = snapshot.data as List<ListEntry>;
 
               return SafeArea(
                 child: Quiz(
-                  questions: entries
-                      .map(
-                        (e) => Theme(
-                          data: reversedTheme,
-                          child: Card(
-                            color:
-                                Theme.of(context).colorScheme.primaryContainer,
-                            margin: const EdgeInsets.all(12.0),
-                            child: Center(
-                              child: Entry.core(
-                                doc: e,
-                                model: model,
-                                coreReading: false,
-                              ),
-                            ),
+                  mode: mode,
+                  questions: entries.map((e) {
+                    assert(e.data != null);
+
+                    return Theme(
+                      data: reversedTheme,
+                      child: Card(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        margin: const EdgeInsets.all(12.0),
+                        child: Center(
+                          child: Entry.core(
+                            doc: XmlDocument.parse(e.data!),
+                            schema: Schema.load(e.target),
+                            coreReading: false,
                           ),
                         ),
-                      )
-                      .toList(),
+                      ),
+                    );
+                  }).toList(),
                   answers: entries.reversed
                       .map(
                         (e) => Theme(
@@ -132,7 +135,14 @@ class _ListViewer extends State<ListViewer> {
                           child: Card(
                             color:
                                 Theme.of(context).colorScheme.primaryContainer,
-                            child: Entry(doc: e, model: model),
+                            child: Container(
+                              alignment: Alignment.topCenter,
+                              padding: const EdgeInsets.all(15),
+                              child: Entry(
+                                doc: XmlDocument.parse(e.data!),
+                                schema: Schema.load(e.target),
+                              ),
+                            ),
                           ),
                         ),
                       )
@@ -161,7 +171,6 @@ class _ListViewer extends State<ListViewer> {
               writeList();
               Navigator.of(context).maybePop();
             },
-            model: model,
           );
         },
       ),
@@ -170,6 +179,94 @@ class _ListViewer extends State<ListViewer> {
     });
 
     _selectionController.isEnabled = false;
+  }
+
+  Widget buildStats(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Center(
+              child: Text(
+                'Statistics',
+                textScaleFactor: 1.75,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
+              child: StatsViewer(entryCount: 10, results: [
+                ...List.generate(
+                  10,
+                  (i) => QuizResults(
+                    score: Random().nextInt(11),
+                    time: DateTime(2022, 11, i),
+                  ),
+                ),
+                ...List.generate(
+                  20,
+                  (i) => QuizResults(
+                    score: Random().nextInt(11),
+                    time: DateTime(2022, 12, i),
+                  ),
+                ),
+                ...List.generate(
+                  20,
+                  (i) => QuizResults(
+                    score: Random().nextInt(11),
+                    time: DateTime(2023, 1, i),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildQuizMenu(BuildContext context) {
+    return
+        //Container(
+        //  decoration: BoxDecoration(
+        //      color: Theme.of(context).colorScheme.primaryContainer,
+        //      borderRadius: BorderRadius.circular(10)),
+        //  child:
+        Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: QuizMode.values
+          .map(
+            (e) => Container(
+              margin: const EdgeInsets.symmetric(vertical: 5),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).maybePop();
+                  launchQuiz(e);
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Theme.of(context).colorScheme.primaryContainer),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    e.name,
+                    textScaleFactor: 1.25,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
   }
 
   @override
@@ -213,76 +310,52 @@ class _ListViewer extends State<ListViewer> {
           children: [
             EntryViewier(
               list: list,
-              model: model,
               selectionController: _selectionController,
             ),
             Positioned(
               bottom: kBottomNavigationBarHeight + 10,
               right: 20,
               child: FloatingActionButton(
-                onPressed: launchQuiz,
-                child: const Icon(Icons.play_arrow_rounded),
+                onPressed: null,
+                child: GestureDetector(
+                  onTap: () => launchQuiz(QuizMode.linear),
+                  onLongPress: () {
+                    showModal(
+                        configuration: const FadeScaleTransitionConfiguration(
+                          transitionDuration: Duration.zero,
+                          reverseTransitionDuration: Duration.zero,
+                          barrierColor: Colors.transparent,
+                        ),
+                        context: context,
+                        builder: (context) {
+                          return Container(
+                            alignment: Alignment.bottomRight,
+                            margin: const EdgeInsets.only(
+                              bottom: kBottomNavigationBarHeight + 10 + 65,
+                              right: 20,
+                            ),
+                            child: Material(
+                                color: Colors.transparent,
+                                child: buildQuizMenu(context)),
+                          );
+                        });
+                  },
+                  child: const Icon(Icons.play_arrow_rounded),
+                ),
               ),
             ),
           ],
         ),
-        SafeArea(
-          child: Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Center(
-                  child: Text(
-                    'Statistics',
-                    textScaleFactor: 1.75,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
-                  child: StatsViewer(entryCount: 10, results: [
-                    ...List.generate(
-                      10,
-                      (i) => QuizResults(
-                        score: Random().nextInt(11),
-                        time: DateTime(2022, 11, i),
-                      ),
-                    ),
-                    ...List.generate(
-                      20,
-                      (i) => QuizResults(
-                        score: Random().nextInt(11),
-                        time: DateTime(2022, 12, i),
-                      ),
-                    ),
-                    ...List.generate(
-                      20,
-                      (i) => QuizResults(
-                        score: Random().nextInt(11),
-                        time: DateTime(2023, 1, i),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-            ],
-          ),
-        )
+        buildStats(context)
       ]),
     );
   }
 }
 
 class EntryViewier extends StatefulWidget {
-  const EntryViewier(
-      {super.key,
-      required this.list,
-      required this.model,
-      this.selectionController});
+  const EntryViewier({super.key, required this.list, this.selectionController});
 
   final MemoList list;
-  final Map<String, dynamic> model;
   final SelectionController? selectionController;
 
   @override
@@ -291,21 +364,17 @@ class EntryViewier extends StatefulWidget {
 
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
-  late final model = widget.model;
   late final selectionController = widget.selectionController;
   bool _openSelection = false;
 
   late var fEntries = buildEntries(list.entries);
-  Map<String, String> entries = {};
+  List<ListEntry> entries = [];
 
-  Future<MapEntry<String, String>> buildEntry(ListEntry entry) async =>
-      MapEntry(
-        entry.id,
-        await Dict.get(entry.id, entry.target),
-      );
+  Future<ListEntry> buildEntry(ListEntry entry) async =>
+      entry.copyWith(data: Dict.get(entry.id, entry.target));
 
-  Future<Map<String, String>> buildEntries(Iterable<ListEntry> entries) async =>
-      Map.fromEntries(
+  Future<List<ListEntry>> buildEntries(Iterable<ListEntry> entries) async =>
+      List.from(
           await Future.wait(entries.map((e) async => await buildEntry(e))));
 
   @override
@@ -323,14 +392,14 @@ class _EntryViewier extends State<EntryViewier> {
       child: Column(
         children: [
           Expanded(
-            child: FutureBuilder<Map<String, String>>(
+            child: FutureBuilder<List<ListEntry>>(
               future: fEntries,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
                   return const Center(child: CircularProgressIndicator());
                 } else {
                   entries = snapshot.data!;
-                  final values = entries.values.toList();
+                  //final values = entries.values.toList();
 
                   return AnimatedBuilder(
                     animation: selectionController ?? ValueNotifier(null),
@@ -342,8 +411,10 @@ class _EntryViewier extends State<EntryViewier> {
                         endIndent: 12,
                         color: Theme.of(context).colorScheme.outline,
                       ),
-                      itemCount: values.length,
+                      itemCount: entries.length,
                       itemBuilder: (context, i) {
+                        assert(entries[i].data != null);
+
                         return Stack(children: [
                           AbsorbPointer(
                             absorbing: _openSelection,
@@ -356,13 +427,13 @@ class _EntryViewier extends State<EntryViewier> {
                                     .push(MaterialPageRoute(builder: (context) {
                                   return EntryView(
                                     entries: list.entries,
-                                    entry: entries.keys.elementAt(i),
+                                    entryId: entries[i].id,
                                   );
                                 }));
                               },
                               child: Entry.preview(
-                                doc: XmlDocument.parse(values[i]),
-                                model: model,
+                                doc: XmlDocument.parse(entries[i].data!),
+                                schema: Schema.load(entries[i].target),
                               ),
                             ),
                           ),
@@ -375,7 +446,7 @@ class _EntryViewier extends State<EntryViewier> {
                                   setState(() {
                                     final entry = list.entries.elementAt(i);
 
-                                    entries.remove(entry.id);
+                                    entries.remove(entry);
                                     list.entries.remove(entry);
 
                                     // write list
@@ -403,9 +474,9 @@ class _EntryViewier extends State<EntryViewier> {
 }
 
 class EntryView extends StatefulWidget {
-  const EntryView({super.key, this.entries = const [], this.entry = ''});
+  const EntryView({super.key, this.entries = const [], required this.entryId});
 
-  final String entry;
+  final int entryId;
   final Iterable<ListEntry> entries;
 
   @override
@@ -413,32 +484,17 @@ class EntryView extends StatefulWidget {
 }
 
 class _EntryView extends State<EntryView> {
-  static const model = {
-    'pron': "//form[@type='r_ele']/orth", // ?
-    'orth': {
-      'reading': "//form[@type='r_ele']/orth", // ?
-      'text': "//form[@type='k_ele']/orth"
-    },
-    'sense': {
-      'root': "//sense",
-      'pos': "./note[@type='pos']", // ?
-      'usg': "./usg", // ?
-      'ref': "./ref", // ?
-      'trans': "./cit[@type='trans']/quote",
-    }
-  };
-
   bool _snapToGrid = true;
   late final fEntries = buildEntries(widget.entries);
   late final _controller = PageController(
       initialPage: widget.entries.toList().indexWhere(
-            (e) => e.id == widget.entry,
+            (e) => e.id == widget.entryId,
           ));
 
-  Future<String> buildEntry(ListEntry entry) async =>
-      await Dict.get(entry.id, entry.target);
+  Future<ListEntry> buildEntry(ListEntry entry) async =>
+      entry.copyWith(data: await Dict.get(entry.id, entry.target));
 
-  Future<List<String>> buildEntries(Iterable<ListEntry> entries) async =>
+  Future<List<ListEntry>> buildEntries(Iterable<ListEntry> entries) async =>
       await Future.wait(entries.map((e) async => await buildEntry(e)));
 
   @override
@@ -460,7 +516,7 @@ class _EntryView extends State<EntryView> {
           )
         ],
       ),
-      body: FutureBuilder<List<String>>(
+      body: FutureBuilder<List<ListEntry>>(
         future: fEntries,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -468,7 +524,7 @@ class _EntryView extends State<EntryView> {
               child: CircularProgressIndicator(),
             );
           } else {
-            final entries = snapshot.data as List<String>;
+            final entries = snapshot.data!;
 
             return Padding(
               padding: const EdgeInsets.only(top: 10.0),
@@ -478,6 +534,8 @@ class _EntryView extends State<EntryView> {
                 pageSnapping: _snapToGrid,
                 itemCount: entries.length,
                 itemBuilder: (context, i) {
+                  assert(entries[i].data != null);
+
                   return ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight: MediaQuery.of(context).size.height -
@@ -486,8 +544,8 @@ class _EntryView extends State<EntryView> {
                       minWidth: MediaQuery.of(context).size.width,
                     ),
                     child: Entry(
-                      doc: XmlDocument.parse(entries[i]),
-                      model: model,
+                      doc: XmlDocument.parse(entries[i].data!),
+                      schema: Schema.load(entries[i].target),
                     ),
                   );
                 },
@@ -613,32 +671,17 @@ class StatsViewer extends StatelessWidget {
 }
 
 class EntrySearch extends StatefulWidget {
-  const EntrySearch(
-      {super.key,
-      this.onItemSelected,
-      required this.target,
-      required this.model});
+  const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final Map<String, dynamic> model;
-  final void Function(String id)? onItemSelected;
+  final void Function(int id)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  Future<Map<String, String>> fEntries = Future.value({});
-
-  Future<Map<String, String>> fetchResults(String value) async {
-    final ids = (await Dict.find(value, widget.target));
-
-    return Map.fromEntries(
-      await Future.wait(ids.entries.map(
-        (e) async => MapEntry(e.key, (await Dict.get(e.key, widget.target))),
-      )),
-    );
-  }
+  Future<List<ListEntry>> fEntries = Future.value([]);
 
   @override
   Widget build(BuildContext context) {
@@ -667,19 +710,24 @@ class _EntrySearch extends State<EntrySearch> {
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none),
           ),
-          onChanged: (value) async {
-            fEntries = fetchResults(value);
+          onSubmitted: (value) async {
+            final ids = Dict.find(value, widget.target);
+            print('found: ${ids.length} results');
+            fEntries = Future.value(List.from(ids.map((e) => ListEntry(
+                e.entryPtrIndex, widget.target,
+                data: Dict.get(e.entryPtrIndex, widget.target)))));
+
             setState(() {});
           },
         ),
       ),
-      body: FutureBuilder(
+      body: FutureBuilder<List<ListEntry>>(
           future: fEntries,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             } else {
-              final entries = snapshot.data as Map<String, String>;
+              final entries = snapshot.data as List<ListEntry>;
 
               return ListView.separated(
                   shrinkWrap: true,
@@ -687,15 +735,17 @@ class _EntrySearch extends State<EntrySearch> {
                   separatorBuilder: (context, index) =>
                       const Divider(thickness: 0.3),
                   itemBuilder: (context, i) {
+                    assert(entries[i].data != null);
+
                     return MaterialButton(
                       onPressed: () {
                         if (widget.onItemSelected != null) {
-                          widget.onItemSelected!(entries.keys.elementAt(i));
+                          widget.onItemSelected!(entries[i].id);
                         }
                       },
                       child: Entry.preview(
-                        doc: XmlDocument.parse(entries.values.elementAt(i)),
-                        model: widget.model,
+                        doc: XmlDocument.parse(entries[i].data!),
+                        schema: Schema.load(entries[i].target),
                       ),
                     );
                   });
