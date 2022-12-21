@@ -2,13 +2,22 @@ import 'package:equatable/equatable.dart';
 import 'package:nanoid/nanoid.dart';
 
 class ListEntry extends Equatable {
-  const ListEntry(this.id, this.target);
-  ListEntry.fromJson(Map<String, dynamic> json)
+  const ListEntry(this.id, this.target, {this.data});
+  ListEntry.fromJson(Map<String, dynamic> json, {this.data})
       : id = json['id'],
         target = json['target'];
 
-  final String id;
+  ListEntry copyWith({int? id, String? target, String? data}) {
+    return ListEntry(
+      id ?? this.id,
+      target ?? this.target,
+      data: data ?? this.data,
+    );
+  }
+
+  final int id;
   final String target;
+  final String? data;
 
   Map<String, dynamic> toJson() => {'id': id, 'target': target};
 
