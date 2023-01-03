@@ -40,6 +40,11 @@ class Schema {
         'sense': sense.toJson(),
       };
 
+  static bool exists(String target) {
+    final file = File('$applicationDocumentDirectory/schema/$target');
+    return file.existsSync();
+  }
+
   void save() {
     final file = File('$applicationDocumentDirectory/schema/$target');
 
@@ -295,20 +300,21 @@ class SenseElement extends StatelessWidget {
   final String ref;
   final String trans;
 
-  late Color metaTextColor;
-
   @override
   Widget build(BuildContext context) {
-    metaTextColor = Theme.of(context).colorScheme.onBackground.withOpacity(0.6);
+    Color? metaTextColor =
+        Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (pos.isNotEmpty)
-          Text(
-            pos,
+          RichText(
+            text: TextSpan(
+              text: pos,
+              style: TextStyle(color: metaTextColor),
+            ),
             textScaleFactor: 0.75,
-            style: TextStyle(color: metaTextColor),
           ),
         RichText(
           text: TextSpan(
