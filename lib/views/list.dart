@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
@@ -227,48 +226,6 @@ class _ListViewer extends State<ListViewer> {
     );
   }
 
-  Widget buildQuizMenu(BuildContext context) {
-    return
-        //Container(
-        //  decoration: BoxDecoration(
-        //      color: Theme.of(context).colorScheme.primaryContainer,
-        //      borderRadius: BorderRadius.circular(10)),
-        //  child:
-        Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: QuizMode.values
-          .map(
-            (e) => Container(
-              margin: const EdgeInsets.symmetric(vertical: 5),
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.of(context).maybePop();
-                  launchQuiz(e);
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: Theme.of(context).colorScheme.primaryContainer),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    e.name,
-                    textScaleFactor: 1.25,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )
-          .toList(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -316,32 +273,14 @@ class _ListViewer extends State<ListViewer> {
               bottom: kBottomNavigationBarHeight + 10,
               right: 20,
               child: FloatingActionButton(
-                onPressed: null,
-                child: GestureDetector(
-                  onTap: () => launchQuiz(QuizMode.linear),
-                  onLongPress: () {
-                    showModal(
-                        configuration: const FadeScaleTransitionConfiguration(
-                          transitionDuration: Duration.zero,
-                          reverseTransitionDuration: Duration.zero,
-                          barrierColor: Colors.transparent,
-                        ),
-                        context: context,
-                        builder: (context) {
-                          return Container(
-                            alignment: Alignment.bottomRight,
-                            margin: const EdgeInsets.only(
-                              bottom: kBottomNavigationBarHeight + 10 + 65,
-                              right: 20,
-                            ),
-                            child: Material(
-                                color: Colors.transparent,
-                                child: buildQuizMenu(context)),
-                          );
-                        });
-                  },
-                  child: const Icon(Icons.play_arrow_rounded),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => QuizLauncher(
+                      entries: list.entries,
+                    ),
+                  ),
                 ),
+                child: const Icon(Icons.play_arrow_rounded),
               ),
             ),
           ],
@@ -473,10 +412,10 @@ class _EntryViewier extends State<EntryViewier> {
   }
 }
 
-class EntryView extends StatefulWidget {
+class EntryView<T> extends StatefulWidget {
   const EntryView({super.key, this.entries = const [], required this.entryId});
 
-  final int entryId;
+  final T entryId;
   final Iterable<ListEntry> entries;
 
   @override
@@ -674,7 +613,7 @@ class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final void Function(int id)? onItemSelected;
+  final void Function(EntryId id)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
@@ -712,10 +651,20 @@ class _EntrySearch extends State<EntrySearch> {
           ),
           onSubmitted: (value) async {
             final ids = Dict.find(value, widget.target);
-            print('found: ${ids.length} results');
-            fEntries = Future.value(List.from(ids.map((e) => ListEntry(
-                e.entryPtrIndex, widget.target,
-                data: Dict.get(e.entryPtrIndex, widget.target)))));
+
+            fEntries = Future.value(
+              List.from(
+                ids.map((e) {
+                  final id = EntryId(e.offset, e.pos);
+
+                  return ListEntry(
+                    id,
+                    widget.target,
+                    data: Dict.get(id, widget.target),
+                  );
+                }),
+              ),
+            );
 
             setState(() {});
           },
