@@ -55,3 +55,27 @@ class _BottomNavBar extends State<BottomNavBar> {
     );
   }
 }
+
+class HasConnectionSnackBar extends SnackBar {
+  HasConnectionSnackBar({super.key})
+      : super(
+          content: const Text('Back on track'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(8.0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        );
+}
+
+class NoConnectionSnackBar extends SnackBar {
+  NoConnectionSnackBar({super.key})
+      : super(
+          content: const Text('No connection'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(8.0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        );
+}
