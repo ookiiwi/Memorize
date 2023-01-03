@@ -6,7 +6,7 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/bloc/auth_bloc.dart';
 import 'package:memorize/bloc/connection_bloc.dart' as cb;
 import 'package:memorize/loggers/offline_logger.dart';
@@ -63,6 +63,7 @@ class MyApp extends StatelessWidget {
     light: FlexSchemeColor(
       primary: Colors.black,
       secondary: Color(0xFFa0c284),
+      //secondary: Colors.black,
     ),
     dark: FlexSchemeColor(
       primary: Colors.white,
@@ -223,6 +224,8 @@ class _SplashScreen extends State<SplashScreen> {
 
     // wait for auth init to complete
     await BlocProvider.of<AuthBloc>(context).stream.first;
+    applicationDocumentDirectory =
+        (await getApplicationDocumentsDirectory()).path;
   }
 
   @override

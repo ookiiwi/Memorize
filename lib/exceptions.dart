@@ -31,3 +31,5 @@ class MissingAuthorityException implements Exception {
 
   const MissingAuthorityException(this.message);
 }
+
+class AALTooLowException implements Exception {}
