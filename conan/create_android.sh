@@ -10,6 +10,7 @@ for i in "${!archs[@]}"; do
     -pr:h=profile_android \
     -pr:b=default \
     -b missing \
+    -b slob \
     -tf=None \
     -o *:shared=True \
     -r conancenter
