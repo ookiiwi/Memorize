@@ -5,6 +5,7 @@ import 'package:memorize/list.dart';
 import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:overlayment/overlayment.dart';
+import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
 
@@ -42,35 +43,20 @@ class _ListExplorer extends State<ListExplorer> {
 
   double _addBtnTurns = 0.0;
 
-  String _listname = '';
-  String _listTarget = 'jpn-eng';
-
   ModalRoute? _route;
+  String collectionHistory = '';
 
-  String _target = 'jpn-eng';
-
-  String get _collection {
-    final tmp = Directory.current.path
-        .replaceFirst(RegExp('.*/$_target'), '')
-        .split('/')
-      ..removeWhere((e) => e.isEmpty);
-
-    return tmp.isEmpty ? 'default' : tmp.last;
-  }
-
-  String get root => 'fe';
   late final String _initDir;
+  String get root => 'fe';
+  String get currentCollection =>
+      Directory.current.path.replaceFirst(RegExp('.*/$root'), '');
 
   @override
   void initState() {
     super.initState();
 
     _initDir = Directory.current.path;
-
-    final dir = Directory('$root/jpn-eng');
-    if (!dir.existsSync()) dir.createSync(recursive: true);
-    Dict.check(_target);
-    Directory.current = dir;
+    Directory.current = root;
 
     _selectionController.addListener(() {
       bool isEnabled = _selectionController.isEnabled;
@@ -104,23 +90,26 @@ class _ListExplorer extends State<ListExplorer> {
     super.dispose();
   }
 
-  void _changeTarget(String target) {
-    if (target == _target) return;
+  void _changeCollection(String path, {bool goHome = false}) {
+    if (!goHome) {
+      assert(!collectionHistory.startsWith(RegExp(r'(.*\/fe)|fe')));
 
-    Dict.check(target);
-    _target = target;
+      if (!collectionHistory.startsWith(path)) {
+        collectionHistory = path;
+      }
 
-    final dir = Directory(target);
-
-    if (!dir.existsSync()) dir.createSync();
-    Directory.current = dir;
+      Directory.current =
+          '$_initDir/$root/' + path.replaceFirst(RegExp('^/'), '');
+    } else {
+      Directory.current = "$_initDir/$root";
+    }
+    _updateData();
 
     setState(() {});
-    _updateData();
   }
 
   void _updateData() {
-    assert(!Directory.current.path.endsWith(root));
+    assert(Directory.current.path.startsWith(RegExp('.*/$root')));
 
     _fItems = Future.value(
       List.from(
@@ -154,6 +143,9 @@ class _ListExplorer extends State<ListExplorer> {
   }
 
   List<Widget> buildAddButtons() {
+    String _listname = '';
+    String _listTarget = 'jpn-eng';
+
     return [
       FloatingActionButton(
         heroTag: "dirAddBtn",
@@ -305,17 +297,15 @@ class _ListExplorer extends State<ListExplorer> {
   Widget buildSearchFilter() {
     return PopupMenuButton(
       position: PopupMenuPosition.under,
-      offset: const Offset(0, 15),
-      elevation: 8,
+      offset: const Offset(0, 20),
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
       splashRadius: 0,
-      child: AbsorbPointer(
-        child: FloatingActionButton(
-          onPressed: () {},
-          child: const Icon(Icons.filter_list_rounded),
-        ),
+      child: const Padding(
+        padding: EdgeInsets.all(8.0),
+        child: Icon(Icons.filter_list_rounded),
       ),
       itemBuilder: (context) => List.from(
         ['asc', 'dsc', 'recent']
@@ -328,7 +318,13 @@ class _ListExplorer extends State<ListExplorer> {
     final primaryColor = Theme.of(context).colorScheme.secondaryContainer;
     final onPrimaryColor = Theme.of(context).colorScheme.onSecondaryContainer;
 
-    return IntrinsicHeight(
+    return Container(
+      height: 56.0,
+      padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: primaryColor,
+      ),
       child: Theme(
         data: Theme.of(context).copyWith(
           popupMenuTheme: PopupMenuThemeData(
@@ -341,70 +337,33 @@ class _ListExplorer extends State<ListExplorer> {
           ),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 5),
-                child: PopupMenuButton<String>(
-                  position: PopupMenuPosition.under,
-                  splashRadius: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  offset: const Offset(0, 15),
-                  itemBuilder: (context) => ['jpn-eng']
-                      .map((e) => PopupMenuItem<String>(
-                            onTap: () {
-                              _changeTarget(e);
-                            },
-                            child: Text(e),
-                          ))
-                      .toList(),
-                  child: FloatingActionButton(
-                    onPressed: null,
-                    child: Text(_target),
-                  ),
-                  onSelected: (value) {},
-                ),
+            IconButton(
+              padding: const EdgeInsets.only(),
+              onPressed: () {
+                _changeCollection('', goHome: true);
+              },
+              icon: Icon(
+                Icons.home_rounded,
+                color: currentCollection.isEmpty ? Colors.white : null,
               ),
             ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 5),
-                child: PopupMenuButton<String>(
-                  position: PopupMenuPosition.under,
-                  splashRadius: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  offset: const Offset(0, 15),
-                  itemBuilder: (context) {
-                    return [
-                      PopupMenuItem(
-                          enabled: !Directory.current.path.endsWith(_target),
-                          onTap: () {
-                            Directory.current = '..';
-                            _updateData();
-                            setState(() {});
-                          },
-                          child: const Text('..'))
-                    ];
-                  },
-                  child: FloatingActionButton(
-                    onPressed: null,
-                    child: Text(_collection),
-                  ),
-                ),
-              ),
+              child: CollectionHistory(
+                  history: collectionHistory,
+                  current: currentCollection,
+                  onCollectionChange: _changeCollection),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: FloatingActionButton(
+              padding: const EdgeInsets.only(left: 0),
+              child: IconButton(
                 onPressed: () {},
-                child: const Icon(Icons.search),
+                icon: const Icon(Icons.search),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 10),
+              padding: const EdgeInsets.only(left: 0),
               child: buildSearchFilter(),
             ),
           ],
@@ -452,8 +411,8 @@ class _ListExplorer extends State<ListExplorer> {
                               onItemTap: (info) {
                                 if (info.type ==
                                     FileSystemEntityType.directory) {
-                                  Directory.current = info.path;
-                                  _updateData();
+                                  _changeCollection(info.path
+                                      .replaceFirst(RegExp('.*/$root'), ''));
                                   setState(() {});
                                 } else {
                                   context
@@ -771,5 +730,62 @@ class ConfirmationButton extends StatelessWidget {
               color: Colors.blue, borderRadius: BorderRadius.circular(30)),
           child: Center(child: Text(text)),
         ));
+  }
+}
+
+class CollectionHistory extends StatefulWidget {
+  const CollectionHistory(
+      {super.key,
+      required this.history,
+      this.current,
+      required this.onCollectionChange});
+
+  final String history;
+  final String? current;
+  final void Function(String path) onCollectionChange;
+
+  @override
+  State<StatefulWidget> createState() => _CollectionHistory();
+}
+
+class _CollectionHistory extends State<CollectionHistory> {
+  List<String> get collections =>
+      widget.history.split('/')..removeWhere((e) => e.isEmpty);
+
+  final controller = AutoScrollController();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      shrinkWrap: true,
+      controller: controller,
+      scrollDirection: Axis.horizontal,
+      itemCount: collections.length,
+      itemBuilder: (context, i) {
+        final path = '/' + collections.sublist(0, i + 1).join('/');
+
+        if (path == widget.current) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => controller.scrollToIndex(i),
+          );
+        }
+
+        return AutoScrollTag(
+          key: ValueKey(i),
+          controller: controller,
+          index: i,
+          child: TextButton(
+            onPressed: () {
+              widget.onCollectionChange(path);
+            },
+            child: Text(
+              collections[i],
+              style: TextStyle(
+                  color: path == widget.current ? Colors.white : null),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
