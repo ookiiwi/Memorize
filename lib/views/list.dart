@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:dico/dico.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
@@ -338,7 +339,6 @@ class _EntryViewier extends State<EntryViewier> {
                   return const Center(child: CircularProgressIndicator());
                 } else {
                   entries = snapshot.data!;
-                  //final values = entries.values.toList();
 
                   return AnimatedBuilder(
                     animation: selectionController ?? ValueNotifier(null),
@@ -431,7 +431,7 @@ class _EntryView extends State<EntryView> {
           ));
 
   Future<ListEntry> buildEntry(ListEntry entry) async =>
-      entry.copyWith(data: await Dict.get(entry.id, entry.target));
+      entry.copyWith(data: Dict.get(entry.id, entry.target));
 
   Future<List<ListEntry>> buildEntries(Iterable<ListEntry> entries) async =>
       await Future.wait(entries.map((e) async => await buildEntry(e)));
@@ -613,14 +613,41 @@ class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final void Function(EntryId id)? onItemSelected;
+  final void Function(DicoId id)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  Future<List<ListEntry>> fEntries = Future.value([]);
+  List<ListEntry>? entries = [];
+
+  void loadEntries(String key) async {
+    List<DicoId> ids = Dict.find(key, widget.target).map((e) => e.id).toList();
+    int i = 0;
+
+    if (ids.isEmpty) {
+      entries = [];
+      setState(() {});
+      return;
+    }
+
+    entries = null;
+
+    Dict.getAll(ids, widget.target)
+        .map(
+      (event) => ListEntry(
+        ids[i++],
+        widget.target,
+        data: event,
+      ),
+    )
+        .listen((event) {
+      entries ??= [];
+      entries!.add(event);
+      setState(() {});
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -650,56 +677,39 @@ class _EntrySearch extends State<EntrySearch> {
                 borderSide: BorderSide.none),
           ),
           onSubmitted: (value) async {
-            final ids = Dict.find(value, widget.target);
-
-            fEntries = Future.value(
-              List.from(
-                ids.map((e) {
-                  final id = EntryId(e.offset, e.pos);
-
-                  return ListEntry(
-                    id,
-                    widget.target,
-                    data: Dict.get(id, widget.target),
-                  );
-                }),
-              ),
-            );
-
-            setState(() {});
+            setState(() => entries = null);
+            loadEntries(value);
           },
         ),
       ),
-      body: FutureBuilder<List<ListEntry>>(
-          future: fEntries,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            } else {
-              final entries = snapshot.data as List<ListEntry>;
-
-              return ListView.separated(
+      body: Builder(builder: (context) {
+        if (entries == null) {
+          return const Center(child: CircularProgressIndicator());
+        } else {
+          return entries!.isEmpty
+              ? const Center(child: Text("No result >_<"))
+              : ListView.separated(
                   shrinkWrap: true,
-                  itemCount: entries.length,
+                  itemCount: entries!.length,
                   separatorBuilder: (context, index) =>
                       const Divider(thickness: 0.3),
                   itemBuilder: (context, i) {
-                    assert(entries[i].data != null);
+                    assert(entries![i].data != null);
 
                     return MaterialButton(
                       onPressed: () {
                         if (widget.onItemSelected != null) {
-                          widget.onItemSelected!(entries[i].id);
+                          widget.onItemSelected!(entries![i].id);
                         }
                       },
                       child: Entry.preview(
-                        doc: XmlDocument.parse(entries[i].data!),
-                        schema: Schema.load(entries[i].target),
+                        doc: XmlDocument.parse(entries![i].data!),
+                        schema: Schema.load(entries![i].target),
                       ),
                     );
                   });
-            }
-          }),
+        }
+      }),
     );
   }
 }
