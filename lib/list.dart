@@ -1,29 +1,14 @@
+import 'package:dico/dico.dart';
 import 'package:equatable/equatable.dart';
 import 'package:objectid/objectid.dart';
-
-class EntryId extends Equatable {
-  const EntryId(this.offset, this.pos);
-  EntryId.fromJson(Map<String, dynamic> json)
-      : offset = json['offset'],
-        pos = json['pos'];
-
-  final int offset;
-  final int pos;
-
-  @override
-  List<Object?> get props => [offset, pos];
-  String get id => '${offset}_$pos';
-
-  Map<String, dynamic> toJson() => {'offset': offset, 'pos': pos};
-}
 
 class ListEntry extends Equatable {
   const ListEntry(this.id, this.target, {this.data});
   ListEntry.fromJson(Map<String, dynamic> json, {this.data})
-      : id = EntryId.fromJson(json['id']),
+      : id = DicoId.fromHexstring(json['id']),
         target = json['target'];
 
-  ListEntry copyWith({EntryId? id, String? target, String? data}) {
+  ListEntry copyWith({DicoId? id, String? target, String? data}) {
     return ListEntry(
       id ?? this.id,
       target ?? this.target,
@@ -31,12 +16,12 @@ class ListEntry extends Equatable {
     );
   }
 
-  final EntryId id;
+  final DicoId id;
   final String target;
   final String? data;
 
   Map<String, dynamic> toJson() => {
-        'id': id.toJson(),
+        'id': id.hexstring,
         'target': target,
       };
 
