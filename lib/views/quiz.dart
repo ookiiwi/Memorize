@@ -211,8 +211,8 @@ class _Quiz extends State<Quiz> {
   ScrollPhysics _physics = const AlwaysScrollableScrollPhysics();
   bool _isQuestions = true;
   final _timerDuration = const Duration(seconds: 6);
-  final Set<int> _randomDist = {};
 
+  List<Widget> questions = [];
   List<Widget> answers = [];
 
   int page = 0;
@@ -231,23 +231,28 @@ class _Quiz extends State<Quiz> {
 
     if (answers.isNotEmpty) return;
 
+    questions = widget.questions.toList();
     answers = widget.answers.map((e) => buildCard(context, e)).toList();
 
     if (widget.mode == QuizMode.random) {
+      assert(answers.length == questions.length);
+
       final random = Random();
 
-      while (_randomDist.length != widget.itemCount) {
-        _randomDist.add(random.nextInt(widget.itemCount));
-      }
-
       for (int i = 0; i < answers.length; ++i) {
-        final tmp = answers[i];
-        answers[i] = answers[_randomDist.elementAt(i)];
-        answers[_randomDist.elementAt(i)] = tmp;
+        final tmpQ = questions[i];
+        final tmpA = answers[i];
+        final j = random.nextInt(widget.itemCount);
+
+        questions[i] = questions[j];
+        questions[j] = tmpQ;
+
+        answers[i] = answers[j];
+        answers[j] = tmpA;
       }
     }
 
-    answers.replaceRange(0, answers.length, answers.reversed);
+    answers = answers.reversed.toList();
   }
 
   Widget buildCard(BuildContext context, Widget child,
@@ -360,12 +365,9 @@ class _Quiz extends State<Quiz> {
           ),
           itemBuilder: (context, i) {
             if (i < itemCount) {
-              final index =
-                  _randomDist.isNotEmpty ? _randomDist.elementAt(i) : i;
-
               return buildCard(
                 context,
-                widget.questions[index],
+                questions[i],
                 center: true,
                 setTimer: widget.setTimer,
               );
