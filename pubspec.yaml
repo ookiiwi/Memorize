@@ -62,7 +62,7 @@ dependencies:
   mrx_charts: ^0.1.3
   intl: ^0.17.0
   flex_color_scheme: ^6.1.1
-  slob:
+  dico:
     path: ../slob
 
 dev_dependencies:
