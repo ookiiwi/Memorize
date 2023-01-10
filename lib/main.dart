@@ -1,22 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/bloc/auth_bloc.dart';
-import 'package:memorize/bloc/connection_bloc.dart' as cb;
-import 'package:memorize/loggers/offline_logger.dart';
 import 'package:memorize/views/list_explorer.dart';
-
 import 'package:memorize/views/mobile/main.dart'
     if (dart.library.js) 'package:memorize/views/web/main.dart';
-import 'package:memorize/services/auth_service.dart';
-import 'package:memorize/storage.dart';
-import 'package:memorize/widgets/bar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -28,26 +18,7 @@ void main() {
   Provider.debugCheckInvalidValueType = null;
   usePathUrlStrategy();
 
-  runApp(
-    MultiBlocProvider(
-      providers: [
-        BlocProvider(
-          create: (_) => cb.ConnectionBloc(const cb.ConnectionState(false)),
-        ),
-        BlocProvider(
-          create: (_) => AuthBloc(
-            AuthUninitalized(),
-            offlineLogger: OfflineLogger(
-              onChange: (logger) async {
-                await SecureStorage.persistOfflineLogs(jsonEncode(logger));
-              },
-            ),
-          )..add(InitializeAuth()),
-        ),
-      ],
-      child: SplashScreen(builder: (context) => MyApp()),
-    ),
-  );
+  runApp(SplashScreen(builder: (context) => MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -157,55 +128,11 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreen extends State<SplashScreen> {
   late final StreamSubscription<ConnectivityResult> subscription;
   late final Future<void> _dataLoaded;
-  bool _connectivityChecked = false;
 
   @override
   void initState() {
     super.initState();
     _dataLoaded = loadData();
-    subscription =
-        Connectivity().onConnectivityChanged.listen(_updateConnState);
-  }
-
-  void _updateConnState(ConnectivityResult event) async {
-    bool connectivity = event != ConnectivityResult.none;
-
-    BlocProvider.of<cb.ConnectionBloc>(context).add(
-      connectivity ? cb.ConnectionAvailable() : cb.ConnectionUnavailable(),
-    );
-
-    if (_connectivityChecked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        connectivity ? HasConnectionSnackBar() : NoConnectionSnackBar(),
-      );
-    }
-
-    _connectivityChecked = true;
-
-    if (!connectivity) return;
-
-    _processOfflineLogs();
-  }
-
-  Future<void> _processOfflineLogs() async {
-    final tmp = await SecureStorage.getOfflineLogs();
-
-    if (tmp == null) return;
-
-    final offlineLogger = OfflineLogger.fromJson(jsonDecode(tmp));
-    final authBloc = BlocProvider.of<AuthBloc>(context);
-
-    while (offlineLogger.isNotEmpty) {
-      switch (offlineLogger.pop()) {
-        case OfflineEvent.signOut:
-          authBloc.add(SignOut());
-          break;
-        case OfflineEvent.updateSettings:
-          break;
-      }
-
-      await SecureStorage.persistOfflineLogs(jsonEncode(offlineLogger));
-    }
   }
 
   @override
@@ -215,15 +142,10 @@ class _SplashScreen extends State<SplashScreen> {
   }
 
   Future<void> loadData() async {
-    await initConstants();
-
-    if (kIsWeb) _updateConnState(await Connectivity().checkConnectivity());
     final appRoot = await getApplicationDocumentsDirectory();
     Directory.current = appRoot;
     ListExplorer.init();
 
-    // wait for auth init to complete
-    await BlocProvider.of<AuthBloc>(context).stream.first;
     applicationDocumentDirectory =
         (await getApplicationDocumentsDirectory()).path;
   }

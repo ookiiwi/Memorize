@@ -3,15 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/main.dart';
-import 'package:memorize/views/auth.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
-import 'package:memorize/views/account.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final _routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['home', 'search', /*'account',*/ 'settings'];
+const _routes = ['home', 'search', 'settings'];
 final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
   ShellRoute(
     navigatorKey: _routerNavKey,
@@ -37,7 +35,6 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
           items: [
             Icon(Icons.home_rounded, color: appBarIconColor),
             Icon(Icons.search_rounded, color: appBarIconColor),
-            //Icon(Icons.account_circle_rounded, color: appBarIconColor),
             Icon(Icons.settings, color: appBarIconColor),
           ],
         ),
@@ -61,16 +58,6 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
         path: '/search',
         //builder: (context, state) => const Search(),
         builder: (context, state) => Container(color: Colors.amber),
-      ),
-      GoRoute(
-        path: '/account',
-        builder: (context, state) => const AccountPage(),
-        redirect: (context, state) => false ? '/auth' : null,
-      ),
-      GoRoute(
-        path: '/auth',
-        builder: (context, state) => const AuthUI(),
-        redirect: (context, state) => false ? null : '/home',
       ),
       GoRoute(
         path: '/settings',

@@ -1,11 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:memorize/bloc/auth_bloc.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/services/dict/dict.dart';
-import 'package:memorize/widget.dart' show TextFieldDialog;
 import 'package:memorize/widgets/selectable.dart';
 import 'package:overlayment/overlayment.dart';
 import 'package:universal_io/io.dart';
@@ -68,11 +65,9 @@ class _ListExplorer extends State<ListExplorer> {
   void initState() {
     super.initState();
 
-    _updateData();
     _initDir = Directory.current.path;
 
-    final dir =
-        Directory('$root/jpn-eng'); // WARNING: target not checked by Dict.check
+    final dir = Directory('$root/jpn-eng');
     if (!dir.existsSync()) dir.createSync(recursive: true);
     Dict.check(_target);
     Directory.current = dir;
@@ -86,6 +81,8 @@ class _ListExplorer extends State<ListExplorer> {
 
       isEnabled ? _openMenu() : _closeMenu();
     });
+
+    _updateData();
   }
 
   @override
@@ -277,7 +274,7 @@ class _ListExplorer extends State<ListExplorer> {
       FloatingActionButton(
         onPressed: () {
           for (var e in _selectionController.selection) {
-            File(e.path).deleteSync();
+            File(e.path).deleteSync(recursive: true);
           }
 
           _updateData();
@@ -418,91 +415,89 @@ class _ListExplorer extends State<ListExplorer> {
 
   @override
   Widget build(BuildContext ctx) {
-    return BlocBuilder<AuthBloc, AuthState>(
-      builder: (context, state) => Container(
-        padding: EdgeInsets.only(
-          top: globalPadding,
-          left: globalPadding,
-          right: globalPadding,
-        ),
-        child: Stack(children: [
-          Column(
-            children: [
-              buildHeader(),
-
-              //page view
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 20),
-                  decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: Theme.of(context).colorScheme.background),
-                  child: FutureBuilder<List<FileInfo>>(
-                    future: _fItems,
-                    builder: ((context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      } else {
-                        final items = snapshot.data as List<FileInfo>;
-
-                        return PageView.builder(
-                          itemCount: 1,
-                          itemBuilder: (ctx, i) {
-                            return Container(
-                              color: Colors.transparent,
-                              child: ListExplorerItems(
-                                selectionController: _selectionController,
-                                items: items,
-                                onItemTap: (info) {
-                                  if (info.type ==
-                                      FileSystemEntityType.directory) {
-                                    Directory.current = info.path;
-                                    _updateData();
-                                    setState(() {});
-                                  } else {
-                                    context.push('/list',
-                                        extra: {'fileinfo': info});
-                                  }
-                                },
-                              ),
-                            );
-                          },
-                        );
-                      }
-                    }),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Positioned(
-            right: 10,
-            bottom: kBottomNavigationBarHeight + 10,
-            child: MenuButton(
-              controller: _menuBtnCtrl,
-              button: FloatingActionButton(
-                heroTag: "listMenuBtn",
-                onPressed: () {
-                  if (_selectionController.isEnabled) {
-                    _selectionController.isEnabled = false;
-                    _closeMenu();
-                    return;
-                  }
-
-                  _menuBuilder = buildAddButtons;
-                  _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
-                },
-                child: AnimatedRotation(
-                  turns: _addBtnTurns,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(Icons.add),
-                ),
-              ),
-              menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
-            ),
-          ),
-        ]),
+    return Container(
+      padding: EdgeInsets.only(
+        top: globalPadding,
+        left: globalPadding,
+        right: globalPadding,
       ),
+      child: Stack(children: [
+        Column(
+          children: [
+            buildHeader(),
+
+            //page view
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(top: 20),
+                decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Theme.of(context).colorScheme.background),
+                child: FutureBuilder<List<FileInfo>>(
+                  future: _fItems,
+                  builder: ((context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    } else {
+                      final items = snapshot.data as List<FileInfo>;
+
+                      return PageView.builder(
+                        itemCount: 1,
+                        itemBuilder: (ctx, i) {
+                          return Container(
+                            color: Colors.transparent,
+                            child: ListExplorerItems(
+                              selectionController: _selectionController,
+                              items: items,
+                              onItemTap: (info) {
+                                if (info.type ==
+                                    FileSystemEntityType.directory) {
+                                  Directory.current = info.path;
+                                  _updateData();
+                                  setState(() {});
+                                } else {
+                                  context
+                                      .push('/list', extra: {'fileinfo': info});
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      );
+                    }
+                  }),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Positioned(
+          right: 10,
+          bottom: kBottomNavigationBarHeight + 10,
+          child: MenuButton(
+            controller: _menuBtnCtrl,
+            button: FloatingActionButton(
+              heroTag: "listMenuBtn",
+              onPressed: () {
+                if (_selectionController.isEnabled) {
+                  _selectionController.isEnabled = false;
+                  _closeMenu();
+                  return;
+                }
+
+                _menuBuilder = buildAddButtons;
+                _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
+              },
+              child: AnimatedRotation(
+                turns: _addBtnTurns,
+                duration: const Duration(milliseconds: 200),
+                child: const Icon(Icons.add),
+              ),
+            ),
+            menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
+          ),
+        ),
+      ]),
     );
   }
 }
@@ -672,5 +667,109 @@ class _MenuButton extends State<MenuButton>
         )
       ],
     );
+  }
+}
+
+class TextFieldDialog extends StatefulWidget {
+  const TextFieldDialog(
+      {Key? key,
+      this.controller,
+      this.hintText,
+      this.confirmText,
+      this.cancelText,
+      required this.hasConfirmed})
+      : super(key: key);
+
+  final String? hintText;
+  final TextEditingController? controller;
+  final String? confirmText;
+  final String? cancelText;
+  final void Function(bool value) hasConfirmed;
+
+  @override
+  State<StatefulWidget> createState() => _TextFieldDialog();
+}
+
+class _TextFieldDialog extends State<TextFieldDialog> {
+  String? get hintText => widget.hintText;
+  TextEditingController? get controller => widget.controller;
+  String? get confirmText => widget.confirmText;
+  String? get cancelText => widget.cancelText;
+  void Function(bool value) get hasConfirmed => widget.hasConfirmed;
+
+  Widget _buildDialog() {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        fillColor: Theme.of(context).backgroundColor,
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+        ),
+        hintText: hintText,
+      ),
+    );
+  }
+
+  Widget _buildConfirmBtn(
+      {required bool Function() onTap, required String text}) {
+    return ConfirmationButton(
+        onTap: () {
+          hasConfirmed(onTap());
+          controller?.clear();
+          Navigator.of(context).pop();
+        },
+        text: text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            margin: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30), color: Colors.white),
+            child: _buildDialog(),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildConfirmBtn(
+                  onTap: () => false, text: cancelText ?? 'Cancel'),
+              _buildConfirmBtn(
+                  onTap: () => true, text: confirmText ?? 'Confirm'),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class ConfirmationButton extends StatelessWidget {
+  const ConfirmationButton({Key? key, required this.onTap, required this.text})
+      : super(key: key);
+
+  final void Function() onTap;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+        onTap: () {
+          onTap();
+        },
+        child: Container(
+          height: 50,
+          width: 100,
+          margin: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+              color: Colors.blue, borderRadius: BorderRadius.circular(30)),
+          child: Center(child: Text(text)),
+        ));
   }
 }
