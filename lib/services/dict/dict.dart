@@ -29,12 +29,27 @@ class Dict {
     return ret;
   }
 
-  static Stream<String> getAll(Iterable<DicoId> ids, String target) {
+  static Stream<String> getAll(Iterable<DicoId> ids, String target) async* {
+    final dir = applicationDocumentDirectory;
+    final reader = Reader('$dir/dict/$target.$_fileExtension');
+
+    for (var id in ids) {
+      yield await Future.microtask(() => _get([id, reader]));
+    }
+
+    print('close reader');
+    reader.close();
+  }
+
+  static Stream<String> getAllIso(Iterable<DicoId> ids, String target) {
     final dir = applicationDocumentDirectory;
     final reader = Reader('$dir/dict/$target.$_fileExtension');
     final p = ReceivePort('Dict.getAll');
 
-    Isolate.spawn(_getAll, [p.sendPort, ids, reader, true]);
+    final stopwatch = Stopwatch()..start();
+
+    Isolate.spawn(_getAll, [p.sendPort, ids, reader, true])
+        .whenComplete(() => print('isolate spawn took ${stopwatch.elapsed}'));
 
     return Stream.castFrom(p.asBroadcastStream());
   }
