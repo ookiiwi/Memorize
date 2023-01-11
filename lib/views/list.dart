@@ -7,9 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
-import 'package:memorize/main.dart';
 import 'package:memorize/services/dict/dict.dart';
-import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/selectable.dart';
@@ -34,8 +32,15 @@ import 'package:xml/xml.dart';
 //};
 
 class ListViewer extends StatefulWidget {
-  const ListViewer({super.key, required this.list}) : fileinfo = null;
-  const ListViewer.fromFile({super.key, required this.fileinfo}) : list = null;
+  const ListViewer({super.key})
+      : list = null,
+        fileinfo = null;
+  const ListViewer.fromList({super.key, required this.list})
+      : fileinfo = null,
+        assert(list != null);
+  const ListViewer.fromFile({super.key, required this.fileinfo})
+      : list = null,
+        assert(fileinfo != null);
 
   final MemoList? list;
   final FileInfo? fileinfo;
@@ -45,12 +50,17 @@ class ListViewer extends StatefulWidget {
 }
 
 class _ListViewer extends State<ListViewer> {
-  late final MemoList list;
+  MemoList? list;
+  bool _doRename = false;
+
+  bool get isListInit =>
+      list != null && list!.name.isNotEmpty && list!.target.isNotEmpty;
 
   late final _popUpMenuItems = {
     'about': () {
+      assert(isListInit);
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => AboutPage(list: list)),
+        MaterialPageRoute(builder: (context) => AboutPage(list: list!)),
       );
     }
   };
@@ -64,9 +74,7 @@ class _ListViewer extends State<ListViewer> {
     if (widget.list != null) {
       list = widget.list!;
       writeList();
-    } else {
-      assert(widget.fileinfo != null);
-
+    } else if (widget.fileinfo != null) {
       // load
       final file = File(widget.fileinfo!.path);
 
@@ -83,91 +91,22 @@ class _ListViewer extends State<ListViewer> {
   }
 
   void writeList() {
-    final file = File(list.name);
+    assert(list != null && list!.name.isNotEmpty);
+    final file = File(list!.name);
     file.writeAsStringSync(jsonEncode(list));
   }
 
-  void launchQuiz(QuizMode mode) {
-    if (list.entries.isEmpty) return; // don't launch quiz if list is empty
-
-    final fEntries = Future.wait(list.entries
-        .map((e) async => e.copyWith(data: Dict.get(e.id, e.target))));
-
-    final reversedTheme = MyApp.of(context).themeMode == ThemeMode.light
-        ? MyApp.of(context).flexDarkTheme
-        : MyApp.of(context).flexLightTheme;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => FutureBuilder<List<ListEntry>>(
-          future: fEntries,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            } else {
-              final entries = snapshot.data as List<ListEntry>;
-
-              return SafeArea(
-                child: Quiz(
-                  mode: mode,
-                  questions: entries.map((e) {
-                    assert(e.data != null);
-
-                    return Theme(
-                      data: reversedTheme,
-                      child: Card(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        margin: const EdgeInsets.all(12.0),
-                        child: Center(
-                          child: Entry.core(
-                            doc: XmlDocument.parse(e.data!),
-                            schema: Schema.load(e.target),
-                            coreReading: false,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  answers: entries.reversed
-                      .map(
-                        (e) => Theme(
-                          data: reversedTheme,
-                          child: Card(
-                            color:
-                                Theme.of(context).colorScheme.primaryContainer,
-                            child: Container(
-                              alignment: Alignment.topCenter,
-                              padding: const EdgeInsets.all(15),
-                              child: Entry(
-                                doc: XmlDocument.parse(e.data!),
-                                schema: Schema.load(e.target),
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onEnd: Navigator.of(context).pop,
-                ),
-              );
-            }
-          },
-        ),
-      ),
-    );
-
-    _selectionController.isEnabled = false;
-  }
-
   void openSearchPage() {
+    assert(isListInit);
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) {
           return EntrySearch(
-            target: list.target,
+            target: list!.target,
             onItemSelected: (id) {
-              final entry = ListEntry(id, list.target);
-              list.entries.add(entry);
+              final entry = ListEntry(id, list!.target);
+              list!.entries.add(entry);
               writeList();
               Navigator.of(context).maybePop();
             },
@@ -227,6 +166,77 @@ class _ListViewer extends State<ListViewer> {
     );
   }
 
+  Widget buildTitleField(BuildContext context) {
+    return SizedBox(
+      height: kToolbarHeight - 5,
+      child: TextField(
+        autofocus: true,
+        controller: TextEditingController(text: list?.name),
+        decoration: InputDecoration(
+            border:
+                OutlineInputBorder(borderRadius: BorderRadius.circular(20))),
+        onSubmitted: (value) {
+          setState(() {
+            _doRename = false;
+            if (value.isEmpty) return;
+
+            list ??= MemoList('', '');
+
+            if (list!.name.isEmpty) {
+              list!.name = value;
+            } else {
+              final file = File(list!.name);
+              assert(file.existsSync());
+
+              list!.name = value;
+
+              file.renameSync(list!.name);
+            }
+
+            writeList();
+          });
+        },
+      ),
+    );
+  }
+
+  Widget buildTargetDropDown(BuildContext context) {
+    // TODO: fetch available targets
+    final items = [
+      'jpn-eng',
+      'eng-jpn',
+      'fra-eng',
+    ]..sort();
+
+    return SafeArea(
+      child: Center(
+        child: DropdownButton<String>(
+          iconSize: 0.0,
+          alignment: AlignmentDirectional.center,
+          borderRadius: BorderRadius.circular(20),
+          hint: const Text('Target'),
+          value: list?.target.isNotEmpty == true ? list!.target : null,
+          onChanged: (value) => setState(() {
+            if (value == null) return;
+            list ??= MemoList('', '');
+            list!.target = value;
+            if (list!.name.isNotEmpty) {
+              writeList();
+            }
+          }),
+          items: items
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(e),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -235,14 +245,25 @@ class _ListViewer extends State<ListViewer> {
           onPressed: () => Navigator.of(context).maybePop(),
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
         ),
-        title: Text(list.name),
+        title: list?.name.isNotEmpty == true && !_doRename
+            ? TextButton(
+                onPressed: () => setState(() => _doRename = true),
+                child: Text(list!.name))
+            : buildTitleField(context),
         centerTitle: true,
         actions: [
-          IconButton(
-            onPressed: openSearchPage,
-            icon: const Icon(Icons.add),
+          AbsorbPointer(
+            absorbing: !isListInit,
+            child: IconButton(
+              onPressed: openSearchPage,
+              icon: const Icon(Icons.add),
+              color: isListInit
+                  ? null
+                  : Theme.of(context).colorScheme.primary.withOpacity(0.4),
+            ),
           ),
           PopupMenuButton(
+            enabled: isListInit,
             position: PopupMenuPosition.under,
             color: Theme.of(context).colorScheme.secondary,
             shape:
@@ -266,24 +287,32 @@ class _ListViewer extends State<ListViewer> {
       body: PageView(children: [
         Stack(
           children: [
-            EntryViewier(
-              list: list,
-              selectionController: _selectionController,
-            ),
-            Positioned(
-              bottom: kBottomNavigationBarHeight + 10,
-              right: 20,
-              child: FloatingActionButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => QuizLauncher(
-                      entries: list.entries,
-                    ),
-                  ),
+            list?.target.isNotEmpty == true && list!.entries.isNotEmpty
+                ? EntryViewier(
+                    list: list!,
+                    selectionController: _selectionController,
+                    saveCallback: (_) => setState(() => writeList()),
+                  )
+                : buildTargetDropDown(context),
+            if (isListInit && list!.entries.isNotEmpty)
+              Positioned(
+                bottom: kBottomNavigationBarHeight + 10,
+                right: 20,
+                child: FloatingActionButton(
+                  onPressed: () {
+                    assert(isListInit);
+
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => QuizLauncher(
+                          entries: list!.entries,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Icon(Icons.play_arrow_rounded),
                 ),
-                child: const Icon(Icons.play_arrow_rounded),
               ),
-            ),
           ],
         ),
         buildStats(context)
@@ -293,10 +322,15 @@ class _ListViewer extends State<ListViewer> {
 }
 
 class EntryViewier extends StatefulWidget {
-  const EntryViewier({super.key, required this.list, this.selectionController});
+  const EntryViewier(
+      {super.key,
+      required this.list,
+      this.selectionController,
+      this.saveCallback});
 
   final MemoList list;
   final SelectionController? selectionController;
+  final void Function(MemoList list)? saveCallback;
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
@@ -388,11 +422,9 @@ class _EntryViewier extends State<EntryViewier> {
                                     entries.remove(entry);
                                     list.entries.remove(entry);
 
-                                    // write list
-                                    final file = File(
-                                        "${ListExplorer.current}/${list.name}");
-
-                                    file.writeAsStringSync(jsonEncode(list));
+                                    if (widget.saveCallback != null) {
+                                      widget.saveCallback!(list);
+                                    }
                                   });
                                 },
                                 icon: const Icon(Icons.cancel_outlined),
