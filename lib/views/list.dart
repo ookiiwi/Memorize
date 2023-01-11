@@ -341,21 +341,31 @@ class _EntryViewier extends State<EntryViewier> {
   late final selectionController = widget.selectionController;
   bool _openSelection = false;
 
-  late var fEntries = buildEntries(list.entries);
   List<ListEntry> entries = [];
 
-  Future<ListEntry> buildEntry(ListEntry entry) async =>
-      entry.copyWith(data: Dict.get(entry.id, entry.target));
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-  Future<List<ListEntry>> buildEntries(Iterable<ListEntry> entries) async =>
-      List.from(
-          await Future.wait(entries.map((e) async => await buildEntry(e))));
+    if (entries.isNotEmpty) return;
+
+    //Dict.getAllIso(list.entries.map((e) => e.id), list.target).listen((event) {
+    Dict.getAll(list.entries.map((e) => e.id), list.target).listen((event) {
+      final i = entries.length - (entries.isEmpty ? 0 : 1);
+
+      entries.add(
+        list.entries.elementAt(i).copyWith(data: event),
+      );
+
+      setState(() {});
+    });
+  }
 
   @override
   void didUpdateWidget(covariant EntryViewier oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (list.entries.length != entries.length) {
-      fEntries = buildEntries(list.entries);
+      entries = [];
     }
   }
 
@@ -366,76 +376,68 @@ class _EntryViewier extends State<EntryViewier> {
       child: Column(
         children: [
           Expanded(
-            child: FutureBuilder<List<ListEntry>>(
-              future: fEntries,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                } else {
-                  entries = snapshot.data!;
+            child: AnimatedBuilder(
+              animation: selectionController ?? ValueNotifier(null),
+              builder: (context, _) => ListView.separated(
+                padding:
+                    const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
+                separatorBuilder: (context, index) => Divider(
+                  indent: 12,
+                  endIndent: 12,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+                itemCount: entries.length,
+                itemBuilder: (context, i) {
+                  assert(entries[i].data != null);
 
-                  return AnimatedBuilder(
-                    animation: selectionController ?? ValueNotifier(null),
-                    builder: (context, _) => ListView.separated(
-                      padding: const EdgeInsets.only(
-                          bottom: kBottomNavigationBarHeight),
-                      separatorBuilder: (context, index) => Divider(
-                        indent: 12,
-                        endIndent: 12,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                      itemCount: entries.length,
-                      itemBuilder: (context, i) {
-                        assert(entries[i].data != null);
-
-                        return Stack(children: [
-                          AbsorbPointer(
-                            absorbing: _openSelection,
-                            child: MaterialButton(
-                              padding: const EdgeInsets.all(8.0),
-                              onLongPress: () =>
-                                  setState((() => _openSelection = true)),
-                              onPressed: () {
-                                Navigator.of(context)
-                                    .push(MaterialPageRoute(builder: (context) {
-                                  return EntryView(
-                                    entries: list.entries,
-                                    entryId: entries[i].id,
-                                  );
-                                }));
+                  return Stack(children: [
+                    AbsorbPointer(
+                      absorbing: _openSelection,
+                      child: MaterialButton(
+                        padding: const EdgeInsets.all(8.0),
+                        onLongPress: () =>
+                            setState((() => _openSelection = true)),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) {
+                                return EntryView(
+                                  entries: entries,
+                                  entryId: entries[i].id,
+                                );
                               },
-                              child: Entry.preview(
-                                doc: XmlDocument.parse(entries[i].data!),
-                                schema: Schema.load(entries[i].target),
-                              ),
                             ),
-                          ),
-                          if (_openSelection)
-                            Positioned(
-                              top: 0,
-                              right: 0,
-                              child: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    final entry = list.entries.elementAt(i);
-
-                                    entries.remove(entry);
-                                    list.entries.remove(entry);
-
-                                    if (widget.saveCallback != null) {
-                                      widget.saveCallback!(list);
-                                    }
-                                  });
-                                },
-                                icon: const Icon(Icons.cancel_outlined),
-                              ),
-                            )
-                        ]);
-                      },
+                          );
+                        },
+                        child: Entry.preview(
+                          doc: XmlDocument.parse(entries[i].data!),
+                          schema: Schema.load(entries[i].target),
+                        ),
+                      ),
                     ),
-                  );
-                }
-              },
+                    if (_openSelection)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: IconButton(
+                          onPressed: () {
+                            setState(() {
+                              final entry = list.entries.elementAt(i);
+
+                              entries.remove(entry);
+                              list.entries.remove(entry);
+
+                              if (widget.saveCallback != null) {
+                                widget.saveCallback!(list);
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.cancel_outlined),
+                        ),
+                      )
+                  ]);
+                },
+              ),
             ),
           ),
         ],
@@ -456,17 +458,17 @@ class EntryView<T> extends StatefulWidget {
 
 class _EntryView extends State<EntryView> {
   bool _snapToGrid = true;
-  late final fEntries = buildEntries(widget.entries);
-  late final _controller = PageController(
-      initialPage: widget.entries.toList().indexWhere(
-            (e) => e.id == widget.entryId,
-          ));
+  late List<ListEntry> entries = widget.entries.toList();
+  late final PageController _controller;
 
-  Future<ListEntry> buildEntry(ListEntry entry) async =>
-      entry.copyWith(data: Dict.get(entry.id, entry.target));
+  @override
+  void initState() {
+    super.initState();
 
-  Future<List<ListEntry>> buildEntries(Iterable<ListEntry> entries) async =>
-      await Future.wait(entries.map((e) async => await buildEntry(e)));
+    _controller = PageController(
+        initialPage:
+            widget.entries.toList().indexWhere((e) => e.id == widget.entryId));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,43 +489,37 @@ class _EntryView extends State<EntryView> {
           )
         ],
       ),
-      body: FutureBuilder<List<ListEntry>>(
-        future: fEntries,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          } else {
-            final entries = snapshot.data!;
+      body: Padding(
+        padding: const EdgeInsets.only(top: 10.0),
+        child: PageView.builder(
+          controller: _controller,
+          scrollDirection: Axis.vertical,
+          pageSnapping: _snapToGrid,
+          itemCount: widget.entries.length,
+          itemBuilder: (context, i) {
+            if (entries[i].data == null) {
+              final entry = widget.entries.elementAt(i);
+              entries[i] = entry.copyWith(
+                data: Dict.get(entry.id, entry.target),
+              );
+            }
 
-            return Padding(
-              padding: const EdgeInsets.only(top: 10.0),
-              child: PageView.builder(
-                controller: _controller,
-                scrollDirection: Axis.vertical,
-                pageSnapping: _snapToGrid,
-                itemCount: entries.length,
-                itemBuilder: (context, i) {
-                  assert(entries[i].data != null);
+            assert(entries[i].data != null);
 
-                  return ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height -
-                          kToolbarHeight -
-                          kBottomNavigationBarHeight,
-                      minWidth: MediaQuery.of(context).size.width,
-                    ),
-                    child: Entry(
-                      doc: XmlDocument.parse(entries[i].data!),
-                      schema: Schema.load(entries[i].target),
-                    ),
-                  );
-                },
+            return ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height -
+                    kToolbarHeight -
+                    kBottomNavigationBarHeight,
+                minWidth: MediaQuery.of(context).size.width,
+              ),
+              child: Entry(
+                doc: XmlDocument.parse(entries[i].data!),
+                schema: Schema.load(entries[i].target),
               ),
             );
-          }
-        },
+          },
+        ),
       ),
     );
   }
@@ -652,34 +648,8 @@ class EntrySearch extends StatefulWidget {
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  List<ListEntry>? entries = [];
-
-  void loadEntries(String key) async {
-    List<DicoId> ids = Dict.find(key, widget.target).map((e) => e.id).toList();
-    int i = 0;
-
-    if (ids.isEmpty) {
-      entries = [];
-      setState(() {});
-      return;
-    }
-
-    entries = null;
-
-    Dict.getAll(ids, widget.target)
-        .map(
-      (event) => ListEntry(
-        ids[i++],
-        widget.target,
-        data: event,
-      ),
-    )
-        .listen((event) {
-      entries ??= [];
-      entries!.add(event);
-      setState(() {});
-    });
-  }
+  List<DicoId> ids = [];
+  List<ListEntry> entries = [];
 
   @override
   Widget build(BuildContext context) {
@@ -709,38 +679,43 @@ class _EntrySearch extends State<EntrySearch> {
                 borderSide: BorderSide.none),
           ),
           onSubmitted: (value) async {
-            setState(() => entries = null);
-            loadEntries(value);
+            entries = [];
+            setState(() => ids =
+                Dict.find(value, widget.target).map((e) => e.id).toList());
           },
         ),
       ),
       body: Builder(builder: (context) {
-        if (entries == null) {
-          return const Center(child: CircularProgressIndicator());
-        } else {
-          return entries!.isEmpty
-              ? const Center(child: Text("No result >_<"))
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: entries!.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(thickness: 0.3),
-                  itemBuilder: (context, i) {
-                    assert(entries![i].data != null);
-
-                    return MaterialButton(
-                      onPressed: () {
-                        if (widget.onItemSelected != null) {
-                          widget.onItemSelected!(entries![i].id);
-                        }
-                      },
-                      child: Entry.preview(
-                        doc: XmlDocument.parse(entries![i].data!),
-                        schema: Schema.load(entries![i].target),
+        return ids.isEmpty
+            ? const Center(child: Text("No result >_<"))
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: ids.length,
+                separatorBuilder: (context, index) =>
+                    const Divider(thickness: 0.3),
+                itemBuilder: (context, i) {
+                  if (entries.length <= i) {
+                    entries.add(
+                      ListEntry(
+                        ids[i],
+                        widget.target,
+                        data: Dict.get(ids[i], widget.target),
                       ),
                     );
-                  });
-        }
+                  }
+
+                  return MaterialButton(
+                    onPressed: () {
+                      if (widget.onItemSelected != null) {
+                        widget.onItemSelected!(entries[i].id);
+                      }
+                    },
+                    child: Entry.preview(
+                      doc: XmlDocument.parse(entries[i].data!),
+                      schema: Schema.load(entries[i].target),
+                    ),
+                  );
+                });
       }),
     );
   }
