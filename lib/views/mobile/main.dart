@@ -48,11 +48,16 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
       GoRoute(
           path: '/list',
           builder: (context, state) {
-            final Map extra = state.extra as Map;
+            final Map? extra = state.extra as Map?;
 
-            return extra.containsKey('fileinfo')
-                ? ListViewer.fromFile(fileinfo: extra['fileinfo'] as FileInfo)
-                : ListViewer(list: extra['list']);
+            if (extra?.containsKey('fileinfo') == true) {
+              return ListViewer.fromFile(
+                  fileinfo: extra!['fileinfo'] as FileInfo);
+            } else if (extra?.containsKey('list') == true) {
+              return ListViewer.fromList(list: extra!['list']);
+            } else {
+              return const ListViewer();
+            }
           }),
       GoRoute(
         path: '/search',
