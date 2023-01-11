@@ -1,10 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:memorize/list.dart';
-import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/widgets/selectable.dart';
-import 'package:overlayment/overlayment.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
@@ -90,19 +87,16 @@ class _ListExplorer extends State<ListExplorer> {
     super.dispose();
   }
 
-  void _changeCollection(String path, {bool goHome = false}) {
-    if (!goHome) {
-      assert(!collectionHistory.startsWith(RegExp(r'(.*\/fe)|fe')));
+  void _changeCollection(String path) {
+    assert(!collectionHistory.startsWith(RegExp(r'(.*\/fe)|fe')));
 
-      if (!collectionHistory.startsWith(path)) {
-        collectionHistory = path;
-      }
-
-      Directory.current =
-          '$_initDir/$root/' + path.replaceFirst(RegExp('^/'), '');
-    } else {
-      Directory.current = "$_initDir/$root";
+    if (!collectionHistory.startsWith(path)) {
+      collectionHistory = path;
     }
+
+    Directory.current =
+        '$_initDir/$root/' + path.replaceFirst(RegExp('^/'), '');
+
     _updateData();
 
     setState(() {});
@@ -143,9 +137,6 @@ class _ListExplorer extends State<ListExplorer> {
   }
 
   List<Widget> buildAddButtons() {
-    String _listname = '';
-    String _listTarget = 'jpn-eng';
-
     return [
       FloatingActionButton(
         heroTag: "dirAddBtn",
@@ -178,83 +169,7 @@ class _ListExplorer extends State<ListExplorer> {
         onPressed: () {
           _closeMenu();
 
-          Overlayment.show(
-            OverWindow(
-              backgroundSettings: const BackgroundSettings(),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: Theme.of(context).backgroundColor),
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.8,
-                child: Column(
-                  children: [
-                    Row(children: [
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(30),
-                              color: Colors.white),
-                          child: TextField(
-                            decoration: InputDecoration(
-                              fillColor: Theme.of(context).backgroundColor,
-                              filled: true,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                            ),
-                            onChanged: (value) => _listname = value,
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: TextEditingController(text: _listTarget),
-                          onChanged: (value) => _listTarget = value,
-                        ),
-                      ),
-                    ]),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: FloatingActionButton(
-                                onPressed: () {
-                                  setState(() {
-                                    Overlayment.dismissLast();
-                                  });
-                                },
-                                child: const Text('Cancel'))),
-                        Container(
-                          margin: const EdgeInsets.all(15),
-                          child: FloatingActionButton(
-                            onPressed: () {
-                              if (_listname.isEmpty) return;
-
-                              Overlayment.dismissLast();
-                              context.push(
-                                '/list',
-                                extra: {
-                                  'list': MemoList(_listname, _listTarget)
-                                },
-                              );
-                            },
-                            child: const Text(
-                              'Confirm',
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            ),
-            context: context,
-          );
+          context.push('/list');
         },
         child: const Icon(Icons.list),
       )
@@ -342,7 +257,7 @@ class _ListExplorer extends State<ListExplorer> {
             IconButton(
               padding: const EdgeInsets.only(),
               onPressed: () {
-                _changeCollection('', goHome: true);
+                _changeCollection('/');
               },
               icon: Icon(
                 Icons.home_rounded,
