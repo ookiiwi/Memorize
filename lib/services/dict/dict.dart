@@ -4,7 +4,6 @@ import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/widgets/entry.dart';
 import 'package:dico/dico.dart';
 
 class Dict {
@@ -24,6 +23,7 @@ class Dict {
     final reader = Reader('$dir/dict/$target.$_fileExtension');
     final ret = _get([id, reader]);
 
+    print('get close reader');
     reader.close();
 
     return ret;
@@ -37,7 +37,7 @@ class Dict {
       yield await Future.microtask(() => _get([id, reader]));
     }
 
-    print('close reader');
+    print('getAll close reader');
     reader.close();
   }
 
@@ -66,7 +66,7 @@ class Dict {
     }
 
     if (closeReader) {
-      print('close reader');
+      print('_getAll close reader');
       reader.close();
     }
 
@@ -84,21 +84,6 @@ class Dict {
   static Future<void> check(String target) async {
     final file =
         File('$applicationDocumentDirectory/dict/$target.$_fileExtension');
-
-    if (!Schema.exists(target)) {
-      Schema(
-        target: target,
-        orth: const Orth(
-            value: "//form[@type='k_ele']/orth",
-            ruby: "//form[@type='r_ele']/orth[1]"),
-        sense: const Sense(
-            root: "//sense",
-            pos: "./note[@type='pos']",
-            usg: "./usg",
-            ref: "./ref",
-            trans: "./cit[@type='trans']/quote"),
-      ).save();
-    }
 
     if (file.existsSync()) return;
 
