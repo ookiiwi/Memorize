@@ -14,23 +14,6 @@ import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
 
-// TODO: get from server
-// for testing only
-//const schema = {
-//  'pron': "//form[@type='r_ele']/orth", // ?
-//  'orth': {
-//    'ruby': "//form[@type='r_ele']/orth[1]", // ?
-//    'text': "//form[@type='k_ele']/orth"
-//  },
-//  'sense': {
-//    'root': "//sense",
-//    'pos': "./note[@type='pos']", // ?
-//    'usg': "./usg", // ?
-//    'ref': "./ref", // ?
-//    'trans': "./cit[@type='trans']/quote",
-//  }
-//};
-
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key})
       : list = null,
@@ -409,9 +392,12 @@ class _EntryViewier extends State<EntryViewier> {
                             ),
                           );
                         },
-                        child: Entry.preview(
-                          doc: XmlDocument.parse(entries[i].data!),
-                          schema: Schema.load(entries[i].target),
+                        child: EntryRenderer(
+                          mode: DisplayMode.preview,
+                          entry: Entry.guess(
+                            xmlDoc: XmlDocument.parse(entries[i].data!),
+                            target: entries[i].target,
+                          ),
                         ),
                       ),
                     ),
@@ -513,9 +499,12 @@ class _EntryView extends State<EntryView> {
                     kBottomNavigationBarHeight,
                 minWidth: MediaQuery.of(context).size.width,
               ),
-              child: Entry(
-                doc: XmlDocument.parse(entries[i].data!),
-                schema: Schema.load(entries[i].target),
+              child: EntryRenderer(
+                mode: DisplayMode.detailed,
+                entry: Entry.guess(
+                  xmlDoc: XmlDocument.parse(entries[i].data!),
+                  target: entries[i].target,
+                ),
               ),
             );
           },
@@ -685,38 +674,44 @@ class _EntrySearch extends State<EntrySearch> {
           },
         ),
       ),
-      body: Builder(builder: (context) {
-        return ids.isEmpty
-            ? const Center(child: Text("No result >_<"))
-            : ListView.separated(
-                shrinkWrap: true,
-                itemCount: ids.length,
-                separatorBuilder: (context, index) =>
-                    const Divider(thickness: 0.3),
-                itemBuilder: (context, i) {
-                  if (entries.length <= i) {
-                    entries.add(
-                      ListEntry(
-                        ids[i],
-                        widget.target,
-                        data: Dict.get(ids[i], widget.target),
+      body: Builder(
+        builder: (context) {
+          return ids.isEmpty
+              ? const Center(child: Text("No result >_<"))
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: ids.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(thickness: 0.3),
+                  itemBuilder: (context, i) {
+                    if (entries.length <= i) {
+                      entries.add(
+                        ListEntry(
+                          ids[i],
+                          widget.target,
+                          data: Dict.get(ids[i], widget.target),
+                        ),
+                      );
+                    }
+
+                    return MaterialButton(
+                      onPressed: () {
+                        if (widget.onItemSelected != null) {
+                          widget.onItemSelected!(entries[i].id);
+                        }
+                      },
+                      child: EntryRenderer(
+                        mode: DisplayMode.preview,
+                        entry: Entry.guess(
+                          xmlDoc: XmlDocument.parse(entries[i].data!),
+                          target: entries[i].target,
+                        ),
                       ),
                     );
-                  }
-
-                  return MaterialButton(
-                    onPressed: () {
-                      if (widget.onItemSelected != null) {
-                        widget.onItemSelected!(entries[i].id);
-                      }
-                    },
-                    child: Entry.preview(
-                      doc: XmlDocument.parse(entries[i].data!),
-                      schema: Schema.load(entries[i].target),
-                    ),
-                  );
-                });
-      }),
+                  },
+                );
+        },
+      ),
     );
   }
 }
