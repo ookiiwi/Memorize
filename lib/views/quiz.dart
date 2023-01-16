@@ -111,17 +111,23 @@ class _QuizLauncher extends State<QuizLauncher> {
               questions: entries.map((e) {
                 assert(e.data != null);
 
-                return Entry.core(
-                  doc: XmlDocument.parse(e.data!),
-                  schema: Schema.load(e.target),
-                  coreReading: _reading,
+                return EntryRenderer(
+                  mode: DisplayMode.quiz,
+                  entry: Entry.guess(
+                    xmlDoc: XmlDocument.parse(e.data!),
+                    showReading: _reading,
+                    target: e.target,
+                  ),
                 );
               }).toList(),
               answers: entries
                   .map(
-                    (e) => Entry(
-                      doc: XmlDocument.parse(e.data!),
-                      schema: Schema.load(e.target),
+                    (e) => EntryRenderer(
+                      mode: DisplayMode.detailed,
+                      entry: Entry.guess(
+                        xmlDoc: XmlDocument.parse(e.data!),
+                        target: e.target,
+                      ),
                     ),
                   )
                   .toList(),
