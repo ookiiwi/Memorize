@@ -122,8 +122,8 @@ class _ListViewer extends State<ListViewer> {
         builder: (context) {
           return EntrySearch(
             target: list!.target,
-            onItemSelected: (id) {
-              final entry = ListEntry(id, list!.target);
+            onItemSelected: (id, data) {
+              final entry = ListEntry(id, list!.target, data: data);
 
               if (!list!.entries.any((e) => e.id.hexstring == id.hexstring)) {
                 list!.entries.add(entry);
@@ -681,7 +681,7 @@ class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final void Function(DicoId id)? onItemSelected;
+  final void Function(DicoId id, String entry)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
@@ -748,7 +748,8 @@ class _EntrySearch extends State<EntrySearch> {
                     return MaterialButton(
                       onPressed: () {
                         if (widget.onItemSelected != null) {
-                          widget.onItemSelected!(entries[i].id);
+                          widget.onItemSelected!(
+                              entries[i].id, entries[i].data!);
                         }
                       },
                       child: EntryRenderer(
