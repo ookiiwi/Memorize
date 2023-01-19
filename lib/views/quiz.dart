@@ -100,15 +100,17 @@ class _QuizLauncher extends State<QuizLauncher> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) {
-          final entries = widget.entries
-              .map((e) => e.copyWith(data: Dict.get(e.id, e.target)))
-              .toList();
+          for (var entry in widget.entries) {
+            if (entry.data != null) continue;
+
+            entry = entry.copyWith(data: Dict.get(entry.id, entry.target));
+          }
 
           return SafeArea(
             child: Quiz(
               mode: _mode,
               setTimer: _timer,
-              questions: entries.map((e) {
+              questions: widget.entries.map((e) {
                 assert(e.data != null);
 
                 return EntryRenderer(
@@ -120,17 +122,17 @@ class _QuizLauncher extends State<QuizLauncher> {
                   ),
                 );
               }).toList(),
-              answers: entries
-                  .map(
-                    (e) => EntryRenderer(
-                      mode: DisplayMode.detailed,
-                      entry: Entry.guess(
-                        xmlDoc: XmlDocument.parse(e.data!),
-                        target: e.target,
-                      ),
-                    ),
-                  )
-                  .toList(),
+              answers: widget.entries.map((e) {
+                assert(e.data != null);
+
+                return EntryRenderer(
+                  mode: DisplayMode.detailed,
+                  entry: Entry.guess(
+                    xmlDoc: XmlDocument.parse(e.data!),
+                    target: e.target,
+                  ),
+                );
+              }).toList(),
               onEnd: Navigator.of(context).pop,
             ),
           );
