@@ -34,7 +34,10 @@ class ListViewer extends StatefulWidget {
 
 class _ListViewer extends State<ListViewer> {
   MemoList? list;
+  List<String>? localTargets;
+  List<String>? remoteTargets;
   bool _doRename = false;
+  Future<void> fLoadTargets = Future.value();
 
   bool get isListInit =>
       list != null && list!.name.isNotEmpty && list!.target.isNotEmpty;
@@ -70,7 +73,39 @@ class _ListViewer extends State<ListViewer> {
       list = MemoList.fromJson(jsonDecode(data));
     }
 
-    // TODO: load schema
+    if (list != null) {
+      print('load');
+      fLoadTargets = loadTargets();
+    }
+
+    print('local targets ${Dict.listTargets()}');
+    Dict.listRemoteTargets().then((value) => print('remote targets $value'));
+  }
+
+  Future<void> loadTargets() async {
+    assert(list != null);
+
+    final allTargets = await Dict.listRemoteTargets();
+
+    await loadTarget(list!.target, allTargets);
+
+    for (var entry in list!.entries) {
+      await loadTarget(entry.target, allTargets);
+    }
+
+    return;
+  }
+
+  Future<void> loadTarget(String target, List<String> availableTargets) async {
+    for (var tar in availableTargets) {
+      if (tar.startsWith(target)) {
+        if (Dict.exists(tar)) continue;
+
+        await Dict.download(tar);
+      }
+    }
+
+    return;
   }
 
   void writeList() {
@@ -89,14 +124,18 @@ class _ListViewer extends State<ListViewer> {
             target: list!.target,
             onItemSelected: (id) {
               final entry = ListEntry(id, list!.target);
-              list!.entries.add(entry);
-              writeList();
+
+              if (!list!.entries.any((e) => e.id.hexstring == id.hexstring)) {
+                list!.entries.add(entry);
+                writeList();
+              }
+
               Navigator.of(context).maybePop();
             },
           );
         },
       ),
-    ).then((value) {
+    ).whenComplete(() {
       if (mounted) setState(() {});
     });
 
@@ -184,37 +223,57 @@ class _ListViewer extends State<ListViewer> {
   }
 
   Widget buildTargetDropDown(BuildContext context) {
-    // TODO: fetch available targets
-    final items = [
-      'jpn-eng',
-      'eng-jpn',
-      'fra-eng',
-    ]..sort();
+    final ValueNotifier targetsNotifier = ValueNotifier([]);
+    Future<void> targetDl = Future.value();
+
+    localTargets ??= Dict.listTargets().toList()..sort();
+    if (remoteTargets == null) {
+      Dict.listRemoteTargets().then((value) => localTargets = value..sort());
+    }
 
     return SafeArea(
       child: Center(
-        child: DropdownButton<String>(
-          iconSize: 0.0,
-          alignment: AlignmentDirectional.center,
-          borderRadius: BorderRadius.circular(20),
-          hint: const Text('Target'),
-          value: list?.target.isNotEmpty == true ? list!.target : null,
-          onChanged: (value) => setState(() {
-            if (value == null) return;
-            list ??= MemoList('', '');
-            list!.target = value;
-            if (list!.name.isNotEmpty) {
-              writeList();
-            }
-          }),
-          items: items
-              .map(
-                (e) => DropdownMenuItem(
-                  value: e,
-                  child: Text(e),
+        child: FutureBuilder(
+          future: targetDl,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const CircularProgressIndicator();
+            } else {
+              return ValueListenableBuilder(
+                valueListenable: targetsNotifier,
+                builder: (context, _, __) => DropdownButton<String>(
+                  iconSize: 0.0,
+                  alignment: AlignmentDirectional.center,
+                  borderRadius: BorderRadius.circular(20),
+                  hint: const Text('Target'),
+                  value: list?.target.isNotEmpty == true ? list!.target : null,
+                  onChanged: (value) => setState(() {
+                    if (value == null) return;
+                    list ??= MemoList('', '');
+                    list!.target = value;
+                    if (list!.name.isNotEmpty) {
+                      writeList();
+                    }
+
+                    if (!Dict.exists(value)) {
+                      targetDl = Future.wait(localTargets!
+                          .where((e) => e.startsWith(value))
+                          .map((e) => Dict.download(e)));
+                      setState(() {});
+                    }
+                  }),
+                  items: localTargets!
+                      .map(
+                        (e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(e),
+                        ),
+                      )
+                      .toList(),
                 ),
-              )
-              .toList(),
+              );
+            }
+          },
         ),
       ),
     );
@@ -268,36 +327,44 @@ class _ListViewer extends State<ListViewer> {
         ],
       ),
       body: PageView(children: [
-        Stack(
-          children: [
-            list?.target.isNotEmpty == true && list!.entries.isNotEmpty
-                ? EntryViewier(
-                    list: list!,
-                    selectionController: _selectionController,
-                    saveCallback: (_) => setState(() => writeList()),
-                  )
-                : buildTargetDropDown(context),
-            if (isListInit && list!.entries.isNotEmpty)
-              Positioned(
-                bottom: kBottomNavigationBarHeight + 10,
-                right: 20,
-                child: FloatingActionButton(
-                  onPressed: () {
-                    assert(isListInit);
+        FutureBuilder(
+            future: fLoadTargets,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => QuizLauncher(
-                          entries: list!.entries,
-                        ),
+              return Stack(
+                children: [
+                  list?.target.isNotEmpty == true && list!.entries.isNotEmpty
+                      ? EntryViewier(
+                          list: list!,
+                          selectionController: _selectionController,
+                          saveCallback: (_) => setState(() => writeList()),
+                        )
+                      : buildTargetDropDown(context),
+                  if (isListInit && list!.entries.isNotEmpty)
+                    Positioned(
+                      bottom: kBottomNavigationBarHeight + 10,
+                      right: 20,
+                      child: FloatingActionButton(
+                        onPressed: () {
+                          assert(isListInit);
+
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => QuizLauncher(
+                                entries: list!.entries,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Icon(Icons.play_arrow_rounded),
                       ),
-                    );
-                  },
-                  child: const Icon(Icons.play_arrow_rounded),
-                ),
-              ),
-          ],
-        ),
+                    ),
+                ],
+              );
+            }),
         buildStats(context)
       ]),
     );
@@ -324,33 +391,7 @@ class _EntryViewier extends State<EntryViewier> {
   late final selectionController = widget.selectionController;
   bool _openSelection = false;
 
-  List<ListEntry> entries = [];
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    if (entries.isNotEmpty) return;
-
-    //Dict.getAllIso(list.entries.map((e) => e.id), list.target).listen((event) {
-    Dict.getAll(list.entries.map((e) => e.id), list.target).listen((event) {
-      final i = entries.length - (entries.isEmpty ? 0 : 1);
-
-      entries.add(
-        list.entries.elementAt(i).copyWith(data: event),
-      );
-
-      setState(() {});
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant EntryViewier oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (list.entries.length != entries.length) {
-      entries = [];
-    }
-  }
+  List<ListEntry> get entries => widget.list.entries;
 
   @override
   Widget build(BuildContext context) {
@@ -371,6 +412,16 @@ class _EntryViewier extends State<EntryViewier> {
                 ),
                 itemCount: entries.length,
                 itemBuilder: (context, i) {
+                  if (entries[i].data == null) {
+                    final entry = entries[i];
+                    entries[i] = entry.copyWith(
+                      data: Dict.get(
+                        entry.id,
+                        entry.target,
+                      ),
+                    );
+                  }
+
                   assert(entries[i].data != null);
 
                   return Stack(children: [
@@ -408,7 +459,7 @@ class _EntryViewier extends State<EntryViewier> {
                         child: IconButton(
                           onPressed: () {
                             setState(() {
-                              final entry = list.entries.elementAt(i);
+                              final entry = list.entries[i];
 
                               entries.remove(entry);
                               list.entries.remove(entry);
