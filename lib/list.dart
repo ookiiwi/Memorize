@@ -32,17 +32,17 @@ class ListEntry extends Equatable {
 class MemoList {
   MemoList(this.name, this.target)
       : id = ObjectId(),
-        entries = {};
+        entries = [];
   MemoList.fromJson(Map<String, dynamic> json)
       : id = ObjectId.fromHexString(json['id']),
         name = json['name'],
         target = json['target'],
-        entries = Set.from(json['entries'].map((e) => ListEntry.fromJson(e)));
+        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e)));
 
   final ObjectId id;
   String name;
   String target;
-  final Set<ListEntry> entries;
+  final List<ListEntry> entries;
 
   Map<String, dynamic> toJson() => {
         'id': id.hexString,
