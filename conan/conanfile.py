@@ -1,18 +1,25 @@
 from conan import ConanFile
-from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.files import copy
+import os
+
+androidArchMap = {
+    'x86': 'x86',
+    'x86_64': 'x86_64',
+    'armv8': 'arm64-v8a',
+    'armv7': 'armeabi-v7a',
+}
 
 
-class Slob4MemoConan(ConanFile):
-    # Binary configuration
+class DicoConan(ConanFile):
+    requires = "dico/0.2",
     settings = "os", "compiler", "build_type", "arch"
-    requires = "slob/0.1"
-    #generators = "cmake"
-    generators = "CMakeDeps", "CMakeToolchain"#, "VirtualBuildEnv", "VirtualRunEnv"
+    options = {"shared": [True, False]}
+    default_options = {"shared": True}
 
-    def layout(self):
-        cmake_layout(self)
+    def generate(self):
+        for dep in self.dependencies.values():
+            arch = str(self.settings.arch)
+            wd = os.path.dirname(os.path.realpath(__file__))
+            dst = os.path.realpath(wd + "/../android/app/src/main/jniLibs/" + androidArchMap[arch])
 
-    def build(self):
-      cmake = CMake(self)
-      cmake.configure()
-      cmake.build()
+            copy(self, "*.so", dep.cpp_info.libdirs[0], dst)
