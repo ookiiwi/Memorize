@@ -21,7 +21,12 @@ class EntryJpn extends Entry {
     'ヵ': ['か', 'が'],
   };
 
-  EntryJpn({required super.xmlDoc, super.showReading, required this.destLang}) {
+  EntryJpn(
+      {required super.xmlDoc,
+      super.showReading,
+      //required this.destLang // TODO: implement sub target fallback
+      required String destLang})
+      : destLang = 'eng' {
     _parsedWords = _parseWords();
   }
 
@@ -184,8 +189,6 @@ class EntryJpn extends Entry {
     final r =
         showReading ? xmlDoc.queryXPath(".//form[@type='r_ele']").nodes : [];
     final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").nodes;
-
-    assert(r.isNotEmpty);
 
     if (k.isNotEmpty) {
       elements.addEntries(k.map((e) => MapEntry(e.text!, [])));
