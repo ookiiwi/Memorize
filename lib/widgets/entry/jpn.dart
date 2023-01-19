@@ -15,6 +15,11 @@ extension KanaString on String {
 
 class EntryJpn extends Entry {
   static const kanaKit = KanaKit();
+  static const abbreviation = {
+    'ケ': ['か', 'が'],
+    'ヶ': ['か', 'が'],
+    'ヵ': ['か', 'が'],
+  };
 
   EntryJpn({required super.xmlDoc, super.showReading, required this.destLang}) {
     _parsedWords = _parseWords();
@@ -23,84 +28,151 @@ class EntryJpn extends Entry {
   final String destLang;
   late final Map<String, List<dynamic>> _parsedWords;
 
-  List<String> _mapToKana(String word, String reading) {
+  static List<List<String>> partitionWord(String word, String reading) {
+    final characters = word.characters;
+    final ret = <List<String>>[];
+    int? readingReq;
+    String subReading = reading;
+
+    bool isKanaOrRomaji(String c) => kanaKit.isKana(c) || kanaKit.isRomaji(c);
+
+    void setKanjiReading() {
+      if (readingReq != null && ret.isNotEmpty && isKanaOrRomaji(ret.last[0])) {
+        int index = kanaKit
+            .toHiragana(subReading)
+            .indexOf(kanaKit.toHiragana(ret.last[0]));
+
+        if (index < 0) {
+          final abbr = abbreviation[ret.last[0]];
+
+          if (abbr != null) {
+            for (var c in abbr) {
+              index =
+                  kanaKit.toHiragana(subReading).indexOf(kanaKit.toHiragana(c));
+
+              if (index >= 0) break;
+            }
+          }
+        }
+
+        assert(index >= 0);
+
+        ret[readingReq][1] = subReading.substring(0, index);
+        subReading = subReading.substring(index + ret.last[0].length);
+      }
+    }
+
+    for (int i = 0; i < characters.length; ++i) {
+      final c = characters.elementAt(i);
+
+      // kana or romaji
+      if (isKanaOrRomaji(c)) {
+        if (ret.isEmpty || !isKanaOrRomaji(ret.last[0])) {
+          ret.add(['', '']);
+        }
+      }
+
+      // kanji or other
+      else {
+        setKanjiReading();
+
+        if (ret.isEmpty || isKanaOrRomaji(ret.last[0])) {
+          readingReq = ret.length;
+          ret.add(['', '']);
+        }
+      }
+
+      ret.last[0] += c;
+
+      if (i == characters.length - 1) {
+        if (ret.last[0].isEmpty) setKanjiReading();
+
+        if (ret.last[1].isEmpty && !isKanaOrRomaji(ret.last[0])) {
+          ret.last[1] = subReading;
+        }
+      }
+    }
+
+    return ret;
+  }
+
+  List<String> mapToKana(String word, String reading) {
     final Map<String, Iterable<String>> cache = {};
     final ret = <String>[];
-    int i = 0;
 
-    Dict.check('jpn-$destLang-kanji');
+    if (!Dict.exists('jpn-$destLang-kanji')) {
+      throw Exception('Kanji subdict is not installed');
+    }
 
-    for (var k in word.characters) {
-      assert(i < reading.length, i);
-      Iterable<String> readings;
+    for (var part in partitionWord(word, reading)) {
+      final k = part[0];
+      String r = part[1];
 
-      if (!kanaKit.isKanji(k)) {
-        ++i;
-        ret.add('');
-        continue;
-      }
+      for (var c in k.characters) {
+        Iterable<String> readings = [];
+        String? match = '';
 
-      if (!cache.containsKey(k)) {
-        final target = 'jpn-$destLang-kanji';
-        final id = Dict.find(k, target);
-
-        assert(id.length == 1);
-
-        final entry = Dict.get(id.first.id, target);
-        final xmlDoc = XmlDocument.parse(entry);
-        readings = xmlDoc
-            .queryXPath(".//form[@type='r_ele']/orth[not (@type='nanori')]")
-            .nodes
-            .map((e) => e.text!);
-
-        if (k.allMatches(word).length > 1) {
-          cache[k] = readings;
+        if (kanaKit.isKana(k) || kanaKit.isRomaji(k)) {
+          match = null;
         }
-      } else {
-        readings = cache[k]!;
-      }
 
-      final subReading = kanaKit.toHiragana(reading.substring(i));
-      assert(subReading.isNotEmpty);
+        if (match != null && !cache.containsKey(c)) {
+          final ids = Dict.find(c, 'jpn-$destLang-kanji');
 
-      String match = word.length == 1
-          ? reading
-          : readings
-              .firstWhere(
-                (e) => subReading.startsWith(kanaKit.toHiragana(e.kanaTrim())),
-                orElse: () => '',
-              )
-              .kanaTrim();
+          if (ids.isEmpty) {
+            match = null;
+          } else {
+            final entry = Dict.get(ids.first.id, 'jpn-$destLang-kanji');
+            final xmlDoc = XmlDocument.parse(entry);
+            readings = xmlDoc
+                .queryXPath(".//form[@type='r_ele']/orth[not (@type='nanori')]")
+                .nodes
+                .map((e) => e.text!);
 
-      if (match.isEmpty) {
-        if (subReading.startsWith(RegExp('.*(っ|ッ)'))) {
-          match = readings.firstWhere(
-            (e) {
-              final str = kanaKit.toHiragana(e.kanaTrim());
-
-              return subReading.startsWith(str.substring(0, str.length - 1));
-            },
-            orElse: () => '',
-          ).kanaTrim();
-        } else if (i > 0) {
-          //assert(i > 0);
-
-          final str = unorm.nfd(subReading[0])[0] + subReading.substring(1);
-          match = readings
-              .firstWhere(
-                (e) => str.startsWith(kanaKit.toHiragana(e.kanaTrim())),
-                orElse: () => '',
-              )
-              .kanaTrim();
+            cache[c] = readings;
+          }
+        } else if (match != null) {
+          readings = cache[c]!;
         }
-      }
 
-      if (match.isEmpty) {
-        ret.clear();
-        ++i;
-      } else {
-        ret.add(subReading.substring(0, match.length));
-        i += match.length;
+        if (match?.isEmpty == true) {
+          match = k.length == 1
+              ? r
+              : readings
+                  .firstWhere(
+                    (e) => r.startsWith(kanaKit.toHiragana(e.kanaTrim())),
+                    orElse: () => '',
+                  )
+                  .kanaTrim();
+        }
+
+        if (match?.isEmpty == true) {
+          if (r.startsWith(RegExp('.*(っ|ッ)'))) {
+            match = readings.firstWhere(
+              (e) {
+                final str = kanaKit.toHiragana(e.kanaTrim());
+
+                return r.startsWith(str);
+              },
+              orElse: () => '',
+            ).kanaTrim();
+          } else if (k.indexOf(c) > 0) {
+            final str = unorm.nfd(r[0])[0] + r.substring(1);
+            match = readings
+                .firstWhere(
+                  (e) => str.startsWith(kanaKit.toHiragana(e.kanaTrim())),
+                  orElse: () => '',
+                )
+                .kanaTrim();
+          }
+        }
+
+        if (match?.isEmpty == true) {
+          return [];
+        }
+
+        r = r.substring(match?.length ?? 0);
+        ret.add(match ?? '');
       }
     }
 
@@ -123,7 +195,7 @@ class EntryJpn extends Entry {
         final text = node.queryXPath("./orth").node!.text!;
 
         if (restr != null) {
-          final kana = _mapToKana(restr, text);
+          final kana = mapToKana(restr, text);
           elements[restr]!.add(
             kana.isEmpty ||
                     kana.reduce((value, element) => value + element).isEmpty
@@ -134,7 +206,7 @@ class EntryJpn extends Entry {
         }
 
         elements.forEach((key, value) {
-          final kana = _mapToKana(key, text);
+          final kana = mapToKana(key, text);
           value.add(
             kana.isEmpty ||
                     kana.reduce((value, element) => value + element).isEmpty
@@ -218,7 +290,10 @@ class EntryJpn extends Entry {
 
   @override
   List<Widget> buildOtherForms(BuildContext context) {
-    return buildWords()..removeLast();
+    final words = buildWords();
+
+    return words.isEmpty ? words : words
+      ..removeAt(0);
   }
 
   @override
