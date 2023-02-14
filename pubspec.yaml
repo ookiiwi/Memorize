@@ -63,7 +63,7 @@ dependencies:
   intl: ^0.17.0
   flex_color_scheme: ^6.1.1
   dico:
-    path: ../slob
+    path: ../dico4d
   scroll_to_index: ^3.0.1
   kana_kit: ^2.0.0
   unorm_dart: ^0.2.0
@@ -100,8 +100,6 @@ flutter:
   assets:
     - assets/profil_icons/
     - assets/memo_mascot.png
-    - assets/dict/
-    - .env
 
   fonts:
     - family: FiraSans
