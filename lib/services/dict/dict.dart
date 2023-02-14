@@ -105,3 +105,39 @@ class Dict {
     }
   }
 }
+
+/**
+ * Opens dico [target] and its sub targets
+ */
+class MultiDict {
+  MultiDict(String target) : _readers = {} {
+    final availableTargets = Dict.listTargets();
+
+    for (var tar in availableTargets) {
+      if (tar.startsWith(target)) {
+        _readers[tar] = Dict.open(tar);
+      }
+    }
+  }
+
+  final Map<String, Reader> _readers;
+  Iterable<String> get targets => _readers.keys;
+
+  List<Ref> find(String target, String key) {
+    final reader = _readers[target];
+
+    return reader?.find(key) ?? [];
+  }
+
+  String get(String target, int id) {
+    final reader = _readers[target];
+
+    return utf8.decode(reader?.get(id) ?? []);
+  }
+
+  void close() {
+    for (var reader in _readers.values) {
+      reader.close();
+    }
+  }
+}
