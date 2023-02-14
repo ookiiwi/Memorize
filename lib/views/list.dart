@@ -590,38 +590,6 @@ class _EntryView extends State<EntryView> {
   }
 }
 
-class SizeReportingWidget extends StatefulWidget {
-  const SizeReportingWidget(
-      {super.key, required this.child, required this.onSizeChange});
-
-  final Widget child;
-  final ValueChanged<Size> onSizeChange;
-
-  @override
-  State<StatefulWidget> createState() => _SizeReportingWidget();
-}
-
-class _SizeReportingWidget extends State<SizeReportingWidget> {
-  Size? _oldSize;
-
-  void _notifySize() {
-    if (!mounted) return;
-
-    final size = context.size;
-
-    if (_oldSize != size && size != null) {
-      _oldSize = size;
-      widget.onSizeChange(size);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _notifySize());
-    return widget.child;
-  }
-}
-
 class QuizResults {
   QuizResults({required this.score, this.errors = const [], DateTime? time})
       : time = time ?? DateTime.now();
@@ -745,9 +713,27 @@ class EntrySearch extends StatefulWidget {
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  List<int> ids = [];
   List<ListEntry> entries = [];
-  late final reader = Dict.open(widget.target);
+  late final reader = MultiDict(widget.target);
+  int selectedTarget = 0;
+  late Map<String, List<int>> ids =
+      Map.fromEntries(reader.targets.map((e) => MapEntry(e, [])));
+
+  late List<String> targets;
+  final PageController resultAreasCtrl = PageController();
+  final resultAreasIndicatorOffset = ValueNotifier<double>(0.0);
+
+  @override
+  void initState() {
+    super.initState();
+
+    targets = reader.targets.toList()..sort();
+
+    resultAreasCtrl.addListener(() {
+      resultAreasIndicatorOffset.value =
+          resultAreasCtrl.page ?? resultAreasIndicatorOffset.value;
+    });
+  }
 
   @override
   void dispose() {
@@ -755,7 +741,93 @@ class _EntrySearch extends State<EntrySearch> {
     super.dispose();
   }
 
-  String getEntry(int id) => utf8.decode(reader.get(id));
+  Widget buildResultArea(BuildContext context, String target) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: ids[target]!.isEmpty
+          ? const Center(child: Text("No result >_<"))
+          : ListView.separated(
+              shrinkWrap: true,
+              itemCount: ids[target]!.length,
+              separatorBuilder: (context, index) =>
+                  const Divider(thickness: 0.3),
+              itemBuilder: (context, i) {
+                if (entries.length <= i) {
+                  entries.add(
+                    ListEntry(
+                      ids[target]![i],
+                      target,
+                      data: reader.get(target, ids[target]![i]),
+                    ),
+                  );
+                }
+
+                return MaterialButton(
+                  onPressed: () {
+                    if (widget.onItemSelected != null) {
+                      widget.onItemSelected!(entries[i].id, entries[i].data!);
+                    }
+                  },
+                  child: EntryRenderer(
+                    mode: DisplayMode.preview,
+                    entry: Entry.guess(
+                      xmlDoc: XmlDocument.parse(entries[i].data!),
+                      target: entries[i].target,
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Widget buildResultAreas(BuildContext context) {
+    return Column(
+      children: [
+        Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: targets.map((e) {
+                final tar = e.replaceFirst(RegExp(widget.target + '-?'), '');
+                return Text(tar.isEmpty ? 'WORD' : tar.toUpperCase());
+              }).toList(),
+            ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return ValueListenableBuilder<double>(
+                    valueListenable: resultAreasIndicatorOffset,
+                    builder: (context, value, _) {
+                      final indicatorWidth =
+                          constraints.maxWidth / targets.length;
+
+                      return Container(
+                        margin: EdgeInsets.only(
+                          left: indicatorWidth * value,
+                          right: indicatorWidth * (targets.length - value - 1),
+                        ),
+                        height: 4,
+                        color: Theme.of(context).colorScheme.primary,
+                      );
+                    });
+              },
+            )
+          ],
+        ),
+        Expanded(
+          child: PageView.builder(
+            controller: resultAreasCtrl,
+            onPageChanged: (value) => setState(() => selectedTarget = value),
+            itemCount: targets.length,
+            itemBuilder: (context, i) => buildResultArea(
+              context,
+              targets.elementAt(i),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -787,49 +859,22 @@ class _EntrySearch extends State<EntrySearch> {
           ),
           onSubmitted: (value) async {
             entries = [];
-            setState(
-                () => ids = reader.find(value).expand((e) => e.ids).toList());
+            setState(() {
+              for (var target in ids.keys) {
+                ids[target] =
+                    reader.find(target, value).expand((e) => e.ids).toList();
+              }
+            });
           },
         ),
       ),
-      body: Builder(
-        builder: (context) {
-          return ids.isEmpty
-              ? const Center(child: Text("No result >_<"))
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: ids.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(thickness: 0.3),
-                  itemBuilder: (context, i) {
-                    if (entries.length <= i) {
-                      entries.add(
-                        ListEntry(
-                          ids[i],
-                          widget.target,
-                          data: getEntry(ids[i]),
-                        ),
-                      );
-                    }
-
-                    return MaterialButton(
-                      onPressed: () {
-                        if (widget.onItemSelected != null) {
-                          widget.onItemSelected!(
-                              entries[i].id, entries[i].data!);
-                        }
-                      },
-                      child: EntryRenderer(
-                        mode: DisplayMode.preview,
-                        entry: Entry.guess(
-                          xmlDoc: XmlDocument.parse(entries[i].data!),
-                          target: entries[i].target,
-                        ),
-                      ),
-                    );
-                  },
-                );
-        },
+      body: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Builder(
+          builder: (context) => targets.length > 1
+              ? buildResultAreas(context)
+              : buildResultArea(context, targets[selectedTarget]),
+        ),
       ),
     );
   }
