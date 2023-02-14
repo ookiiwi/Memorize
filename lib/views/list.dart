@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:dico/dico.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
@@ -394,15 +393,13 @@ class _EntryViewier extends State<EntryViewier> {
   bool _openSelection = false;
 
   List<ListEntry> get entries => widget.list.entries;
-  late Reader reader = Dict.open(list.target);
+  late final reader = MultiDict(list.target);
 
   @override
   void dispose() {
     reader.close();
     super.dispose();
   }
-
-  String getEntry(int id) => utf8.decode(reader.get(id));
 
   @override
   Widget build(BuildContext context) {
@@ -426,7 +423,11 @@ class _EntryViewier extends State<EntryViewier> {
                 itemBuilder: (context, i) {
                   if (entries[i].data == null) {
                     final entry = entries[i];
-                    entries[i] = entry.copyWith(data: getEntry(entry.id));
+                    entries[i] = entry.copyWith(
+                      data: reader.targets.contains(entry.target)
+                          ? reader.get(entry.target, entry.id)
+                          : Dict.get(entry.id, entry.target),
+                    );
                   }
 
                   assert(entries[i].data != null);
