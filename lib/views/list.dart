@@ -73,9 +73,8 @@ class _ListViewer extends State<ListViewer> {
       list = MemoList.fromJson(jsonDecode(data));
     }
 
-    if (list != null) {
-      print('load');
-      fLoadTargets = loadTargets();
+    if (list != null && isListInit) {
+      fLoadTargets = loadTargets()..then((value) => setState(() {}));
     }
 
     print('local targets ${Dict.listTargets()}');
@@ -84,6 +83,8 @@ class _ListViewer extends State<ListViewer> {
 
   Future<void> loadTargets() async {
     assert(list != null);
+
+    if (list!.entries.isEmpty) return;
 
     final allTargets = await Dict.listRemoteTargets();
 
@@ -125,7 +126,7 @@ class _ListViewer extends State<ListViewer> {
             onItemSelected: (id, data) {
               final entry = ListEntry(id, list!.target, data: data);
 
-              if (!list!.entries.any((e) => e.id.hexstring == id.hexstring)) {
+              if (!list!.entries.any((e) => e.id == id)) {
                 list!.entries.add(entry);
                 writeList();
               }
@@ -226,9 +227,10 @@ class _ListViewer extends State<ListViewer> {
     final ValueNotifier targetsNotifier = ValueNotifier([]);
     Future<void> targetDl = Future.value();
 
-    localTargets ??= Dict.listTargets().toList()..sort();
-    if (remoteTargets == null) {
-      Dict.listRemoteTargets().then((value) => localTargets = value..sort());
+    if (localTargets == null) {
+      localTargets = Dict.listTargets().toList()..sort();
+      Dict.listRemoteTargets()
+          .then((value) => setState(() => localTargets = value..sort()));
     }
 
     return SafeArea(
@@ -392,11 +394,21 @@ class _EntryViewier extends State<EntryViewier> {
   bool _openSelection = false;
 
   List<ListEntry> get entries => widget.list.entries;
+  late Reader reader = Dict.open(list.target);
+
+  @override
+  void dispose() {
+    reader.close();
+    super.dispose();
+  }
+
+  String getEntry(int id) => utf8.decode(reader.get(id));
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => setState(() => _openSelection = false),
+      onTap:
+          _openSelection ? () => setState(() => _openSelection = false) : null,
       child: Column(
         children: [
           Expanded(
@@ -414,12 +426,7 @@ class _EntryViewier extends State<EntryViewier> {
                 itemBuilder: (context, i) {
                   if (entries[i].data == null) {
                     final entry = entries[i];
-                    entries[i] = entry.copyWith(
-                      data: Dict.get(
-                        entry.id,
-                        entry.target,
-                      ),
-                    );
+                    entries[i] = entry.copyWith(data: getEntry(entry.id));
                   }
 
                   assert(entries[i].data != null);
@@ -427,27 +434,39 @@ class _EntryViewier extends State<EntryViewier> {
                   return Stack(children: [
                     AbsorbPointer(
                       absorbing: _openSelection,
-                      child: MaterialButton(
-                        padding: const EdgeInsets.all(8.0),
-                        onLongPress: () =>
-                            setState((() => _openSelection = true)),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) {
-                                return EntryView(
-                                  entries: entries,
-                                  entryId: entries[i].id,
-                                );
-                              },
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => MaterialButton(
+                          minWidth: constraints.maxWidth,
+                          padding: const EdgeInsets.all(8.0),
+                          onLongPress: () =>
+                              setState((() => _openSelection = true)),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) {
+                                  return EntryView(
+                                    entries: entries,
+                                    entryId: entries[i].id,
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 50),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: EntryRenderer(
+                                  mode: DisplayMode.preview,
+                                  entry: Entry.guess(
+                                    xmlDoc: XmlDocument.parse(entries[i].data!),
+                                    target: entries[i].target,
+                                  ),
+                                ),
+                              ),
                             ),
-                          );
-                        },
-                        child: EntryRenderer(
-                          mode: DisplayMode.preview,
-                          entry: Entry.guess(
-                            xmlDoc: XmlDocument.parse(entries[i].data!),
-                            target: entries[i].target,
                           ),
                         ),
                       ),
@@ -530,8 +549,8 @@ class _EntryView extends State<EntryView> {
         padding: const EdgeInsets.only(top: 10.0),
         child: PageView.builder(
           controller: _controller,
-          scrollDirection: Axis.vertical,
-          pageSnapping: _snapToGrid,
+          clipBehavior: Clip.none,
+          scrollDirection: Axis.horizontal,
           itemCount: widget.entries.length,
           itemBuilder: (context, i) {
             if (entries[i].data == null) {
@@ -543,18 +562,24 @@ class _EntryView extends State<EntryView> {
 
             assert(entries[i].data != null);
 
-            return ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height -
-                    kToolbarHeight -
-                    kBottomNavigationBarHeight,
-                minWidth: MediaQuery.of(context).size.width,
-              ),
-              child: EntryRenderer(
-                mode: DisplayMode.detailed,
-                entry: Entry.guess(
-                  xmlDoc: XmlDocument.parse(entries[i].data!),
-                  target: entries[i].target,
+            return LayoutBuilder(
+              builder: (context, constraints) => ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: MediaQuery.of(context).size.height -
+                      kToolbarHeight -
+                      kBottomNavigationBarHeight,
+                  minWidth: constraints.maxWidth,
+                ),
+                child: SingleChildScrollView(
+                  padding:
+                      const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
+                  child: EntryRenderer(
+                    mode: DisplayMode.detailed,
+                    entry: Entry.guess(
+                      xmlDoc: XmlDocument.parse(entries[i].data!),
+                      target: entries[i].target,
+                    ),
+                  ),
                 ),
               ),
             );
@@ -562,6 +587,38 @@ class _EntryView extends State<EntryView> {
         ),
       ),
     );
+  }
+}
+
+class SizeReportingWidget extends StatefulWidget {
+  const SizeReportingWidget(
+      {super.key, required this.child, required this.onSizeChange});
+
+  final Widget child;
+  final ValueChanged<Size> onSizeChange;
+
+  @override
+  State<StatefulWidget> createState() => _SizeReportingWidget();
+}
+
+class _SizeReportingWidget extends State<SizeReportingWidget> {
+  Size? _oldSize;
+
+  void _notifySize() {
+    if (!mounted) return;
+
+    final size = context.size;
+
+    if (_oldSize != size && size != null) {
+      _oldSize = size;
+      widget.onSizeChange(size);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifySize());
+    return widget.child;
   }
 }
 
@@ -681,15 +738,24 @@ class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final void Function(DicoId id, String entry)? onItemSelected;
+  final void Function(int id, String entry)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  List<DicoId> ids = [];
+  List<int> ids = [];
   List<ListEntry> entries = [];
+  late final reader = Dict.open(widget.target);
+
+  @override
+  void dispose() {
+    reader.close();
+    super.dispose();
+  }
+
+  String getEntry(int id) => utf8.decode(reader.get(id));
 
   @override
   Widget build(BuildContext context) {
@@ -715,13 +781,14 @@ class _EntrySearch extends State<EntrySearch> {
             contentPadding: const EdgeInsets.all(8.0),
             hintText: 'Search',
             border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
           ),
           onSubmitted: (value) async {
             entries = [];
-            setState(() => ids =
-                Dict.find(value, widget.target).map((e) => e.id).toList());
+            setState(
+                () => ids = reader.find(value).expand((e) => e.ids).toList());
           },
         ),
       ),
@@ -740,7 +807,7 @@ class _EntrySearch extends State<EntrySearch> {
                         ListEntry(
                           ids[i],
                           widget.target,
-                          data: Dict.get(ids[i], widget.target),
+                          data: getEntry(ids[i]),
                         ),
                       );
                     }
