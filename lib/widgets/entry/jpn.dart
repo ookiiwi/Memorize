@@ -21,6 +21,8 @@ class EntryJpn extends Entry {
     'ヵ': ['か', 'が'],
   };
 
+  static final Map<String, Iterable<String>> cache = {};
+
   EntryJpn(
       {required super.xmlDoc,
       super.showReading,
@@ -102,7 +104,6 @@ class EntryJpn extends Entry {
   }
 
   List<String> mapToKana(String word, String reading) {
-    final Map<String, Iterable<String>> cache = {};
     final ret = <String>[];
 
     if (!Dict.exists('jpn-$destLang-kanji')) {
@@ -122,12 +123,12 @@ class EntryJpn extends Entry {
         }
 
         if (match != null && !cache.containsKey(c)) {
-          final ids = Dict.find(c, 'jpn-$destLang-kanji');
+          final ids = Dict.find(c, 'jpn-$destLang-kanji').expand((e) => e.ids);
 
           if (ids.isEmpty) {
             match = null;
           } else {
-            final entry = Dict.get(ids.first.id, 'jpn-$destLang-kanji');
+            final entry = Dict.get(ids.first, 'jpn-$destLang-kanji');
             final xmlDoc = XmlDocument.parse(entry);
             readings = xmlDoc
                 .queryXPath(".//form[@type='r_ele']/orth[not (@type='nanori')]")
