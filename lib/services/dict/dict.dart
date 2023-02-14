@@ -7,17 +7,26 @@ import 'package:dico/dico.dart';
 
 class Dict {
   static const _fileExtension = 'dico';
+  static final _dio = Dio(BaseOptions(
+      baseUrl: 'http://192.168.1.13:8080/dictionaries/${Writer.version}'));
 
-  static List<Ref> find(String key, String target, {int? page, int? count}) {
+  static Reader open(String target) =>
+      Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
+
+  static List<Ref> find(String key, String target,
+      {int page = 0, int count = 20}) {
     final reader =
         Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
+    print("reader opened");
     final ret = reader.find(key, page, count);
+    print("reader find");
     reader.close();
+    print("reader close");
 
     return ret;
   }
 
-  static String get(DicoId id, String target) {
+  static String get(int id, String target) {
     final dir = applicationDocumentDirectory;
     final reader = Reader('$dir/dict/$target.$_fileExtension');
     final ret = _get([id, reader]);
@@ -49,10 +58,8 @@ class Dict {
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
 
     try {
-      final dio = Dio();
-
-      await dio.download(
-        'http://192.168.1.13:8080/dictionaries/$target.$_fileExtension',
+      await _dio.download(
+        '/$target.$_fileExtension',
         filename,
       );
     } on DioError {
@@ -83,10 +90,8 @@ class Dict {
   }
 
   static Future<List<String>> listRemoteTargets() async {
-    final dio = Dio();
-
     try {
-      final response = await dio.get('http://192.168.1.13:8080/dictionaries/');
+      final response = await _dio.get('/');
       final String body = response.data;
 
       final exp =
