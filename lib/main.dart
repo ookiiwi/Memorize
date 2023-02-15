@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/views/mobile/main.dart'
     if (dart.library.js) 'package:memorize/views/web/main.dart';
@@ -18,7 +20,11 @@ void main() {
   Provider.debugCheckInvalidValueType = null;
   usePathUrlStrategy();
 
-  runApp(SplashScreen(builder: (context) => MyApp()));
+  runApp(
+    LifecycleWatcher(
+      child: SplashScreen(builder: (context) => MyApp()),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -148,6 +154,7 @@ class _SplashScreen extends State<SplashScreen> {
 
     applicationDocumentDirectory =
         (await getApplicationDocumentsDirectory()).path;
+    temporaryDirectory = (await getTemporaryDirectory()).path;
   }
 
   @override
@@ -164,5 +171,70 @@ class _SplashScreen extends State<SplashScreen> {
         },
       ),
     );
+  }
+}
+
+class LifecycleWatcher extends StatefulWidget {
+  const LifecycleWatcher({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<StatefulWidget> createState() => _LifecycleWatcher();
+}
+
+class _LifecycleWatcher extends State<LifecycleWatcher>
+    with WidgetsBindingObserver {
+  Iterable<String>? _dicoTargets;
+  AppLifecycleState? _oldState;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
+    final tmp = WidgetsBinding.instance.lifecycleState;
+    _oldState = tmp;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state != AppLifecycleState.resumed &&
+        _oldState != AppLifecycleState.resumed) {
+      _dicoTargets ??= DicoManager.targets;
+
+      final tmpFile = File("$temporaryDirectory/dicoTargets");
+
+      if (!tmpFile.existsSync()) tmpFile.createSync(recursive: true);
+      tmpFile.writeAsStringSync(jsonEncode(_dicoTargets));
+
+      print("NOT ACTIVE ($state): $_dicoTargets");
+      DicoManager.close();
+    } else {
+      print("ACTIVE ($state)");
+      final tmpFile = File("$temporaryDirectory/dicoTargets");
+
+      if (tmpFile.existsSync()) {
+        _dicoTargets = List.from(jsonDecode(tmpFile.readAsStringSync()));
+        DicoManager.load(_dicoTargets ?? []);
+      }
+
+      _dicoTargets = null;
+    }
+
+    _oldState = state;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 }
