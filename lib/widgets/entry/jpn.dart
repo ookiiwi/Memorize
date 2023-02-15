@@ -29,6 +29,8 @@ class EntryJpn extends Entry {
       //required this.destLang // TODO: implement sub target fallback
       required String destLang})
       : destLang = 'eng' {
+    DicoManager.load(['jpn-eng-kanji']);
+
     _parsedWords = _parseWords();
   }
 
@@ -106,10 +108,6 @@ class EntryJpn extends Entry {
   List<String> mapToKana(String word, String reading) {
     final ret = <String>[];
 
-    if (!Dict.exists('jpn-$destLang-kanji')) {
-      throw Exception('Kanji subdict is not installed');
-    }
-
     for (var part in partitionWord(word, reading)) {
       final k = part[0];
       String r = part[1];
@@ -123,12 +121,13 @@ class EntryJpn extends Entry {
         }
 
         if (match != null && !cache.containsKey(c)) {
-          final ids = Dict.find(c, 'jpn-$destLang-kanji').expand((e) => e.ids);
+          final ids =
+              DicoManager.find('jpn-$destLang-kanji', c).expand((e) => e.ids);
 
           if (ids.isEmpty) {
             match = null;
           } else {
-            final entry = Dict.get(ids.first, 'jpn-$destLang-kanji');
+            final entry = DicoManager.get('jpn-$destLang-kanji', ids.first);
             final xmlDoc = XmlDocument.parse(entry);
             readings = xmlDoc
                 .queryXPath(".//form[@type='r_ele']/orth[not (@type='nanori')]")
@@ -375,8 +374,7 @@ class EntryJpnKanji extends Entry {
 
   @override
   Widget buildMainForm(BuildContext context) {
-    // TODO: implement buildMainForm
-    throw UnimplementedError();
+    return Container();
   }
 
   @override
