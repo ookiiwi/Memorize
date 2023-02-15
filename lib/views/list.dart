@@ -393,13 +393,6 @@ class _EntryViewier extends State<EntryViewier> {
   bool _openSelection = false;
 
   List<ListEntry> get entries => widget.list.entries;
-  late final reader = MultiDict(list.target);
-
-  @override
-  void dispose() {
-    reader.close();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -424,10 +417,7 @@ class _EntryViewier extends State<EntryViewier> {
                   if (entries[i].data == null) {
                     final entry = entries[i];
                     entries[i] = entry.copyWith(
-                      data: reader.targets.contains(entry.target)
-                          ? reader.get(entry.target, entry.id)
-                          : Dict.get(entry.id, entry.target),
-                    );
+                        data: DicoManager.get(entry.target, entry.id));
                   }
 
                   assert(entries[i].data != null);
@@ -557,7 +547,7 @@ class _EntryView extends State<EntryView> {
             if (entries[i].data == null) {
               final entry = widget.entries.elementAt(i);
               entries[i] = entry.copyWith(
-                data: Dict.get(entry.id, entry.target),
+                data: DicoManager.get(entry.target, entry.id),
               );
             }
 
@@ -714,11 +704,10 @@ class EntrySearch extends StatefulWidget {
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  List<ListEntry> entries = [];
-  late final reader = MultiDict(widget.target);
+  Map<String, List<Widget>> entries = {};
+  Map<String, List<ListEntry>> entriesData = {};
   int selectedTarget = 0;
-  late Map<String, List<int>> ids =
-      Map.fromEntries(reader.targets.map((e) => MapEntry(e, [])));
+  Map<String, List<int>> ids = {};
 
   late List<String> targets;
   final PageController resultAreasCtrl = PageController();
@@ -728,7 +717,18 @@ class _EntrySearch extends State<EntrySearch> {
   void initState() {
     super.initState();
 
-    targets = reader.targets.toList()..sort();
+    DicoManager.load([widget.target], loadSubTargets: true);
+
+    targets = DicoManager.targets
+        .where((e) => e.startsWith(widget.target))
+        .toList()
+      ..sort();
+
+    for (var target in targets) {
+      entries[target] = [];
+      entriesData[target] = [];
+      ids[target] = [];
+    }
 
     resultAreasCtrl.addListener(() {
       resultAreasIndicatorOffset.value =
@@ -738,7 +738,7 @@ class _EntrySearch extends State<EntrySearch> {
 
   @override
   void dispose() {
-    reader.close();
+    DicoManager.close();
     super.dispose();
   }
 
@@ -753,29 +753,14 @@ class _EntrySearch extends State<EntrySearch> {
               separatorBuilder: (context, index) =>
                   const Divider(thickness: 0.3),
               itemBuilder: (context, i) {
-                if (entries.length <= i) {
-                  entries.add(
-                    ListEntry(
-                      ids[target]![i],
-                      target,
-                      data: reader.get(target, ids[target]![i]),
-                    ),
-                  );
-                }
-
                 return MaterialButton(
                   onPressed: () {
                     if (widget.onItemSelected != null) {
-                      widget.onItemSelected!(entries[i].id, entries[i].data!);
+                      widget.onItemSelected!(entriesData[target]![i].id,
+                          entriesData[target]![i].data!);
                     }
                   },
-                  child: EntryRenderer(
-                    mode: DisplayMode.preview,
-                    entry: Entry.guess(
-                      xmlDoc: XmlDocument.parse(entries[i].data!),
-                      target: entries[i].target,
-                    ),
-                  ),
+                  child: entries[target]![i],
                 );
               },
             ),
@@ -787,13 +772,22 @@ class _EntrySearch extends State<EntrySearch> {
       children: [
         Column(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: targets.map((e) {
-                final tar = e.replaceFirst(RegExp(widget.target + '-?'), '');
-                return Text(tar.isEmpty ? 'WORD' : tar.toUpperCase());
-              }).toList(),
-            ),
+            LayoutBuilder(builder: (context, constraints) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: targets.map((e) {
+                  final tar = e.replaceFirst(RegExp(widget.target + '-?'), '');
+                  return MaterialButton(
+                    minWidth: constraints.maxWidth / targets.length,
+                    onPressed: () => resultAreasCtrl.animateToPage(
+                        targets.indexOf(e),
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOutCirc),
+                    child: Text(tar.isEmpty ? 'WORD' : tar.toUpperCase()),
+                  );
+                }).toList(),
+              );
+            }),
             LayoutBuilder(
               builder: (context, constraints) {
                 return ValueListenableBuilder<double>(
@@ -817,6 +811,7 @@ class _EntrySearch extends State<EntrySearch> {
         ),
         Expanded(
           child: PageView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
             controller: resultAreasCtrl,
             onPageChanged: (value) => setState(() => selectedTarget = value),
             itemCount: targets.length,
@@ -828,6 +823,34 @@ class _EntrySearch extends State<EntrySearch> {
         ),
       ],
     );
+  }
+
+  void _buildEntries() {
+    for (var target in targets) {
+      for (int i = 0; i < ids[target]!.length; ++i) {
+        if (entries[target]!.length <= i) {
+          final data = DicoManager.get(target, ids[target]![i]);
+
+          entriesData[target]!.add(
+            ListEntry(
+              ids[target]![i],
+              target,
+              data: data,
+            ),
+          );
+
+          entries[target]!.add(
+            EntryRenderer(
+              mode: DisplayMode.preview,
+              entry: Entry.guess(
+                xmlDoc: XmlDocument.parse(data),
+                target: target,
+              ),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -859,12 +882,17 @@ class _EntrySearch extends State<EntrySearch> {
             ),
           ),
           onSubmitted: (value) async {
-            entries = [];
+            entries[targets[selectedTarget]] = [];
+            entriesData[targets[selectedTarget]] = [];
+
             setState(() {
               for (var target in ids.keys) {
-                ids[target] =
-                    reader.find(target, value).expand((e) => e.ids).toList();
+                ids[target] = DicoManager.find(target, value)
+                    .expand((e) => e.ids)
+                    .toList();
               }
+
+              _buildEntries();
             });
           },
         ),
