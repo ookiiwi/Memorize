@@ -13,19 +13,6 @@ class Dict {
   static Reader open(String target) =>
       Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
 
-  static List<Ref> find(String key, String target,
-      {int page = 0, int count = 20}) {
-    final reader =
-        Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
-    print("reader opened");
-    final ret = reader.find(key, page, count);
-    print("reader find");
-    reader.close();
-    print("reader close");
-
-    return ret;
-  }
-
   static String get(int id, String target) {
     final dir = applicationDocumentDirectory;
     final reader = Reader('$dir/dict/$target.$_fileExtension');
@@ -106,38 +93,66 @@ class Dict {
   }
 }
 
-/**
- * Opens dico [target] and its sub targets
- */
-class MultiDict {
-  MultiDict(String target) : _readers = {} {
-    final availableTargets = Dict.listTargets();
+class DicoManager {
+  static final Map<String, Reader> _readers = {};
+  static final List<String> _targetHistory = [];
+  static Iterable<String> get targets => _targetHistory;
 
-    for (var tar in availableTargets) {
-      if (tar.startsWith(target)) {
-        _readers[tar] = Dict.open(tar);
+  static List<Ref> find(String target, String key,
+      [int offset = 0, int cnt = 20]) {
+    _checkOpen(target);
+
+    return _readers[target]!.find(key, offset, cnt);
+  }
+
+  static String get(String target, int id) {
+    _checkOpen(target);
+
+    return utf8.decode(_readers[target]!.get(id));
+  }
+
+  static void close() {
+    print("close");
+    for (var reader in _readers.values) {
+      reader.close();
+    }
+
+    _readers.clear();
+    _targetHistory.clear();
+  }
+
+  static void load(Iterable<String> targets, {bool loadSubTargets = false}) {
+    print("load $targets");
+    for (var target in targets) {
+      _checkOpen(target);
+
+      if (loadSubTargets) {
+        final subTargets =
+            Dict.listTargets().where((e) => e.startsWith(target));
+
+        for (var sub in subTargets) {
+          _checkOpen(sub);
+        }
       }
     }
   }
 
-  final Map<String, Reader> _readers;
-  Iterable<String> get targets => _readers.keys;
+  static void _checkOpen(String target) {
+    if (_readers.containsKey(target)) return;
 
-  List<Ref> find(String target, String key) {
-    final reader = _readers[target];
-
-    return reader?.find(key) ?? [];
-  }
-
-  String get(String target, int id) {
-    final reader = _readers[target];
-
-    return utf8.decode(reader?.get(id) ?? []);
-  }
-
-  void close() {
-    for (var reader in _readers.values) {
-      reader.close();
+    if (!Dict.exists(target)) {
+      throw Exception("Unknown target: $target");
     }
+
+    if (_targetHistory.length > 3) {
+      final rmTar = _targetHistory.removeLast();
+
+      _readers[rmTar]!.close();
+      _readers.remove(rmTar);
+    }
+
+    _targetHistory.add(target);
+    _readers[target] = Dict.open(target);
+    print("open");
   }
 }
