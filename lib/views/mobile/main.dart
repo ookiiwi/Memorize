@@ -5,6 +5,7 @@ import 'package:memorize/file_system.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
+import 'package:memorize/views/search.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
@@ -43,7 +44,7 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
     routes: [
       GoRoute(
         path: '/home',
-        builder: (context, state) => const HomePage(),
+        pageBuilder: (context, state) => mainPageBuilder(const HomePage()),
       ),
       GoRoute(
           path: '/list',
@@ -61,16 +62,22 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
           }),
       GoRoute(
         path: '/search',
-        //builder: (context, state) => const Search(),
-        builder: (context, state) => Container(color: Colors.amber),
+        pageBuilder: (context, state) => mainPageBuilder(const SearchPage()),
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsPage(),
+        pageBuilder: (context, state) => mainPageBuilder(const SettingsPage()),
       ),
     ],
   )
 ]);
+
+Page<dynamic> mainPageBuilder(Widget page) {
+  return CustomTransitionPage(
+      child: page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          child);
+}
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
