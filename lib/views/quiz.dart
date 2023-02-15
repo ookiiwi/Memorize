@@ -103,7 +103,8 @@ class _QuizLauncher extends State<QuizLauncher> {
           for (var entry in widget.entries) {
             if (entry.data != null) continue;
 
-            entry = entry.copyWith(data: Dict.get(entry.id, entry.target));
+            entry =
+                entry.copyWith(data: DicoManager.get(entry.target, entry.id));
           }
 
           return SafeArea(
