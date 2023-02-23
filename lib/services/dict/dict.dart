@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:dico/dico.dart';
+import 'package:memorize/list.dart';
 
 class Dict {
   static const _fileExtension = 'dico';
@@ -93,10 +97,42 @@ class Dict {
   }
 }
 
+class DicoCache {
+  DicoCache() : _cache = {};
+  DicoCache.fromJson(Map<String, Map<int, String>> json) : _cache = json;
+
+  final Map<String, Map<int, String>> _cache;
+
+  String? get(String target, int id) => _cache[target]?[id];
+
+  void set(String target, int id, String entry) {
+    // TODO: remove old entries
+
+    if (!_cache.containsKey(target)) {
+      _cache[target] = {id: entry};
+      return;
+    }
+    log("cache entry $target $id ${_cache.containsKey(target)}");
+
+    _cache[target]![id] = entry;
+  }
+
+  bool containsTarget(String target) => _cache.containsKey(target);
+  bool contains(String target, int id) =>
+      _cache.containsKey(target) && _cache[target]!.containsKey(id);
+  Iterable<String> get targets => _cache.keys;
+
+  Map<String, dynamic> toJson() => _cache;
+
+  bool get isEmpty => _cache.isEmpty;
+  bool get isNotEmpty => _cache.isNotEmpty;
+}
+
 class DicoManager {
   static final Map<String, Reader> _readers = {};
   static final List<String> _targetHistory = [];
   static Iterable<String> get targets => _targetHistory;
+  static final dicoCache = DicoCache();
 
   static List<Ref> find(String target, String key,
       [int offset = 0, int cnt = 20]) {
@@ -106,9 +142,73 @@ class DicoManager {
   }
 
   static String get(String target, int id) {
+    final cachedEntry = dicoCache.get(target, id);
+
+    if (cachedEntry != null) {
+      return cachedEntry;
+    }
+
     _checkOpen(target);
 
-    return utf8.decode(_readers[target]!.get(id));
+    final entry = utf8.decode(_readers[target]!.get(id));
+
+    dicoCache.set(target, id, entry);
+
+    return entry;
+  }
+
+  static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) async {
+    final _entries = List<ListEntry>.from(entries);
+    int cacheCnt = 0;
+
+    Future<List<ListEntry>> _getAll(List args) async {
+      print("start compute");
+      List<ListEntry> ret = [];
+      List<ListEntry> dicoArgs = args[0];
+
+      applicationDocumentDirectory = args[1];
+
+      for (var e in dicoArgs) {
+        if (e.data != null) continue;
+
+        _checkOpen(e.target);
+        final data = utf8.decode(_readers[e.target]!.get(e.id));
+
+        ret.add(e.copyWith(data: data));
+      }
+
+      print("return ${ret.length} entries of ${args.length}");
+
+      return ret;
+    }
+
+    for (int i = 0; i < _entries.length; ++i) {
+      final e = _entries[i];
+
+      if (!dicoCache.containsTarget(e.target)) continue;
+
+      final data = dicoCache.get(e.target, e.id);
+
+      if (data == null) continue;
+
+      _entries[i] = e.copyWith(data: data);
+      ++cacheCnt;
+    }
+
+    if (cacheCnt == _entries.length) {
+      return _entries;
+    }
+
+    final ret =
+        await compute(_getAll, [_entries, applicationDocumentDirectory]);
+
+    for (var e in ret) {
+      if (dicoCache.contains(e.target, e.id)) continue;
+
+      dicoCache.set(e.target, e.id, e.data!);
+    }
+
+    return ret;
   }
 
   static void close() {
