@@ -1,10 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+
+enum Filter { asc, dsc, rct }
 
 class ListExplorer extends StatefulWidget {
   const ListExplorer({Key? key}) : super(key: key);
@@ -37,6 +41,7 @@ class _ListExplorer extends State<ListExplorer> {
   final _selectionController = SelectionController<FileInfo>();
   final _menuBtnCtrl = MenuButtonController();
   List<Widget> Function()? _menuBuilder;
+  Filter filter = Filter.asc;
 
   double _addBtnTurns = 0.0;
 
@@ -223,10 +228,29 @@ class _ListExplorer extends State<ListExplorer> {
         child: Icon(Icons.filter_list_rounded),
       ),
       itemBuilder: (context) => List.from(
-        ['asc', 'dsc', 'recent']
-            .map((e) => PopupMenuItem(value: e, child: Text(e))),
+        Filter.values.map(
+          (e) => PopupMenuItem(
+            onTap: () => setState(() => filter = e),
+            value: e,
+            child: Text(e.name),
+          ),
+        ),
       ),
     );
+  }
+
+  void _sortItems(List<FileInfo> items) {
+    switch (filter) {
+      case Filter.asc:
+        items.sort((a, b) => a.name.compareTo(b.name));
+        break;
+      case Filter.dsc:
+        items.sort((a, b) => b.name.compareTo(a.name));
+        break;
+      case Filter.rct:
+        // TODO: implement history
+        break;
+    }
   }
 
   Widget buildHeader() {
@@ -314,6 +338,7 @@ class _ListExplorer extends State<ListExplorer> {
                       return const Center(child: CircularProgressIndicator());
                     } else {
                       final items = snapshot.data as List<FileInfo>;
+                      _sortItems(items);
 
                       return PageView.builder(
                         itemCount: 1,
@@ -442,20 +467,23 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         child: AnimatedBuilder(
           animation: selectionController,
           builder: (context, _) => GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 150.0,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
               mainAxisSpacing: 10.0,
               crossAxisSpacing: 10.0,
-              childAspectRatio: 1.0,
             ),
             itemCount: items.length,
             itemBuilder: (context, i) {
               final item = items[i];
 
-              return Selectable(
-                value: item,
-                controller: selectionController,
-                child: buildItem(item),
+              return VisibilityDetector(
+                key: ValueKey(i),
+                onVisibilityChanged: (_) => ListViewer.preload(item),
+                child: Selectable(
+                  value: item,
+                  controller: selectionController,
+                  child: buildItem(item),
+                ),
               );
             },
           ),
@@ -575,7 +603,7 @@ class _TextFieldDialog extends State<TextFieldDialog> {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
-        fillColor: Theme.of(context).backgroundColor,
+        fillColor: Theme.of(context).colorScheme.background,
         filled: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(30),
