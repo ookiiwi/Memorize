@@ -159,6 +159,7 @@ class DicoManager {
 
   static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) async {
     final _entries = List<ListEntry>.from(entries);
+    final ret = <ListEntry>[];
     int cacheCnt = 0;
 
     Future<List<ListEntry>> _getAll(List args) async {
@@ -191,16 +192,17 @@ class DicoManager {
 
       if (data == null) continue;
 
-      _entries[i] = e.copyWith(data: data);
+      ret.add(e.copyWith(data: data));
+      _entries.removeAt(i--);
       ++cacheCnt;
     }
 
-    if (cacheCnt == _entries.length) {
-      return _entries;
+    if (cacheCnt == entries.length) {
+      return ret;
     }
 
-    final ret =
-        await compute(_getAll, [_entries, applicationDocumentDirectory]);
+    ret.addAll(
+        await compute(_getAll, [_entries, applicationDocumentDirectory]));
 
     for (var e in ret) {
       if (dicoCache.contains(e.target, e.id)) continue;
