@@ -18,6 +18,7 @@ class LazyListView<T> extends StatefulWidget {
       required this.itemCount,
       required this.pageSize,
       this.minExtent = 1000,
+      this.firstPage,
       required this.itemBuilder,
       required this.pageBuilder,
       this.controller});
@@ -25,8 +26,10 @@ class LazyListView<T> extends StatefulWidget {
   final int itemCount;
   final int pageSize;
   final double minExtent;
+  final List<T>? firstPage;
   final LazyListViewController? controller;
   final Widget Function(BuildContext context, T item) itemBuilder;
+
   final FutureOr<List<T>> Function(int page) pageBuilder;
 
   @override
@@ -53,7 +56,13 @@ class _LazyListView<T> extends State<LazyListView<T>> {
     super.didChangeDependencies();
 
     if (_items.isNotEmpty) return;
-    _loadPage(_page++);
+
+    if (widget.firstPage != null) {
+      _items.addAll(widget.firstPage!);
+      ++_page;
+    } else {
+      _loadPage(_page++);
+    }
   }
 
   void _lazyListener() {
@@ -97,39 +106,58 @@ class _LazyListView<T> extends State<LazyListView<T>> {
 
   void _loadPage(int page, {bool appendLastPage = false}) async {
     _loading = true;
-    final tmp = await widget.pageBuilder(page);
+
+    final tmp = widget.pageBuilder(page);
+    final List<T> pageItems = tmp is List<T> ? tmp : await tmp;
 
     _loading = false;
-    if (tmp.isEmpty) return;
+    if (pageItems.isEmpty) return;
 
     if (appendLastPage) {
-      _items.addAll(tmp.sublist(_lastPageSize));
+      _items.addAll(pageItems.sublist(_lastPageSize));
     } else {
-      _items.addAll(tmp);
+      _items.addAll(pageItems);
     }
 
-    _lastPageSize = tmp.length;
+    _lastPageSize = pageItems.length;
 
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView.separated(
-      padding:
-          const EdgeInsets.only(bottom: kBottomNavigationBarHeight + 56 + 10),
-      separatorBuilder: (context, index) => Divider(
-        indent: 12,
-        endIndent: 12,
-        color: Theme.of(context).colorScheme.outline,
+    return LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        height: constraints.maxHeight,
+        width: constraints.maxWidth,
+        child: AnimatedCrossFade(
+          alignment: Alignment.center,
+          crossFadeState: _items.isEmpty
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
+          duration: const Duration(milliseconds: 200),
+          firstChild: SizedBox(
+            height: constraints.maxHeight,
+            width: constraints.maxWidth,
+            child: const Center(
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          secondChild: ListView.separated(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(
+                bottom: kBottomNavigationBarHeight + 56 + 10),
+            separatorBuilder: (context, index) => Divider(
+              indent: 12,
+              endIndent: 12,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+            controller: _controller,
+            itemCount: _items.length,
+            itemBuilder: (context, i) => widget.itemBuilder(context, _items[i]),
+          ),
+        ),
       ),
-      controller: _controller,
-      itemCount: _items.length,
-      itemBuilder: (context, i) => widget.itemBuilder(context, _items[i]),
     );
   }
 }
