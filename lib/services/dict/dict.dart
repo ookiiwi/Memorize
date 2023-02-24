@@ -157,6 +157,13 @@ class DicoManager {
     return entry;
   }
 
+  /// Get as much entries as present in cache
+  static List<ListEntry> getAllFromCache(List<ListEntry> entries) {
+    return entries
+        .map((e) => e.copyWith(data: dicoCache.get(e.target, e.id)))
+        .toList();
+  }
+
   static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) async {
     final _entries = List<ListEntry>.from(entries);
     final ret = <ListEntry>[];
