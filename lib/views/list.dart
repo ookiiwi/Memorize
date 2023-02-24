@@ -96,9 +96,6 @@ class _ListViewer extends State<ListViewer> {
     if (list != null && isListInit) {
       fLoadTargets = loadTargets()..then((value) => setState(() {}));
     }
-
-    print('local targets ${Dict.listTargets()}');
-    Dict.listRemoteTargets().then((value) => print('remote targets $value'));
   }
 
   Future<void> loadTargets() async {
@@ -425,7 +422,7 @@ class _EntryViewier extends State<EntryViewier> {
   late final selectionController = widget.selectionController;
   final lazyController = LazyListViewController<ListEntry>();
   bool _openSelection = false;
-  late final FutureOr<List<ListEntry>> firstPage;
+  late final List<ListEntry> firstPage;
 
   List<ListEntry> get entries => widget.list.entries;
 
@@ -433,7 +430,10 @@ class _EntryViewier extends State<EntryViewier> {
   void initState() {
     super.initState();
 
-    firstPage = EntryViewier.preload(entries);
+    final cnt = EntryViewier.pageSize.clamp(0, entries.length);
+    firstPage = DicoManager.getAllFromCache(entries.sublist(0, cnt));
+
+    assert(firstPage.length == cnt);
   }
 
   @override
@@ -526,6 +526,7 @@ class _EntryViewier extends State<EntryViewier> {
               child: AnimatedBuilder(
                 animation: selectionController ?? ValueNotifier(null),
                 builder: (context, _) => LazyListView<ListEntry>(
+                  firstPage: firstPage,
                   controller: lazyController,
                   itemCount: entries.length,
                   pageSize: EntryViewier.pageSize,
