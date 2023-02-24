@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -9,6 +10,7 @@ import 'package:memorize/list.dart';
 import 'package:memorize/services/dict/dict.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
+import 'package:memorize/widgets/lazy_listview.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:xml/xml.dart';
@@ -20,8 +22,8 @@ class ListViewer extends StatefulWidget {
   const ListViewer.fromList({super.key, required this.list})
       : fileinfo = null,
         assert(list != null);
-  const ListViewer.fromFile({super.key, required this.fileinfo})
-      : list = null,
+  ListViewer.fromFile({super.key, required this.fileinfo})
+      : list = _cache[fileinfo?.path],
         assert(fileinfo != null);
 
   final MemoList? list;
@@ -29,6 +31,25 @@ class ListViewer extends StatefulWidget {
 
   @override
   State<StatefulWidget> createState() => _ListViewer();
+
+  static final Map<String, MemoList> _cache = {};
+
+  static Future<MemoList> preload(FileInfo info) async {
+    final file = File(info.path);
+
+    if (!file.existsSync()) {
+      throw Exception('File not found. \'${info.name}\' does not exist');
+    }
+
+    final data = await file.readAsString();
+    final list = MemoList.fromJson(jsonDecode(data));
+
+    EntryViewier.preload(list.entries);
+
+    _cache[info.path] = list;
+
+    return list;
+  }
 }
 
 class _ListViewer extends State<ListViewer> {
@@ -118,14 +139,13 @@ class _ListViewer extends State<ListViewer> {
     assert(isListInit);
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) {
+      PageRouteBuilder(
+        pageBuilder: (context, _, __) {
           return EntrySearch(
             target: list!.target,
-            onItemSelected: (id, data) {
-              final entry = ListEntry(id, list!.target, data: data);
-
-              if (!list!.entries.any((e) => e.id == id)) {
+            onItemSelected: (entry) {
+              if (!list!.entries
+                  .any((e) => e.id == entry.id && e.target == entry.target)) {
                 list!.entries.add(entry);
                 writeList();
               }
@@ -373,6 +393,8 @@ class _ListViewer extends State<ListViewer> {
 }
 
 class EntryViewier extends StatefulWidget {
+  static int pageSize = 20;
+
   const EntryViewier(
       {super.key,
       required this.list,
@@ -385,109 +407,141 @@ class EntryViewier extends StatefulWidget {
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
+
+  static FutureOr<List<ListEntry>> preload(List<ListEntry> entries) =>
+      _loadEntries(entries, 0);
+
+  static FutureOr<List<ListEntry>> _loadEntries(
+      List<ListEntry> entries, int page) {
+    int cnt = (page * pageSize).clamp(0, entries.length);
+
+    return DicoManager.getAll(
+        entries.sublist(cnt, (cnt + pageSize).clamp(0, entries.length)));
+  }
 }
 
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
+  final lazyController = LazyListViewController<ListEntry>();
   bool _openSelection = false;
+  late final FutureOr<List<ListEntry>> firstPage;
 
   List<ListEntry> get entries => widget.list.entries;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap:
-          _openSelection ? () => setState(() => _openSelection = false) : null,
-      child: Column(
-        children: [
-          Expanded(
-            child: AnimatedBuilder(
-              animation: selectionController ?? ValueNotifier(null),
-              builder: (context, _) => ListView.separated(
-                padding:
-                    const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-                separatorBuilder: (context, index) => Divider(
-                  indent: 12,
-                  endIndent: 12,
-                  color: Theme.of(context).colorScheme.outline,
+  void initState() {
+    super.initState();
+
+    firstPage = EntryViewier.preload(entries);
+  }
+
+  @override
+  void dispose() {
+    lazyController.dispose();
+    super.dispose();
+  }
+
+  Widget buildEntry(BuildContext context, ListEntry entry) {
+    return Stack(children: [
+      AbsorbPointer(
+        absorbing: _openSelection,
+        child: LayoutBuilder(
+          builder: (context, constraints) => MaterialButton(
+            minWidth: constraints.maxWidth,
+            padding: const EdgeInsets.all(8.0),
+            onLongPress: () => setState((() => _openSelection = true)),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) {
+                    return EntryView(
+                      entries: entries,
+                      entryId: entry.id,
+                    );
+                  },
                 ),
-                itemCount: entries.length,
-                itemBuilder: (context, i) {
-                  if (entries[i].data == null) {
-                    final entry = entries[i];
-                    entries[i] = entry.copyWith(
-                        data: DicoManager.get(entry.target, entry.id));
-                  }
-
-                  assert(entries[i].data != null);
-
-                  return Stack(children: [
-                    AbsorbPointer(
-                      absorbing: _openSelection,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => MaterialButton(
-                          minWidth: constraints.maxWidth,
-                          padding: const EdgeInsets.all(8.0),
-                          onLongPress: () =>
-                              setState((() => _openSelection = true)),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) {
-                                  return EntryView(
-                                    entries: entries,
-                                    entryId: entries[i].id,
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              constraints: const BoxConstraints(minWidth: 50),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: EntryRenderer(
-                                  mode: DisplayMode.preview,
-                                  entry: Entry.guess(
-                                    xmlDoc: XmlDocument.parse(entries[i].data!),
-                                    target: entries[i].target,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+              );
+            },
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 50),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: EntryRenderer(
+                    mode: DisplayMode.preview,
+                    entry: Entry.guess(
+                      xmlDoc: XmlDocument.parse(entry.data!),
+                      target: entry.target,
                     ),
-                    if (_openSelection)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              final entry = list.entries[i];
-
-                              entries.remove(entry);
-                              list.entries.remove(entry);
-
-                              if (widget.saveCallback != null) {
-                                widget.saveCallback!(list);
-                              }
-                            });
-                          },
-                          icon: const Icon(Icons.cancel_outlined),
-                        ),
-                      )
-                  ]);
-                },
+                  ),
+                ),
               ),
             ),
           ),
-        ],
+        ),
+      ),
+      if (_openSelection)
+        Positioned(
+          top: 0,
+          right: 0,
+          child: IconButton(
+            onPressed: () {
+              setState(() {
+                entries.remove(entry);
+                list.entries.remove(entry);
+
+                if (widget.saveCallback != null) {
+                  widget.saveCallback!(list);
+                }
+
+                lazyController.remove(entry);
+              });
+            },
+            icon: const Icon(Icons.cancel_outlined),
+          ),
+        )
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (_openSelection) {
+          setState(() => _openSelection = false);
+          return false;
+        }
+
+        return true;
+      },
+      child: GestureDetector(
+        onTap: _openSelection
+            ? () => setState(() => _openSelection = false)
+            : null,
+        child: Column(
+          children: [
+            Expanded(
+              child: AnimatedBuilder(
+                animation: selectionController ?? ValueNotifier(null),
+                builder: (context, _) => LazyListView<ListEntry>(
+                  controller: lazyController,
+                  itemCount: entries.length,
+                  pageSize: EntryViewier.pageSize,
+                  itemBuilder: (context, entry) => buildEntry(context, entry),
+                  pageBuilder: (page) {
+                    if (page > 0) {
+                      return EntryViewier._loadEntries(entries, page);
+                    }
+
+                    return firstPage;
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -504,7 +558,6 @@ class EntryView<T> extends StatefulWidget {
 }
 
 class _EntryView extends State<EntryView> {
-  bool _snapToGrid = true;
   late List<ListEntry> entries = widget.entries.toList();
   late final PageController _controller;
 
@@ -529,10 +582,8 @@ class _EntryView extends State<EntryView> {
         title: const Text('Entries'),
         actions: [
           IconButton(
-            onPressed: () => setState(() => _snapToGrid = !_snapToGrid),
-            icon: Icon(
-              _snapToGrid ? Icons.grid_on : Icons.grid_off,
-            ),
+            onPressed: () {},
+            icon: const Icon(Icons.info_outline),
           )
         ],
       ),
@@ -697,7 +748,7 @@ class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.target});
 
   final String target;
-  final void Function(int id, String entry)? onItemSelected;
+  final void Function(ListEntry entry)? onItemSelected;
 
   @override
   State<StatefulWidget> createState() => _EntrySearch();
@@ -736,12 +787,6 @@ class _EntrySearch extends State<EntrySearch> {
     });
   }
 
-  @override
-  void dispose() {
-    DicoManager.close();
-    super.dispose();
-  }
-
   Widget buildResultArea(BuildContext context, String target) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -756,8 +801,7 @@ class _EntrySearch extends State<EntrySearch> {
                 return MaterialButton(
                   onPressed: () {
                     if (widget.onItemSelected != null) {
-                      widget.onItemSelected!(entriesData[target]![i].id,
-                          entriesData[target]![i].data!);
+                      widget.onItemSelected!(entriesData[target]![i]);
                     }
                   },
                   child: entries[target]![i],
