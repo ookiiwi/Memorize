@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:objectid/objectid.dart';
+import 'package:xml/xml.dart';
 
 class ListEntry extends Equatable {
   const ListEntry(this.id, this.target, {this.data});
@@ -7,7 +8,7 @@ class ListEntry extends Equatable {
       : id = json['id'],
         target = json['target'];
 
-  ListEntry copyWith({int? id, String? target, String? data}) {
+  ListEntry copyWith({int? id, String? target, XmlDocument? data}) {
     return ListEntry(
       id ?? this.id,
       target ?? this.target,
@@ -17,7 +18,7 @@ class ListEntry extends Equatable {
 
   final int id;
   final String target;
-  final String? data;
+  final XmlDocument? data;
 
   Map<String, dynamic> toJson() => {
         'id': id,
