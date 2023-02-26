@@ -12,6 +12,7 @@ for ABI in "${ABIS[@]}"; do
     -DANDROID_NDK="$NDK" \
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
     -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_C_FLAGS="-static-openmp" \
     -G Ninja
 
     cmake --build "build/$ABI"
