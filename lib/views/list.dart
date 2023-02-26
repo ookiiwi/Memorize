@@ -2,18 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:developer' as dev;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
-import 'package:memorize/services/dict/dict.dart';
+import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/lazy_listview.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
-import 'package:xml/xml.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key})
@@ -72,10 +72,17 @@ class _ListViewer extends State<ListViewer> {
   };
 
   final _selectionController = SelectionController();
+  final stopwatch = Stopwatch();
 
   @override
   void initState() {
     super.initState();
+
+    stopwatch.start();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      dev.log("build lv in ${stopwatch.elapsed}");
+    });
 
     if (widget.list != null) {
       list = widget.list!;
@@ -409,11 +416,53 @@ class EntryViewier extends StatefulWidget {
       _loadEntries(entries, 0);
 
   static FutureOr<List<ListEntry>> _loadEntries(
-      List<ListEntry> entries, int page) {
-    int cnt = (page * pageSize).clamp(0, entries.length);
+      List<ListEntry> entries, int page) async {
+    final cnt = (page * pageSize).clamp(0, entries.length);
+    final end = (cnt + pageSize).clamp(0, entries.length);
+    final pageEntries = entries.sublist(cnt, end);
+    final targetSplit = _splitByTarget(pageEntries);
 
-    return DicoManager.getAll(
-        entries.sublist(cnt, (cnt + pageSize).clamp(0, entries.length)));
+    if (targetSplit.length == 1) {
+      return DicoManager.getAll(entries.first.target, pageEntries);
+    }
+
+    final ret = <ListEntry>[];
+
+    for (var e in targetSplit) {
+      assert(e.isNotEmpty);
+
+      List<ListEntry> ent;
+      if (e.length == 1) {
+        ent = [
+          e.first.copyWith(data: DicoManager.get(e.first.target, e.first.id))
+        ];
+      } else {
+        ent = await DicoManager.getAll(e.first.target, e);
+      }
+      ret.addAll(ent);
+    }
+
+    return ret;
+  }
+
+  static List<List<ListEntry>> _splitByTarget(List<ListEntry> entries) {
+    final targetMapping = <String, int>{};
+    final ret = <List<ListEntry>>[];
+
+    for (var e in entries) {
+      int idx;
+
+      if (!targetMapping.containsKey(e.target)) {
+        targetMapping[e.target] = idx = ret.length;
+        ret.add([]);
+      } else {
+        idx = targetMapping[e.target]!;
+      }
+
+      ret[idx].add(e);
+    }
+
+    return ret;
   }
 }
 
@@ -422,7 +471,7 @@ class _EntryViewier extends State<EntryViewier> {
   late final selectionController = widget.selectionController;
   final lazyController = LazyListViewController<ListEntry>();
   bool _openSelection = false;
-  late final List<ListEntry> firstPage;
+  final List<ListEntry> firstPage = [];
 
   List<ListEntry> get entries => widget.list.entries;
 
@@ -431,7 +480,21 @@ class _EntryViewier extends State<EntryViewier> {
     super.initState();
 
     final cnt = EntryViewier.pageSize.clamp(0, entries.length);
-    firstPage = DicoManager.getAllFromCache(entries.sublist(0, cnt));
+    final pageEntries = entries.sublist(0, cnt);
+    final targetSplit = EntryViewier._splitByTarget(pageEntries);
+
+    for (var e in targetSplit) {
+      assert(e.isNotEmpty);
+
+      if (e.length == 1) {
+        firstPage.add(e.first
+            .copyWith(data: DicoManager.get(e.first.target, e.first.id)));
+
+        continue;
+      }
+
+      firstPage.addAll(DicoManager.getAllSync(e.first.target, e));
+    }
 
     assert(firstPage.length == cnt);
   }
@@ -465,14 +528,15 @@ class _EntryViewier extends State<EntryViewier> {
             },
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Container(
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(minWidth: 50),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
                   child: EntryRenderer(
                     mode: DisplayMode.preview,
                     entry: Entry.guess(
-                      xmlDoc: XmlDocument.parse(entry.data!),
+                      xmlDoc: entry.data!,
                       target: entry.target,
                     ),
                   ),
@@ -619,7 +683,7 @@ class _EntryView extends State<EntryView> {
                   child: EntryRenderer(
                     mode: DisplayMode.detailed,
                     entry: Entry.guess(
-                      xmlDoc: XmlDocument.parse(entries[i].data!),
+                      xmlDoc: entries[i].data!,
                       target: entries[i].target,
                     ),
                   ),
@@ -888,7 +952,7 @@ class _EntrySearch extends State<EntrySearch> {
             EntryRenderer(
               mode: DisplayMode.preview,
               entry: Entry.guess(
-                xmlDoc: XmlDocument.parse(data),
+                xmlDoc: data,
                 target: target,
               ),
             ),
