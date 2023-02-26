@@ -3,9 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:memorize/list.dart';
-import 'package:memorize/services/dict/dict.dart';
+import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/widgets/entry.dart';
-import 'package:xml/xml.dart';
 
 enum QuizMode {
   random,
@@ -117,7 +116,7 @@ class _QuizLauncher extends State<QuizLauncher> {
                 return EntryRenderer(
                   mode: DisplayMode.quiz,
                   entry: Entry.guess(
-                    xmlDoc: XmlDocument.parse(e.data!),
+                    xmlDoc: e.data!,
                     showReading: _reading,
                     target: e.target,
                   ),
@@ -129,7 +128,7 @@ class _QuizLauncher extends State<QuizLauncher> {
                 return EntryRenderer(
                   mode: DisplayMode.detailed,
                   entry: Entry.guess(
-                    xmlDoc: XmlDocument.parse(e.data!),
+                    xmlDoc: e.data!,
                     target: e.target,
                   ),
                 );
