@@ -41,7 +41,7 @@ dependencies:
   navigation_history_observer: ^1.1.0
   provider: ^6.0.2
   shared_preferences: ^2.0.13
-  path: ^1.8.0
+  path: ^1.8.2
   universal_io: ^2.0.4
   requests: ^4.5.0
   flutter_secure_storage: ^7.0.1
@@ -50,11 +50,8 @@ dependencies:
   appinio_swiper: ^1.1.0
   overlayment: ^0.1.2
   objectid: ^2.1.0
-  bloc: ^8.1.0
-  flutter_bloc: ^8.1.1
   equatable: ^2.0.5
   connectivity_plus: ^2.1.0
-  bloc_test: ^9.1.0
   dio_cookie_manager: ^2.0.0
   go_router: ^5.1.5
   xpath_selector_xml_parser: ^3.0.0
@@ -66,8 +63,9 @@ dependencies:
     path: ../dico4d
   scroll_to_index: ^3.0.1
   kana_kit: ^2.0.0
-  unorm_dart: ^0.2.0
   ruby_text: ^3.0.1
+  mecab_dart: ^0.1.3
+  visibility_detector: ^0.3.3
 
 dev_dependencies:
   integration_test:
@@ -100,6 +98,7 @@ flutter:
   assets:
     - assets/profil_icons/
     - assets/memo_mascot.png
+    - assets/ipadic/
 
   fonts:
     - family: FiraSans
