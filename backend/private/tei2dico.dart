@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:dico/generated/writer.g.dart';
 import 'package:xml/xml.dart';
 import 'package:xml/xml_events.dart';
 import 'package:dico/dico.dart';
@@ -19,6 +20,14 @@ final List<Target> targets = [
       ".//orth | .//quote",
       subTarget: 'kanji'),
 ];
+
+int chooseMode(String target) {
+  if (RegExp(r"\w{3}-\w{3}-kanji").hasMatch(target)) {
+    return DicoMode.DICO_MODE_CHARACTER_ID;
+  }
+
+  return DicoMode.DICO_MODE_UNIVERSAL;
+}
 
 class Target {
   const Target(this.srcLang, this.dstLang, this.getId, this.keyXPath,
@@ -69,7 +78,8 @@ Future<void> buildDico(Target target) async {
       ..stop()
       ..start();
 
-    final writer = Writer(dstPath);
+    final mode = chooseMode(srcName);
+    final writer = Writer(dstPath, mode: mode);
     final idMapFile = File(join(dstDirName, "../idmaps/$srcName.idmap.json"));
     final Map<String, int> idMap = Map.from(
         idMapFile.existsSync() ? jsonDecode(idMapFile.readAsStringSync()) : {});
@@ -99,10 +109,12 @@ Future<void> buildDico(Target target) async {
               .replaceAll(RegExp(r'[\s]+(?![^><]*(?:>|<\/))'),
                   ''), // remove all spaces between tags
         ),
-        id: idMap[entId],
+        id: mode == DicoMode.DICO_MODE_UNIVERSAL ? idMap[entId] : null,
       );
 
-      if (entId != null && idMap[entId] == null) {
+      if (mode == DicoMode.DICO_MODE_UNIVERSAL &&
+          entId != null &&
+          idMap[entId] == null) {
         idMap[entId] = id;
       }
     }
@@ -118,7 +130,7 @@ Future<void> buildDico(Target target) async {
         '\n\nReduced file size by ${((1 - dstFileSize / srcFileSize) * 100).toStringAsPrecision(3)}% (from $srcFileSize to $dstFileSize).\n');
     print('Entries processed in ${stopWatch.elapsed}');
 
-    if (idMap.isNotEmpty) {
+    if (mode == DicoMode.DICO_MODE_UNIVERSAL && idMap.isNotEmpty) {
       if (!idMapFile.existsSync()) idMapFile.createSync(recursive: true);
 
       idMapFile.writeAsStringSync(jsonEncode(idMap));
