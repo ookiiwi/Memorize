@@ -5,10 +5,11 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/services/dict/dict.dart';
+import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/views/mobile/main.dart'
     if (dart.library.js) 'package:memorize/views/web/main.dart';
+import 'package:memorize/widgets/entry/base.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -155,6 +156,7 @@ class _SplashScreen extends State<SplashScreen> {
     applicationDocumentDirectory =
         (await getApplicationDocumentsDirectory()).path;
     temporaryDirectory = (await getTemporaryDirectory()).path;
+    await Entry.init();
   }
 
   @override
@@ -216,10 +218,8 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
       if (!tmpFile.existsSync()) tmpFile.createSync(recursive: true);
       tmpFile.writeAsStringSync(jsonEncode(_dicoTargets));
 
-      print("NOT ACTIVE ($state): $_dicoTargets");
       DicoManager.close();
     } else {
-      print("ACTIVE ($state)");
       final tmpFile = File("$temporaryDirectory/dicoTargets");
 
       if (tmpFile.existsSync()) {
