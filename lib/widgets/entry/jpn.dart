@@ -1,257 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:kana_kit/kana_kit.dart';
-import 'package:memorize/services/dict/dict.dart';
+import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:ruby_text/ruby_text.dart';
-import 'package:unorm_dart/unorm_dart.dart' as unorm;
-import 'package:xml/xml.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
-extension KanaString on String {
-  kanaTrim() {
-    return replaceFirst(RegExp(r'\..+$'), '');
-  }
-}
-
 class EntryJpn extends Entry {
-  static const kanaKit = KanaKit();
-  static const abbreviation = {
-    'ケ': ['か', 'が'],
-    'ヶ': ['か', 'が'],
-    'ヵ': ['か', 'が'],
-  };
+  EntryJpn({
+    required super.xmlDoc,
+    super.showReading,
+  });
 
-  static final Map<String, Iterable<String>> cache = {};
+  List<Widget> buildWords({int offset = 0, int? cnt, double? fontSize}) {
+    final k = xmlDoc
+        .queryXPath(".//form[@type='k_ele']/orth")
+        .nodes
+        .map((e) => e.text!)
+        .toList();
 
-  EntryJpn(
-      {required super.xmlDoc,
-      super.showReading,
-      //required this.destLang // TODO: implement sub target fallback
-      required String destLang})
-      : destLang = 'eng' {
-    DicoManager.load(['jpn-eng-kanji']);
+    assert(offset >= 0);
+    assert(cnt == null || cnt >= 0);
 
-    _parsedWords = _parseWords();
-  }
+    if (k.isEmpty) {
+      final r = xmlDoc
+          .queryXPath(".//form[@type='r_ele']/orth")
+          .nodes
+          .map((e) => e.text!)
+          .toList();
 
-  final String destLang;
-  late final Map<String, List<dynamic>> _parsedWords;
+      if (offset >= r.length) return [];
 
-  static List<List<String>> partitionWord(String word, String reading) {
-    final characters = word.characters;
-    final ret = <List<String>>[];
-    int? readingReq;
-    String subReading = reading;
-
-    bool isKanaOrRomaji(String c) => kanaKit.isKana(c) || kanaKit.isRomaji(c);
-
-    void setKanjiReading() {
-      if (readingReq != null && ret.isNotEmpty && isKanaOrRomaji(ret.last[0])) {
-        int index = kanaKit
-            .toHiragana(subReading)
-            .indexOf(kanaKit.toHiragana(ret.last[0]));
-
-        if (index < 0) {
-          final abbr = abbreviation[ret.last[0]];
-
-          if (abbr != null) {
-            for (var c in abbr) {
-              index =
-                  kanaKit.toHiragana(subReading).indexOf(kanaKit.toHiragana(c));
-
-              if (index >= 0) break;
-            }
-          }
-        }
-
-        assert(index >= 0);
-
-        ret[readingReq][1] = subReading.substring(0, index);
-        subReading = subReading.substring(index + ret.last[0].length);
-      }
+      return r
+          .sublist(offset, cnt?.clamp(offset, r.length))
+          .map(
+            (e) => Text(
+              e,
+              style: TextStyle(fontSize: fontSize),
+            ),
+          )
+          .toList();
     }
 
-    for (int i = 0; i < characters.length; ++i) {
-      final c = characters.elementAt(i);
+    if (offset >= k.length) return [];
 
-      // kana or romaji
-      if (isKanaOrRomaji(c)) {
-        if (ret.isEmpty || !isKanaOrRomaji(ret.last[0])) {
-          ret.add(['', '']);
-        }
-      }
-
-      // kanji or other
-      else {
-        setKanjiReading();
-
-        if (ret.isEmpty || isKanaOrRomaji(ret.last[0])) {
-          readingReq = ret.length;
-          ret.add(['', '']);
-        }
-      }
-
-      ret.last[0] += c;
-
-      if (i == characters.length - 1) {
-        if (ret.last[0].isEmpty) setKanjiReading();
-
-        if (ret.last[1].isEmpty && !isKanaOrRomaji(ret.last[0])) {
-          ret.last[1] = subReading;
-        }
-      }
-    }
-
-    return ret;
-  }
-
-  List<String> mapToKana(String word, String reading) {
-    final ret = <String>[];
-
-    for (var part in partitionWord(word, reading)) {
-      final k = part[0];
-      String r = part[1];
-
-      for (var c in k.characters) {
-        Iterable<String> readings = [];
-        String? match = '';
-
-        if (kanaKit.isKana(k) || kanaKit.isRomaji(k)) {
-          match = null;
-        }
-
-        if (match != null && !cache.containsKey(c)) {
-          final ids =
-              DicoManager.find('jpn-$destLang-kanji', c).expand((e) => e.ids);
-
-          if (ids.isEmpty) {
-            match = null;
-          } else {
-            final entry = DicoManager.get('jpn-$destLang-kanji', ids.first);
-            final xmlDoc = XmlDocument.parse(entry);
-            readings = xmlDoc
-                .queryXPath(".//form[@type='r_ele']/orth[not (@type='nanori')]")
-                .nodes
-                .map((e) => e.text!);
-
-            cache[c] = readings;
-          }
-        } else if (match != null) {
-          readings = cache[c]!;
-        }
-
-        if (match?.isEmpty == true) {
-          match = k.length == 1
-              ? r
-              : readings
-                  .firstWhere(
-                    (e) => r.startsWith(kanaKit.toHiragana(e.kanaTrim())),
-                    orElse: () => '',
-                  )
-                  .kanaTrim();
-        }
-
-        if (match?.isEmpty == true) {
-          if (r.startsWith(RegExp('.*(っ|ッ)'))) {
-            match = readings.firstWhere(
-              (e) {
-                final str = kanaKit.toHiragana(e.kanaTrim());
-
-                return r.startsWith(str);
-              },
-              orElse: () => '',
-            ).kanaTrim();
-          } else if (k.indexOf(c) > 0) {
-            final str = unorm.nfd(r[0])[0] + r.substring(1);
-            match = readings
-                .firstWhere(
-                  (e) => str.startsWith(kanaKit.toHiragana(e.kanaTrim())),
-                  orElse: () => '',
-                )
-                .kanaTrim();
-          }
-        }
-
-        if (match?.isEmpty == true) {
-          return [];
-        }
-
-        r = r.substring(match?.length ?? 0);
-        ret.add(match ?? '');
-      }
-    }
-
-    return ret;
-  }
-
-  Map<String, List<dynamic>> _parseWords() {
-    final Map<String, List<dynamic>> elements = {};
-    final r =
-        showReading ? xmlDoc.queryXPath(".//form[@type='r_ele']").nodes : [];
-    final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").nodes;
-
-    if (k.isNotEmpty) {
-      elements.addEntries(k.map((e) => MapEntry(e.text!, [])));
-
-      for (var node in r) {
-        final restr = node.queryXPath("./lbl[@type='re_restr']").node?.text;
-        final text = node.queryXPath("./orth").node!.text!;
-
-        if (restr != null) {
-          final kana = mapToKana(restr, text);
-          elements[restr]!.add(
-            kana.isEmpty ||
-                    kana.reduce((value, element) => value + element).isEmpty
-                ? text
-                : kana,
-          );
-          continue;
-        }
-
-        elements.forEach((key, value) {
-          final kana = mapToKana(key, text);
-          value.add(
-            kana.isEmpty ||
-                    kana.reduce((value, element) => value + element).isEmpty
-                ? text
-                : kana,
-          );
-        });
-      }
-    } else {
-      elements.addEntries(r.map((e) => MapEntry(e.text!, [])));
-    }
-
-    return elements;
-  }
-
-  List<Widget> buildWords() {
-    final ret = <Widget>[];
-
-    for (var e in _parsedWords.entries) {
-      if (e.value.isEmpty) {
-        ret.add(Text(e.key));
-        continue;
-      }
-
-      for (var kana in e.value) {
-        final data = <RubyTextData>[];
-
-        if (kana is String) {
-          data.add(RubyTextData(e.key, ruby: kana));
-        } else {
-          for (int i = 0; i < kana.length; ++i) {
-            final c = kana[i];
-            data.add(RubyTextData(e.key[i], ruby: c.isEmpty ? null : c));
-          }
-        }
-
-        assert(data.isNotEmpty);
-        ret.add(RubyText(data));
-      }
-    }
-
-    return ret;
+    return k.sublist(offset, cnt?.clamp(offset, k.length)).map(
+      (e) {
+        return RubyText(
+          List<RubyTextData>.from(splitFurigana(e,
+              builder: (text, furigana) => RubyTextData(text, ruby: furigana))),
+          style: TextStyle(fontSize: fontSize),
+        );
+      },
+    ).toList();
   }
 
   String formatRef(dynamic node) {
@@ -287,16 +86,15 @@ class EntryJpn extends Entry {
   }
 
   @override
-  Widget buildMainForm(BuildContext context) {
-    return buildWords().first;
+  Widget buildMainForm(BuildContext context, [double? fontSize]) {
+    return buildWords(cnt: 1, fontSize: fontSize).first;
   }
 
   @override
   List<Widget> buildOtherForms(BuildContext context) {
-    final words = buildWords();
+    final words = buildWords(offset: 1);
 
-    return words.isEmpty ? words : words
-      ..removeAt(0);
+    return words;
   }
 
   @override
@@ -372,26 +170,73 @@ class EntryJpn extends Entry {
 class EntryJpnKanji extends Entry {
   const EntryJpnKanji({required super.xmlDoc, super.showReading});
 
-  @override
-  Widget buildMainForm(BuildContext context) {
-    return Container();
+  Widget buildReadings(BuildContext context) {
+    final r_on =
+        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='ja_on']").nodes;
+    final r_kun =
+        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='ja_kun']").nodes;
+    final r_nanori =
+        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='nanori']").nodes;
+
+    Widget decodeText(String text, Color color) {
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20), color: color),
+        child: Text(text),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        [r_kun, Colors.blue.shade300],
+        [r_on, Colors.red.shade300],
+        [r_nanori, Colors.green.shade300]
+      ]
+          .map(
+            (item) => Wrap(
+              children: (item[0] as List)
+                  .map(
+                    (e) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 2, vertical: 10),
+                      child: decodeText(e.text!, item[1] as Color),
+                    ),
+                  )
+                  .toList(),
+            ),
+          )
+          .toList(),
+    );
   }
 
   @override
-  List<Widget> buildOtherForms(BuildContext context) {
-    // TODO: implement buildOtherForms
-    throw UnimplementedError();
+  Widget buildMainForm(BuildContext context, [double? fontSize]) {
+    final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!;
+
+    return Text(
+      k.text!,
+      style: TextStyle(fontSize: fontSize),
+    );
   }
+
+  @override
+  List<Widget> buildOtherForms(BuildContext context) => [];
 
   @override
   List<Widget> buildSenses(BuildContext context) {
-    // TODO: implement buildSenses
-    throw UnimplementedError();
+    final r_kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: buildReadings(context),
+      ),
+      Text(r_kun.map((e) => e.text!).join(", "))
+    ];
   }
 
   @override
-  List<Widget> buildNotes(BuildContext context) {
-    // TODO: implement buildNotes
-    throw UnimplementedError();
-  }
+  List<Widget> buildNotes(BuildContext context) => [];
 }
