@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:xml/xml.dart';
 
@@ -6,20 +10,23 @@ enum DisplayMode { preview, detailed, quiz }
 
 abstract class Entry {
   const Entry({required this.xmlDoc, this.showReading = true});
-  factory Entry.guess(
-      {required XmlDocument xmlDoc,
-      bool showReading = true,
-      required String target}) {
-    if (RegExp(r'jpn-\w-kanji').hasMatch(target)) {
-      return EntryJpnKanji(
+  factory Entry.guess({
+    required XmlDocument xmlDoc,
+    bool showReading = true,
+    required String target,
+  }) {
+    if (target.startsWith('jpn-')) {
+      if (target.endsWith('-kanji')) {
+        return EntryJpnKanji(
+          xmlDoc: xmlDoc,
+          showReading: showReading,
+        );
+      }
+
+      return EntryJpn(
         xmlDoc: xmlDoc,
         showReading: showReading,
       );
-    } else if (target.startsWith('jpn-')) {
-      return EntryJpn(
-          xmlDoc: xmlDoc,
-          showReading: showReading,
-          destLang: target.replaceFirst('jpn-', ''));
     }
 
     throw Exception();
@@ -28,10 +35,18 @@ abstract class Entry {
   final XmlDocument xmlDoc;
   final bool showReading;
 
-  Widget buildMainForm(BuildContext context);
+  Widget buildMainForm(BuildContext context, [double? fontSize]);
   List<Widget> buildOtherForms(BuildContext context);
   List<Widget> buildSenses(BuildContext context);
   List<Widget> buildNotes(BuildContext context);
+
+  static FutureOr<void> init() {
+    final localTargets = Dict.listTargets().join(",");
+
+    if (RegExp(r"jpn-\w{3}-kanji").hasMatch(localTargets)) {
+      tagger.init('assets/ipadic', true);
+    }
+  }
 }
 
 class EntryRenderer extends StatelessWidget {
@@ -57,7 +72,7 @@ class EntryRenderer extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                entry.buildMainForm(context),
+                entry.buildMainForm(context, 40),
                 //buildMeta(context),
               ],
             ),
