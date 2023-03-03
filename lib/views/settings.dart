@@ -1,6 +1,6 @@
 import 'package:dico/dico.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/services/dict/dict.dart';
+import 'package:memorize/helpers/dict.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
