@@ -5,14 +5,14 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:dico/dico.dart';
+import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/list.dart';
 import 'package:xml/xml.dart';
 
 class Dict {
   static const _fileExtension = 'dico';
   static final _dio = Dio(BaseOptions(
-      baseUrl: 'http://192.168.1.13:8080/dictionaries/${Writer.version}'));
+      baseUrl: 'http://127.0.0.1:8080/${Writer.version}'));
 
   static Reader open(String target) =>
       Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
@@ -189,6 +189,7 @@ class DicoManager {
     _checkOpen(target);
 
     Map<int, List<int>> _getAll(List args) {
+      ensureLibdicoInitialized();
       applicationDocumentDirectory = args[1];
       _checkOpen(target);
       return _readers[target]!.getAll(args[0]);

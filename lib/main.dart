@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/list_explorer.dart';
@@ -12,14 +12,13 @@ import 'package:memorize/views/mobile/main.dart'
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:universal_io/io.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  ensureLibdicoInitialized();
 
   Provider.debugCheckInvalidValueType = null;
-  usePathUrlStrategy();
 
   runApp(
     LifecycleWatcher(
@@ -133,19 +132,12 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreen extends State<SplashScreen> {
-  late final StreamSubscription<ConnectivityResult> subscription;
   late final Future<void> _dataLoaded;
 
   @override
   void initState() {
     super.initState();
     _dataLoaded = loadData();
-  }
-
-  @override
-  void dispose() {
-    subscription.cancel();
-    super.dispose();
   }
 
   Future<void> loadData() async {

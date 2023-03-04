@@ -1,4 +1,4 @@
-import 'package:dico/dico.dart';
+import 'package:flutter_dico/flutter_dico.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 
