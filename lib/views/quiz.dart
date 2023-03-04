@@ -25,7 +25,7 @@ class QuizOpt {
 class QuizLauncher extends StatefulWidget {
   const QuizLauncher({super.key, required this.entries});
 
-  final Iterable<ListEntry> entries;
+  final List<ListEntry> entries;
 
   @override
   State<StatefulWidget> createState() => _QuizLauncher();
@@ -43,6 +43,8 @@ class _QuizLauncher extends State<QuizLauncher> {
   QuizMode _mode = QuizMode.linear;
   bool _timer = false;
   bool _reading = false;
+
+  List<ListEntry> get entries => widget.entries;
 
   late final _optIcons = [
     QuizOpt(Icons.timer_outlined, (isSelected) => _timer = isSelected),
@@ -99,18 +101,18 @@ class _QuizLauncher extends State<QuizLauncher> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) {
-          for (var entry in widget.entries) {
-            if (entry.data != null) continue;
+          for (int i = 0; i < widget.entries.length; ++i) {
+            if (entries[i].data != null) continue;
 
-            entry =
-                entry.copyWith(data: DicoManager.get(entry.target, entry.id));
+            entries[i] = entries[i].copyWith(
+                data: DicoManager.get(entries[i].target, entries[i].id));
           }
 
           return SafeArea(
             child: Quiz(
               mode: _mode,
               setTimer: _timer,
-              questions: widget.entries.map((e) {
+              questions: entries.map((e) {
                 assert(e.data != null);
 
                 return EntryRenderer(
@@ -318,6 +320,7 @@ class _Quiz extends State<Quiz> {
       AbsorbPointer(
         absorbing: widget.setTimer,
         child: FloatingActionButton(
+          heroTag: "prevButton",
           elevation: 0,
           backgroundColor: widget.setTimer
               ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
@@ -330,6 +333,7 @@ class _Quiz extends State<Quiz> {
         ),
       ),
       FloatingActionButton(
+        heroTag: "nextButton",
         onPressed: () => _controller.nextPage(
           duration: _questionPageTransDuration,
           curve: _questionPageTransCurve,
@@ -342,10 +346,12 @@ class _Quiz extends State<Quiz> {
   List<Widget> buildAnswersNav() {
     return [
       FloatingActionButton(
+        heroTag: "wrongButton",
         onPressed: () => _answersCtrl.swipeLeft(),
         child: const Icon(Icons.cancel),
       ),
       FloatingActionButton(
+        heroTag: "rigthButton",
         onPressed: () => _answersCtrl.swipeRight(),
         child: const Icon(Icons.check),
       ),
