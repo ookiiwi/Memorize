@@ -469,9 +469,11 @@ class EntryViewier extends StatefulWidget {
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
-  final lazyController = LazyListViewController<ListEntry>();
+  late final lazyController =
+      LazyScrollController(extentCallback: _extentCallback);
   bool _openSelection = false;
-  final List<ListEntry> firstPage = [];
+  int currPage = 0;
+  int get pageSize => EntryViewier.pageSize;
 
   List<ListEntry> get entries => widget.list.entries;
 
@@ -483,26 +485,47 @@ class _EntryViewier extends State<EntryViewier> {
     final pageEntries = entries.sublist(0, cnt);
     final targetSplit = EntryViewier._splitByTarget(pageEntries);
 
+    entries.removeRange(0, cnt);
+
     for (var e in targetSplit) {
       assert(e.isNotEmpty);
 
       if (e.length == 1) {
-        firstPage.add(e.first
+        entries.add(e.first
             .copyWith(data: DicoManager.get(e.first.target, e.first.id)));
 
         continue;
       }
 
-      firstPage.addAll(DicoManager.getAllSync(e.first.target, e));
+      entries.addAll(DicoManager.getAllSync(e.first.target, e));
+      ++currPage;
     }
 
-    assert(firstPage.length == cnt);
+    assert(entries.length == cnt);
   }
 
   @override
   void dispose() {
     lazyController.dispose();
     super.dispose();
+  }
+
+  void _extentCallback() async {
+    List<ListEntry> page = [];
+
+    if (currPage++ != 0) {
+      final tmp = await EntryViewier._loadEntries(entries, currPage);
+
+      page = tmp;
+    } else {
+      page = entries.sublist(0, pageSize.clamp(0, entries.length));
+    }
+
+    int lowBound = ((currPage - 1) * pageSize).clamp(0, entries.length);
+    int upBound = lowBound + page.length;
+
+    entries.setRange(lowBound, upBound, page);
+    setState(() {});
   }
 
   Widget buildEntry(BuildContext context, ListEntry entry) {
@@ -560,7 +583,7 @@ class _EntryViewier extends State<EntryViewier> {
                   widget.saveCallback!(list);
                 }
 
-                lazyController.remove(entry);
+                //lazyController.remove(entry);
               });
             },
             icon: const Icon(Icons.cancel_outlined),
@@ -589,19 +612,19 @@ class _EntryViewier extends State<EntryViewier> {
             Expanded(
               child: AnimatedBuilder(
                 animation: selectionController ?? ValueNotifier(null),
-                builder: (context, _) => LazyListView<ListEntry>(
-                  firstPage: firstPage,
+                builder: (context, _) => ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(
+                      bottom: kBottomNavigationBarHeight + 56 + 10),
+                  separatorBuilder: (context, index) => Divider(
+                    indent: 12,
+                    endIndent: 12,
+                    thickness: 0.2,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
                   controller: lazyController,
                   itemCount: entries.length,
-                  pageSize: EntryViewier.pageSize,
-                  itemBuilder: (context, entry) => buildEntry(context, entry),
-                  pageBuilder: (page) {
-                    if (page > 0) {
-                      return EntryViewier._loadEntries(entries, page);
-                    }
-
-                    return firstPage;
-                  },
+                  itemBuilder: (context, i) => buildEntry(context, entries[i]),
                 ),
               ),
             ),
@@ -885,7 +908,7 @@ class _EntrySearch extends State<EntrySearch> {
               return Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: targets.map((e) {
-                  final tar = e.replaceFirst(RegExp(widget.target + '-?'), '');
+                  final tar = e.replaceFirst(RegExp('${widget.target}-?'), '');
                   return MaterialButton(
                     minWidth: constraints.maxWidth / targets.length,
                     onPressed: () => resultAreasCtrl.animateToPage(
