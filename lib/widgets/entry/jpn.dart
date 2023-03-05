@@ -16,17 +16,16 @@ class EntryJpn extends Entry {
         .nodes
         .map((e) => e.text!)
         .toList();
+    final r = xmlDoc
+        .queryXPath(".//form[@type='r_ele']/orth")
+        .nodes
+        .map((e) => e.text!)
+        .toList();
 
     assert(offset >= 0);
     assert(cnt == null || cnt >= 0);
 
     if (k.isEmpty) {
-      final r = xmlDoc
-          .queryXPath(".//form[@type='r_ele']/orth")
-          .nodes
-          .map((e) => e.text!)
-          .toList();
-
       if (offset >= r.length) return [];
 
       return r
@@ -41,12 +40,14 @@ class EntryJpn extends Entry {
     }
 
     if (offset >= k.length) return [];
+    int i = 0;
 
     return k.sublist(offset, cnt?.clamp(offset, k.length)).map(
       (e) {
+        final reading = i < r.length ? r[i++] : null;
         return RubyText(
-          List<RubyTextData>.from(splitFurigana(e,
-              builder: (text, furigana) => RubyTextData(text, ruby: furigana))),
+          List<RubyTextData>.from(splitFurigana(e, reading: reading)
+              .map((e) => RubyTextData(e.text, ruby: e.furigana))),
           style: TextStyle(fontSize: fontSize),
         );
       },
