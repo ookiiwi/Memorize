@@ -11,8 +11,8 @@ import 'package:xml/xml.dart';
 
 class Dict {
   static const _fileExtension = 'dico';
-  static final _dio = Dio(BaseOptions(
-      baseUrl: 'http://127.0.0.1:8080/${Writer.version}'));
+  static final _dio =
+      Dio(BaseOptions(baseUrl: 'http://192.168.1.13:8080/${Writer.version}'));
 
   static Reader open(String target) =>
       Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
@@ -52,6 +52,11 @@ class Dict {
       await _dio.download(
         '/$target.$_fileExtension',
         filename,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            print((received / total * 100).toStringAsFixed(0) + "%");
+          }
+        },
       );
     } on DioError {
       rethrow;
@@ -131,6 +136,11 @@ class DicoCache {
   bool get isNotEmpty => _cache.isNotEmpty;
 }
 
+class _DicoGetAllCacheInfo {
+  final List<ListEntry> entriesFromCache = [];
+  final Map<String, List<ListEntry>> entriesByTarget = {};
+}
+
 class DicoManager {
   static final Map<String, Reader> _readers = {};
   static final List<String> _targetHistory = [];
@@ -160,79 +170,83 @@ class DicoManager {
     return entry;
   }
 
-  static List<ListEntry> _getAllFromCache(List<ListEntry> entries) {
-    final ret = <ListEntry>[];
+  static _DicoGetAllCacheInfo _getAllFromCache(List<ListEntry> entries) {
+    final ret = _DicoGetAllCacheInfo();
 
-    for (int i = 0; i < entries.length; ++i) {
-      final e = entries[i];
+    for (var e in entries) {
       final entry = dicoCache.get(e.target, e.id);
 
-      if (entry == null) continue;
+      if (entry == null) {
+        if (ret.entriesByTarget.containsKey(e.target)) {
+          ret.entriesByTarget[e.target]?.add(e);
+        } else {
+          ret.entriesByTarget[e.target] = [e];
+        }
+        continue;
+      }
 
-      ret.add(e.copyWith(data: entry));
-      entries.remove(e);
-      --i;
+      ret.entriesFromCache.add(e.copyWith(data: entry));
     }
 
     return ret;
   }
 
-  static FutureOr<List<ListEntry>> getAll(
-      String target, List<ListEntry> entries) async {
-    final _entries = List<ListEntry>.from(entries);
-    final ret = _getAllFromCache(_entries);
+  static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) async {
+    final cacheInfo = _getAllFromCache(entries);
+    final ret = <ListEntry>[];
 
-    if (_entries.isEmpty) {
-      return ret;
+    if (cacheInfo.entriesFromCache.length == entries.length) {
+      return cacheInfo.entriesFromCache;
     }
 
-    _checkOpen(target);
-
-    Map<int, List<int>> _getAll(List args) {
+    Map<int, List<int>> getAllFunc(List args) {
       ensureLibdicoInitialized();
       applicationDocumentDirectory = args[1];
+      final target = args[2];
       _checkOpen(target);
       return _readers[target]!.getAll(args[0]);
     }
 
-    final tmp = await compute(
-        _getAll, [_entries.map((e) => e.id), applicationDocumentDirectory]);
+    for (var e in cacheInfo.entriesByTarget.entries) {
+      final tmp = await compute(getAllFunc,
+          [e.value.map((e) => e.id), applicationDocumentDirectory, e.key]);
 
-    for (var e in _entries) {
-      final ent = tmp[e.id];
+      for (var e in e.value) {
+        final ent = tmp[e.id];
 
-      if (ent == null) continue;
+        if (ent == null) continue;
 
-      final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
-      dicoCache.set(e.target, e.id, data);
+        final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
+        dicoCache.set(e.target, e.id, data);
 
-      ret.add(e.copyWith(data: data));
+        ret.add(e.copyWith(data: data));
+      }
     }
 
     return ret;
   }
 
-  static List<ListEntry> getAllSync(String target, List<ListEntry> entries) {
-    final _entries = List<ListEntry>.from(entries);
-    final ret = _getAllFromCache(_entries);
+  static List<ListEntry> getAllSync(List<ListEntry> entries) {
+    final cacheInfo = _getAllFromCache(entries);
+    final ret = <ListEntry>[];
 
-    if (_entries.isEmpty) {
-      return ret;
+    if (cacheInfo.entriesFromCache.length == entries.length) {
+      return cacheInfo.entriesFromCache;
     }
 
-    _checkOpen(target);
+    for (var e in cacheInfo.entriesByTarget.entries) {
+      final tmp = _readers[e.key]!.getAll(entries.map((e) => e.id));
 
-    final tmp = _readers[target]!.getAll(_entries.map((e) => e.id));
+      for (var e in entries) {
+        final ent = tmp[e.id];
 
-    for (var e in _entries) {
-      final ent = tmp[e.id];
+        if (ent == null) continue;
 
-      if (ent == null) continue;
+        final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
+        dicoCache.set(e.target, e.id, data);
 
-      final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
-      dicoCache.set(e.target, e.id, data);
-
-      ret.add(e.copyWith(data: data));
+        ret.add(e.copyWith(data: data));
+      }
     }
 
     return ret;
