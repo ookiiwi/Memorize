@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as dev;
 
@@ -11,7 +9,7 @@ import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
-import 'package:memorize/widgets/lazy_listview.dart';
+import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 
@@ -35,14 +33,7 @@ class ListViewer extends StatefulWidget {
   static final Map<String, MemoList> _cache = {};
 
   static Future<MemoList> preload(FileInfo info) async {
-    final file = File(info.path);
-
-    if (!file.existsSync()) {
-      throw Exception('File not found. \'${info.name}\' does not exist');
-    }
-
-    final data = await file.readAsString();
-    final list = MemoList.fromJson(jsonDecode(data));
+    final list = MemoList.open(info.path);
 
     EntryViewier.preload(list.entries);
 
@@ -85,23 +76,14 @@ class _ListViewer extends State<ListViewer> {
     });
 
     if (widget.list != null) {
-      list = widget.list!;
-      writeList();
+      list = widget.list!..save();
     } else if (widget.fileinfo != null) {
-      // load
-      final file = File(widget.fileinfo!.path);
-
-      if (!file.existsSync()) {
-        throw Exception(
-            'File not found. \'${widget.fileinfo!.name}\' does not exist');
-      }
-
-      final data = file.readAsStringSync();
-      list = MemoList.fromJson(jsonDecode(data));
+      list = MemoList.open(widget.fileinfo!.path);
     }
 
     if (list != null && isListInit) {
-      fLoadTargets = loadTargets()..then((value) => setState(() {}));
+      // check all targets dl before assign fLoad
+      //fLoadTargets = loadTargets()..then((value) => setState(() {}));
     }
   }
 
@@ -133,12 +115,6 @@ class _ListViewer extends State<ListViewer> {
     return;
   }
 
-  void writeList() {
-    assert(list != null && list!.name.isNotEmpty);
-    final file = File(list!.name);
-    file.writeAsStringSync(jsonEncode(list));
-  }
-
   void openSearchPage() {
     assert(isListInit);
 
@@ -151,7 +127,7 @@ class _ListViewer extends State<ListViewer> {
               if (!list!.entries
                   .any((e) => e.id == entry.id && e.target == entry.target)) {
                 list!.entries.add(entry);
-                writeList();
+                list!.save();
               }
 
               Navigator.of(context).maybePop();
@@ -223,23 +199,10 @@ class _ListViewer extends State<ListViewer> {
                 OutlineInputBorder(borderRadius: BorderRadius.circular(20))),
         onSubmitted: (value) {
           setState(() {
-            _doRename = false;
             if (value.isEmpty) return;
 
             list ??= MemoList('', '');
-
-            if (list!.name.isEmpty) {
-              list!.name = value;
-            } else {
-              final file = File(list!.name);
-              assert(file.existsSync());
-
-              list!.name = value;
-
-              file.renameSync(list!.name);
-            }
-
-            writeList();
+            list?.rename(value);
           });
         },
       ),
@@ -259,7 +222,7 @@ class _ListViewer extends State<ListViewer> {
     return SafeArea(
       child: Center(
         child: FutureBuilder(
-          future: targetDl,
+          future: targetDl, // TODO: bug -> always loading
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const CircularProgressIndicator();
@@ -277,7 +240,7 @@ class _ListViewer extends State<ListViewer> {
                     list ??= MemoList('', '');
                     list!.target = value;
                     if (list!.name.isNotEmpty) {
-                      writeList();
+                      list!.save();
                     }
 
                     if (!Dict.exists(value)) {
@@ -365,7 +328,6 @@ class _ListViewer extends State<ListViewer> {
                       ? EntryViewier(
                           list: list!,
                           selectionController: _selectionController,
-                          saveCallback: (_) => setState(() => writeList()),
                         )
                       : buildTargetDropDown(context),
                   if (isListInit && list!.entries.isNotEmpty)
@@ -399,15 +361,14 @@ class _ListViewer extends State<ListViewer> {
 class EntryViewier extends StatefulWidget {
   static int pageSize = 20;
 
-  const EntryViewier(
-      {super.key,
-      required this.list,
-      this.selectionController,
-      this.saveCallback});
+  const EntryViewier({
+    super.key,
+    required this.list,
+    this.selectionController,
+  });
 
   final MemoList list;
   final SelectionController? selectionController;
-  final void Function(MemoList list)? saveCallback;
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
@@ -417,50 +378,22 @@ class EntryViewier extends StatefulWidget {
 
   static FutureOr<List<ListEntry>> _loadEntries(
       List<ListEntry> entries, int page) async {
-    final cnt = (page * pageSize).clamp(0, entries.length);
-    final end = (cnt + pageSize).clamp(0, entries.length);
-    final pageEntries = entries.sublist(cnt, end);
-    final targetSplit = _splitByTarget(pageEntries);
-
-    if (targetSplit.length == 1) {
-      return DicoManager.getAll(entries.first.target, pageEntries);
-    }
-
+    final start = (page * pageSize).clamp(0, entries.length);
+    final end = (start + pageSize).clamp(0, entries.length);
+    final pageEntries = entries.sublist(start, end);
     final ret = <ListEntry>[];
 
-    for (var e in targetSplit) {
-      assert(e.isNotEmpty);
-
-      List<ListEntry> ent;
-      if (e.length == 1) {
-        ent = [
-          e.first.copyWith(data: DicoManager.get(e.first.target, e.first.id))
-        ];
-      } else {
-        ent = await DicoManager.getAll(e.first.target, e);
-      }
-      ret.addAll(ent);
+    List<ListEntry> ent;
+    if (pageEntries.length == 1) {
+      ent = [
+        pageEntries.first.copyWith(
+            data:
+                DicoManager.get(pageEntries.first.target, pageEntries.first.id))
+      ];
+    } else {
+      ent = await DicoManager.getAll(pageEntries);
     }
-
-    return ret;
-  }
-
-  static List<List<ListEntry>> _splitByTarget(List<ListEntry> entries) {
-    final targetMapping = <String, int>{};
-    final ret = <List<ListEntry>>[];
-
-    for (var e in entries) {
-      int idx;
-
-      if (!targetMapping.containsKey(e.target)) {
-        targetMapping[e.target] = idx = ret.length;
-        ret.add([]);
-      } else {
-        idx = targetMapping[e.target]!;
-      }
-
-      ret[idx].add(e);
-    }
+    ret.addAll(ent);
 
     return ret;
   }
@@ -469,8 +402,6 @@ class EntryViewier extends StatefulWidget {
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
-  late final lazyController =
-      LazyScrollController(extentCallback: _extentCallback);
   bool _openSelection = false;
   int currPage = 0;
   int get pageSize => EntryViewier.pageSize;
@@ -481,115 +412,16 @@ class _EntryViewier extends State<EntryViewier> {
   void initState() {
     super.initState();
 
-    final cnt = EntryViewier.pageSize.clamp(0, entries.length);
+    final cnt = pageSize.clamp(0, entries.length);
     final pageEntries = entries.sublist(0, cnt);
-    final targetSplit = EntryViewier._splitByTarget(pageEntries);
+    final firstPage = <ListEntry>[];
 
-    entries.removeRange(0, cnt);
+    firstPage.addAll(DicoManager.getAllSync(pageEntries));
 
-    for (var e in targetSplit) {
-      assert(e.isNotEmpty);
+    assert(firstPage.length == cnt,
+        "Got ${firstPage.length} entries instead of $cnt");
 
-      if (e.length == 1) {
-        entries.add(e.first
-            .copyWith(data: DicoManager.get(e.first.target, e.first.id)));
-
-        continue;
-      }
-
-      entries.addAll(DicoManager.getAllSync(e.first.target, e));
-      ++currPage;
-    }
-
-    assert(entries.length == cnt);
-  }
-
-  @override
-  void dispose() {
-    lazyController.dispose();
-    super.dispose();
-  }
-
-  void _extentCallback() async {
-    List<ListEntry> page = [];
-
-    if (currPage++ != 0) {
-      final tmp = await EntryViewier._loadEntries(entries, currPage);
-
-      page = tmp;
-    } else {
-      page = entries.sublist(0, pageSize.clamp(0, entries.length));
-    }
-
-    int lowBound = ((currPage - 1) * pageSize).clamp(0, entries.length);
-    int upBound = lowBound + page.length;
-
-    entries.setRange(lowBound, upBound, page);
-    setState(() {});
-  }
-
-  Widget buildEntry(BuildContext context, ListEntry entry) {
-    return Stack(children: [
-      AbsorbPointer(
-        absorbing: _openSelection,
-        child: LayoutBuilder(
-          builder: (context, constraints) => MaterialButton(
-            minWidth: constraints.maxWidth,
-            padding: const EdgeInsets.all(8.0),
-            onLongPress: () => setState((() => _openSelection = true)),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) {
-                    return EntryView(
-                      entries: entries,
-                      entryId: entry.id,
-                    );
-                  },
-                ),
-              );
-            },
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 50),
-                child: Center(
-                  widthFactor: 1,
-                  heightFactor: 1,
-                  child: EntryRenderer(
-                    mode: DisplayMode.preview,
-                    entry: Entry.guess(
-                      xmlDoc: entry.data!,
-                      target: entry.target,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-      if (_openSelection)
-        Positioned(
-          top: 0,
-          right: 0,
-          child: IconButton(
-            onPressed: () {
-              setState(() {
-                entries.remove(entry);
-                list.entries.remove(entry);
-
-                if (widget.saveCallback != null) {
-                  widget.saveCallback!(list);
-                }
-
-                //lazyController.remove(entry);
-              });
-            },
-            icon: const Icon(Icons.cancel_outlined),
-          ),
-        )
-    ]);
+    entries.replaceRange(0, cnt, firstPage);
   }
 
   @override
@@ -612,20 +444,7 @@ class _EntryViewier extends State<EntryViewier> {
             Expanded(
               child: AnimatedBuilder(
                 animation: selectionController ?? ValueNotifier(null),
-                builder: (context, _) => ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(
-                      bottom: kBottomNavigationBarHeight + 56 + 10),
-                  separatorBuilder: (context, index) => Divider(
-                    indent: 12,
-                    endIndent: 12,
-                    thickness: 0.2,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                  controller: lazyController,
-                  itemCount: entries.length,
-                  itemBuilder: (context, i) => buildEntry(context, entries[i]),
-                ),
+                builder: (context, _) => MemoListView(list: list),
               ),
             ),
           ],
@@ -715,6 +534,39 @@ class _EntryView extends State<EntryView> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class EntryViewInfo extends StatefulWidget {
+  const EntryViewInfo({super.key});
+
+  @override
+  State<StatefulWidget> createState() => _EntryViewInfo();
+}
+
+class _EntryViewInfo extends State<EntryViewInfo> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: BackButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text("Entry info"),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(children: [
+          ListTile(
+            title: const Text("Furigana support"),
+            trailing: Switch(
+              onChanged: (_) {},
+              value: true,
+            ),
+          )
+        ]),
       ),
     );
   }
