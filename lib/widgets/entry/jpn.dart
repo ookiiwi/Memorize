@@ -10,17 +10,18 @@ class EntryJpn extends Entry {
     super.showReading,
   });
 
-  List<Widget> buildWords({int offset = 0, int? cnt, double? fontSize}) {
+  List<Widget> buildWords(
+      {int offset = 0,
+      int? cnt,
+      double? fontSize,
+      bool noRuby = false,
+      bool includeRestr = false}) {
     final k = xmlDoc
         .queryXPath(".//form[@type='k_ele']/orth")
         .nodes
         .map((e) => e.text!)
         .toList();
-    final r = xmlDoc
-        .queryXPath(".//form[@type='r_ele']/orth")
-        .nodes
-        .map((e) => e.text!)
-        .toList();
+    final r = xmlDoc.queryXPath(".//form[@type='r_ele']").nodes;
 
     assert(offset >= 0);
     assert(cnt == null || cnt >= 0);
@@ -32,7 +33,7 @@ class EntryJpn extends Entry {
           .sublist(offset, cnt?.clamp(offset, r.length))
           .map(
             (e) => Text(
-              e,
+              e.queryXPath('./orth').node!.text!,
               style: TextStyle(fontSize: fontSize),
             ),
           )
@@ -40,18 +41,58 @@ class EntryJpn extends Entry {
     }
 
     if (offset >= k.length) return [];
-    int i = 0;
 
-    return k.sublist(offset, cnt?.clamp(offset, k.length)).map(
-      (e) {
-        final reading = i < r.length ? r[i++] : null;
-        return RubyText(
-          List<RubyTextData>.from(splitFurigana(e, reading: reading)
-              .map((e) => RubyTextData(e.text, ruby: e.furigana))),
-          style: TextStyle(fontSize: fontSize),
-        );
-      },
-    ).toList();
+    final priReading = r.first.queryXPath('./orth').node!.text!;
+    final restrReadings = <String, List<String>>{};
+
+    for (var e in r) {
+      final restrNodes = e.queryXPath("./lbl[@type='re_restr']").nodes;
+      if (restrNodes.isNotEmpty) {
+        for (var restr in restrNodes) {
+          final orth = e.queryXPath('./orth').node!.text!;
+
+          if (restrReadings.containsKey(restr.text)) {
+            restrReadings[restr.text!]!.add(orth);
+          } else {
+            restrReadings[restr.text!] = [orth];
+          }
+        }
+      }
+    }
+
+    Widget wrapWord(String word, String reading) {
+      final furi = noRuby ? [] : splitFurigana(word, reading);
+
+      if (furi.isEmpty) {
+        if (noRuby) {
+          return Text("$word 【$reading】", style: TextStyle(fontSize: fontSize));
+        } else {
+          furi.add(FuriganaText(word, reading));
+        }
+      }
+
+      return RubyText(
+        List<RubyTextData>.from(
+          furi.map((e) => RubyTextData(e.text, ruby: e.furigana)),
+        ),
+        style: TextStyle(fontSize: fontSize),
+      );
+    }
+
+    final ret = k
+        .sublist(offset, cnt?.clamp(offset, k.length))
+        .map((e) => wrapWord(e, priReading))
+        .toList();
+
+    if (includeRestr) {
+      for (var e in restrReadings.entries) {
+        for (var r in e.value) {
+          ret.add(wrapWord(e.key, r));
+        }
+      }
+    }
+
+    return ret;
   }
 
   String formatRef(dynamic node) {
@@ -93,7 +134,7 @@ class EntryJpn extends Entry {
 
   @override
   List<Widget> buildOtherForms(BuildContext context) {
-    final words = buildWords(offset: 1);
+    final words = buildWords(offset: 1, noRuby: true, includeRestr: true);
 
     return words;
   }
@@ -157,14 +198,25 @@ class EntryJpn extends Entry {
 
   @override
   List<Widget> buildNotes(BuildContext context) {
-    final notes = xmlDoc.queryXPath(".//form[@type='k_ele']").nodes
-      ..retainWhere((e) => e.children.any((e) => e.name?.localName == 'lbl'));
+    final notes = xmlDoc.queryXPath(".//form").nodes
+      ..retainWhere((e) => e.children
+          .any((e) => e.name?.localName == 'lbl' && e.children.isNotEmpty));
 
-    return notes.map((e) {
+    return (notes.map((e) {
+      bool skip = false;
       final orth = e.queryXPath('./orth').node!.text;
-      final note = e.queryXPath('./lbl').node!.text;
+      final tmp = e.queryXPath('./lbl').nodes;
+      final note =
+          tmp.firstWhere((e) => e.attributes['type'] != 're_restr', orElse: () {
+        skip = true;
+        return tmp.first;
+      }).text;
+
+      if (skip) return null;
+
       return Text('$orth: $note');
-    }).toList();
+    }).toList()
+      ..removeWhere((e) => e == null)) as List<Widget>;
   }
 }
 
