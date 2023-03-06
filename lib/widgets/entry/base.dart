@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
+import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
 enum DisplayMode { preview, detailed, quiz }
@@ -40,11 +45,26 @@ abstract class Entry {
   List<Widget> buildSenses(BuildContext context);
   List<Widget> buildNotes(BuildContext context);
 
-  static FutureOr<void> init() {
+  static FutureOr<void> init() async {
     final localTargets = Dict.listTargets().join(",");
 
-    if (RegExp(r"jpn-\w{3}-kanji").hasMatch(localTargets)) {
-      tagger.init('assets/ipadic', true);
+    if (RegExp(r"^jpn-.*").hasMatch(localTargets)) {
+      final filepath =
+          join(applicationDocumentDirectory, 'maptable', 'kanji.json');
+      File file = File(filepath);
+
+      if (!file.existsSync()) {
+        await Dio().download('http://192.168.1.13:8080/kanji.json', filepath);
+      }
+
+      final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
+        if (key is String) {
+          return List<String>.from(value as List);
+        }
+
+        return value;
+      });
+      maptable = Map<String, List<String>>.from(tmp);
     }
   }
 }
