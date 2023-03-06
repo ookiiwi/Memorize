@@ -4,16 +4,24 @@ import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
 
+class MemoListViewController extends ChangeNotifier {
+  bool _isSelectionEnabled = false;
+  bool get isSelectionEnabled => _isSelectionEnabled;
+  set isSelectionEnabled(bool value) {
+    if (_isSelectionEnabled == value) return;
+
+    _isSelectionEnabled = value;
+    notifyListeners();
+  }
+}
+
 class MemoListView extends StatefulWidget {
   const MemoListView(
-      {super.key,
-      this.list,
-      this.entries = const [],
-      this.enableSelection = true});
+      {super.key, this.list, this.entries = const [], this.controller});
 
   final MemoList? list;
   final List<ListEntry> entries;
-  final bool enableSelection;
+  final MemoListViewController? controller;
 
   @override
   State<StatefulWidget> createState() => _MemoListView();
@@ -21,9 +29,10 @@ class MemoListView extends StatefulWidget {
 
 class _MemoListView extends State<MemoListView> {
   List<ListEntry> get entries => widget.list?.entries ?? widget.entries;
+  MemoListViewController? get controller => widget.controller;
   final extent = 500.0;
   int loadedEntries = 0;
-  bool _openSelection = false;
+  //bool _openSelection = false;
   bool _loadingEntries = false;
 
   @override
@@ -31,17 +40,30 @@ class _MemoListView extends State<MemoListView> {
     super.initState();
 
     loadEntries(extent + 1);
+    controller?.addListener(_controllerListener);
+  }
+
+  void _controllerListener() {
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    controller?.removeListener(_controllerListener);
+    super.dispose();
   }
 
   Widget buildEntry(BuildContext context, ListEntry entry) {
     return Stack(children: [
       AbsorbPointer(
-        absorbing: _openSelection,
+        absorbing: controller?.isSelectionEnabled ?? false,
         child: LayoutBuilder(
           builder: (context, constraints) => MaterialButton(
             minWidth: constraints.maxWidth,
             padding: const EdgeInsets.all(8.0),
-            onLongPress: () => setState((() => _openSelection = true)),
+            onLongPress: controller != null
+                ? () => setState((() => controller!.isSelectionEnabled = true))
+                : null,
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -74,20 +96,16 @@ class _MemoListView extends State<MemoListView> {
           ),
         ),
       ),
-      if (_openSelection)
+      if (controller?.isSelectionEnabled == true)
         Positioned(
           top: 0,
           right: 0,
           child: IconButton(
             onPressed: () {
               setState(() {
-                //widget.list?.entries.remove(entry);
                 entries.remove(entry);
                 widget.list?.save();
-
-                //if (widget.saveCallback != null) {
-                //  widget.saveCallback!(list);
-                //}
+                --loadedEntries;
               });
             },
             icon: const Icon(Icons.cancel_outlined),
@@ -115,7 +133,7 @@ class _MemoListView extends State<MemoListView> {
     _loadingEntries = false;
     loadedEntries += loadCnt;
 
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   @override
@@ -128,8 +146,8 @@ class _MemoListView extends State<MemoListView> {
       },
       child: ListView.separated(
         shrinkWrap: true,
-        padding:
-            const EdgeInsets.only(bottom: kBottomNavigationBarHeight + 56 + 10),
+        padding: const EdgeInsets.only(
+            left: 10, right: 10, bottom: kBottomNavigationBarHeight + 56 + 10),
         separatorBuilder: (context, index) => Divider(
           indent: 12,
           endIndent: 12,
