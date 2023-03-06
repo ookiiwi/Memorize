@@ -402,8 +402,7 @@ class EntryViewier extends StatefulWidget {
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
-  bool _openSelection = false;
-  int currPage = 0;
+  final mlvController = MemoListViewController();
   int get pageSize => EntryViewier.pageSize;
 
   List<ListEntry> get entries => widget.list.entries;
@@ -428,23 +427,26 @@ class _EntryViewier extends State<EntryViewier> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        if (_openSelection) {
-          setState(() => _openSelection = false);
+        if (mlvController.isSelectionEnabled) {
+          setState(() => mlvController.isSelectionEnabled = false);
           return false;
         }
 
         return true;
       },
       child: GestureDetector(
-        onTap: _openSelection
-            ? () => setState(() => _openSelection = false)
+        onTap: mlvController.isSelectionEnabled
+            ? () => setState(() => mlvController.isSelectionEnabled = false)
             : null,
         child: Column(
           children: [
             Expanded(
               child: AnimatedBuilder(
                 animation: selectionController ?? ValueNotifier(null),
-                builder: (context, _) => MemoListView(list: list),
+                builder: (context, _) => MemoListView(
+                  list: list,
+                  controller: mlvController,
+                ),
               ),
             ),
           ],
@@ -698,7 +700,6 @@ class _EntrySearch extends State<EntrySearch> {
   Map<String, List<Widget>> entries = {};
   Map<String, List<ListEntry>> entriesData = {};
   int selectedTarget = 0;
-  Map<String, List<int>> ids = {};
 
   late List<String> targets;
   final PageController resultAreasCtrl = PageController();
@@ -718,7 +719,6 @@ class _EntrySearch extends State<EntrySearch> {
     for (var target in targets) {
       entries[target] = [];
       entriesData[target] = [];
-      ids[target] = [];
     }
 
     resultAreasCtrl.addListener(() {
@@ -730,24 +730,9 @@ class _EntrySearch extends State<EntrySearch> {
   Widget buildResultArea(BuildContext context, String target) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: ids[target]!.isEmpty
+      child: entriesData[target]!.isEmpty == true
           ? const Center(child: Text("No result >_<"))
-          : ListView.separated(
-              shrinkWrap: true,
-              itemCount: ids[target]!.length,
-              separatorBuilder: (context, index) =>
-                  const Divider(thickness: 0.3),
-              itemBuilder: (context, i) {
-                return MaterialButton(
-                  onPressed: () {
-                    if (widget.onItemSelected != null) {
-                      widget.onItemSelected!(entriesData[target]![i]);
-                    }
-                  },
-                  child: entries[target]![i],
-                );
-              },
-            ),
+          : MemoListView(key: UniqueKey(), entries: entriesData[target]!),
     );
   }
 
@@ -797,7 +782,7 @@ class _EntrySearch extends State<EntrySearch> {
           child: PageView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             controller: resultAreasCtrl,
-            onPageChanged: (value) => setState(() => selectedTarget = value),
+            //onPageChanged: (value) => setState(() => selectedTarget = value),
             itemCount: targets.length,
             itemBuilder: (context, i) => buildResultArea(
               context,
@@ -807,34 +792,6 @@ class _EntrySearch extends State<EntrySearch> {
         ),
       ],
     );
-  }
-
-  void _buildEntries() {
-    for (var target in targets) {
-      for (int i = 0; i < ids[target]!.length; ++i) {
-        if (entries[target]!.length <= i) {
-          final data = DicoManager.get(target, ids[target]![i]);
-
-          entriesData[target]!.add(
-            ListEntry(
-              ids[target]![i],
-              target,
-              data: data,
-            ),
-          );
-
-          entries[target]!.add(
-            EntryRenderer(
-              mode: DisplayMode.preview,
-              entry: Entry.guess(
-                xmlDoc: data,
-                target: target,
-              ),
-            ),
-          );
-        }
-      }
-    }
   }
 
   @override
@@ -865,19 +822,18 @@ class _EntrySearch extends State<EntrySearch> {
               borderSide: BorderSide.none,
             ),
           ),
-          onSubmitted: (value) async {
+          onChanged: (value) {
             entries[targets[selectedTarget]] = [];
             entriesData[targets[selectedTarget]] = [];
 
-            setState(() {
-              for (var target in ids.keys) {
-                ids[target] = DicoManager.find(target, value)
-                    .expand((e) => e.ids)
-                    .toList();
-              }
+            for (var target in entriesData.keys) {
+              entriesData[target] = DicoManager.find(target, value)
+                  .expand((e) => e.ids)
+                  .map((e) => ListEntry(e, target))
+                  .toList();
+            }
 
-              _buildEntries();
-            });
+            setState(() {});
           },
         ),
       ),
