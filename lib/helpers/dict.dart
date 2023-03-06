@@ -223,7 +223,7 @@ class DicoManager {
       }
     }
 
-    return ret;
+    return cacheInfo.entriesFromCache + ret;
   }
 
   static List<ListEntry> getAllSync(List<ListEntry> entries) {
@@ -249,7 +249,7 @@ class DicoManager {
       }
     }
 
-    return ret;
+    return cacheInfo.entriesFromCache + ret;
   }
 
   static void close() {
