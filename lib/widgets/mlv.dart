@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
-import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
 
 class MemoListViewController extends ChangeNotifier {
@@ -17,11 +16,18 @@ class MemoListViewController extends ChangeNotifier {
 
 class MemoListView extends StatefulWidget {
   const MemoListView(
-      {super.key, this.list, this.entries = const [], this.controller});
+      {super.key,
+      this.list,
+      this.entries = const [],
+      this.controller,
+      this.onTap,
+      this.onLoad});
 
   final MemoList? list;
   final List<ListEntry> entries;
   final MemoListViewController? controller;
+  final void Function(ListEntry entry)? onTap;
+  final VoidCallback? onLoad;
 
   @override
   State<StatefulWidget> createState() => _MemoListView();
@@ -32,7 +38,6 @@ class _MemoListView extends State<MemoListView> {
   MemoListViewController? get controller => widget.controller;
   final extent = 500.0;
   int loadedEntries = 0;
-  //bool _openSelection = false;
   bool _loadingEntries = false;
 
   @override
@@ -64,18 +69,8 @@ class _MemoListView extends State<MemoListView> {
             onLongPress: controller != null
                 ? () => setState((() => controller!.isSelectionEnabled = true))
                 : null,
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) {
-                    return EntryView(
-                      entries: entries,
-                      entryId: entry.id,
-                    );
-                  },
-                ),
-              );
-            },
+            onPressed:
+                widget.onTap != null ? (() => widget.onTap!(entry)) : null,
             child: Align(
               alignment: Alignment.centerLeft,
               child: ConstrainedBox(
@@ -114,7 +109,7 @@ class _MemoListView extends State<MemoListView> {
     ]);
   }
 
-  void loadEntries(double extentAfter) async {
+  void loadEntries(double extentAfter) {
     final loadCntMax =
         (entries.length - loadedEntries).clamp(0, entries.length);
     final loadCnt = 20.clamp(0, loadCntMax);
@@ -125,15 +120,26 @@ class _MemoListView extends State<MemoListView> {
 
     assert(loadedEntries + loadCnt <= entries.length);
 
-    final tmp = await DicoManager.getAll(
+    void setEntries(List<ListEntry> page) {
+      entries.setRange(loadedEntries, loadedEntries + loadCnt, page);
+
+      _loadingEntries = false;
+      loadedEntries += loadCnt;
+
+      if (mounted) setState(() {});
+    }
+
+    final tmp = DicoManager.getAll(
         entries.sublist(loadedEntries, loadedEntries + loadCnt));
 
-    entries.setRange(loadedEntries, loadedEntries + loadCnt, tmp);
+    // slip first page
+    if (widget.onLoad != null && loadedEntries != 0) widget.onLoad!();
 
-    _loadingEntries = false;
-    loadedEntries += loadCnt;
-
-    if (mounted) setState(() {});
+    if (tmp is List<ListEntry>) {
+      setEntries(tmp); // avoid async dispatch overhead
+    } else {
+      tmp.then((value) => setEntries(value));
+    }
   }
 
   @override
