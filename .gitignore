@@ -52,5 +52,3 @@ app.*.map.json
 .env
 .vscode
 assets/dict/
-
-/fonts
