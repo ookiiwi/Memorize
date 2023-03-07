@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:async/async.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
@@ -9,10 +11,21 @@ import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/list.dart';
 import 'package:xml/xml.dart';
 
+class DictDownload {
+  const DictDownload(this.received, this.total, this.response);
+
+  final ValueNotifier<double> received;
+  final ValueNotifier<double> total;
+  final Future<Response> response;
+}
+
 class Dict {
+  static final _dlManager = <String, DictDownload>{};
   static const _fileExtension = 'dico';
   static final _dio =
       Dio(BaseOptions(baseUrl: 'http://192.168.1.13:8080/${Writer.version}'));
+  static final _targetListFilepath =
+      '$applicationDocumentDirectory/targets.json';
 
   static Reader open(String target) =>
       Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
@@ -41,24 +54,45 @@ class Dict {
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
     final file = File(filename);
 
-    return file.existsSync();
+    return file.existsSync() && _dlManager[target] == null;
   }
 
-  static Future<void> download(String target) async {
+  static DictDownload? getDownloadProgress(String target) => _dlManager[target];
+
+  static Future<Response> download(String target) {
     final filename =
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
 
     try {
-      await _dio.download(
+      final receivedNotifier = ValueNotifier(0.0);
+      final totalNotifier = ValueNotifier(0.1);
+
+      if (_dlManager.containsKey(target)) {
+        return _dlManager[target]!.response;
+      }
+
+      final response = _dio.download(
         '/$target.$_fileExtension',
         filename,
         onReceiveProgress: (received, total) {
           if (total != -1) {
-            print((received / total * 100).toStringAsFixed(0) + "%");
+            if (totalNotifier.value == 0.1) {
+              totalNotifier.value = total.toDouble();
+            }
+
+            receivedNotifier.value = received.toDouble();
           }
         },
       );
+
+      _dlManager[target] =
+          DictDownload(receivedNotifier, totalNotifier, response);
+
+      return response..then((value) => _dlManager.remove(target));
     } on DioError {
+      final file = File(filename);
+      if (file.existsSync()) file.deleteSync();
+
       rethrow;
     }
   }
@@ -85,19 +119,38 @@ class Dict {
     });
   }
 
-  static Future<List<String>> listRemoteTargets() async {
+  static List<String> listAllTargets() {
+    final file = File(_targetListFilepath);
+
+    if (file.existsSync()) {
+      return List.from(jsonDecode(file.readAsStringSync()));
+    }
+
+    return [];
+  }
+
+  static Future<void> fetchTargetList() async {
     try {
       final response = await _dio.get('/');
+
       final String body = response.data;
 
       final exp =
           RegExp(r'<td class="display-name"><a href=".*?">(.*)<\/a><\/td>');
       final matches = exp.allMatches(body);
 
-      return matches.map((e) => e.group(1)!.replaceFirst('.dico', '')).toList()
+      final targets = matches
+          .map((e) => e.group(1)!.replaceFirst('.dico', ''))
+          .toList()
         ..removeWhere((e) => e.endsWith('/'));
+
+      final file = File(_targetListFilepath);
+
+      if (!file.existsSync()) file.createSync();
+
+      file.writeAsStringSync(jsonEncode(targets));
     } on DioError {
-      return listTargets().toList();
+      rethrow;
     }
   }
 }
@@ -141,11 +194,29 @@ class _DicoGetAllCacheInfo {
   final Map<String, List<ListEntry>> entriesByTarget = {};
 }
 
+class _DicoGetAllEntryPointArgs {
+  const _DicoGetAllEntryPointArgs(this.target, this.ids);
+
+  final String target;
+  final Iterable<int> ids;
+}
+
+class _DicoGetAllEntryPointsSpawnArgs {
+  const _DicoGetAllEntryPointsSpawnArgs(this.appDir, this.port);
+
+  final String appDir;
+  final SendPort port;
+}
+
 class DicoManager {
   static final Map<String, Reader> _readers = {};
   static final List<String> _targetHistory = [];
   static Iterable<String> get targets => _targetHistory;
   static final dicoCache = DicoCache();
+
+  static ReceivePort? _getAllReceivePort;
+  static StreamQueue? _getAllEvents;
+  static SendPort? _getAllSendPort;
 
   static List<Ref> find(String target, String key,
       [int offset = 0, int cnt = 20]) {
@@ -191,42 +262,32 @@ class DicoManager {
     return ret;
   }
 
-  static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) async {
-    final cacheInfo = _getAllFromCache(entries);
-    final ret = <ListEntry>[];
+  static void _getAllEntryPoint(_DicoGetAllEntryPointsSpawnArgs args) async {
+    final commandPort = ReceivePort();
+    final p = args.port;
+    p.send(commandPort.sendPort);
 
-    if (cacheInfo.entriesFromCache.length == entries.length) {
-      return cacheInfo.entriesFromCache;
-    }
+    applicationDocumentDirectory = args.appDir;
 
-    Map<int, List<int>> getAllFunc(List args) {
-      ensureLibdicoInitialized();
-      applicationDocumentDirectory = args[1];
-      final target = args[2];
-      _checkOpen(target);
-      return _readers[target]!.getAll(args[0]);
-    }
+    await for (final message in commandPort) {
+      if (message is _DicoGetAllEntryPointArgs) {
+        ensureLibdicoInitialized();
 
-    for (var e in cacheInfo.entriesByTarget.entries) {
-      final tmp = await compute(getAllFunc,
-          [e.value.map((e) => e.id), applicationDocumentDirectory, e.key]);
+        final target = message.target;
+        _checkOpen(target);
 
-      for (var e in e.value) {
-        final ent = tmp[e.id];
-
-        if (ent == null) continue;
-
-        final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
-        dicoCache.set(e.target, e.id, data);
-
-        ret.add(e.copyWith(data: data));
+        final ret = _readers[target]!.getAll(message.ids);
+        p.send(ret);
+      } else if (message == null) {
+        break;
       }
     }
 
-    return cacheInfo.entriesFromCache + ret;
+    print("Exit isolate");
+    Isolate.exit();
   }
 
-  static List<ListEntry> getAllSync(List<ListEntry> entries) {
+  static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) {
     final cacheInfo = _getAllFromCache(entries);
     final ret = <ListEntry>[];
 
@@ -234,22 +295,49 @@ class DicoManager {
       return cacheInfo.entriesFromCache;
     }
 
-    for (var e in cacheInfo.entriesByTarget.entries) {
-      final tmp = _readers[e.key]!.getAll(entries.map((e) => e.id));
+    final stopwatch = Stopwatch()..start();
 
-      for (var e in entries) {
-        final ent = tmp[e.id];
+    assert(_getAllReceivePort != null);
+    assert(_getAllEvents != null);
+    assert(_getAllSendPort != null);
 
-        if (ent == null) continue;
+    final futures = cacheInfo.entriesByTarget.entries.map((e) {
+      final args = _DicoGetAllEntryPointArgs(e.key, e.value.map((e) => e.id));
+      _getAllSendPort!.send(args);
 
-        final data = XmlDocument.parse(utf8.decode(tmp[e.id]!));
-        dicoCache.set(e.target, e.id, data);
+      return _getAllEvents!.next.then(
+        (value) {
+          for (var e in e.value) {
+            final ent = value[e.id];
 
-        ret.add(e.copyWith(data: data));
-      }
+            if (ent == null) continue;
+
+            final data = XmlDocument.parse(utf8.decode(value[e.id]!));
+            dicoCache.set(e.target, e.id, data);
+            ret.add(e.copyWith(data: data));
+          }
+        },
+      );
+    });
+
+    return Future.wait(futures).then((value) {
+      print("Got all in ${stopwatch.elapsed}");
+
+      return cacheInfo.entriesFromCache + ret;
+    });
+  }
+
+  static FutureOr<void> open() {
+    if (_getAllSendPort == null) {
+      _getAllReceivePort = ReceivePort();
+      _getAllEvents = StreamQueue(_getAllReceivePort!);
+
+      final args = _DicoGetAllEntryPointsSpawnArgs(
+          applicationDocumentDirectory, _getAllReceivePort!.sendPort);
+
+      return Isolate.spawn(_getAllEntryPoint, args).then((value) =>
+          _getAllEvents!.next.then((value) => _getAllSendPort = value));
     }
-
-    return cacheInfo.entriesFromCache + ret;
   }
 
   static void close() {
@@ -260,10 +348,21 @@ class DicoManager {
 
     _readers.clear();
     _targetHistory.clear();
+
+    _getAllSendPort?.send(null);
+    _getAllSendPort = null;
+    _getAllEvents?.cancel(immediate: true);
+    _getAllEvents = null;
+    _getAllReceivePort = null;
   }
 
   static void load(Iterable<String> targets, {bool loadSubTargets = false}) {
     print("load $targets");
+
+    if (_getAllSendPort == null) {
+      throw Exception("open must be called prior");
+    }
+
     for (var target in targets) {
       _checkOpen(target);
 
