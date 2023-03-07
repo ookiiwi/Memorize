@@ -148,7 +148,9 @@ class _SplashScreen extends State<SplashScreen> {
     applicationDocumentDirectory =
         (await getApplicationDocumentsDirectory()).path;
     temporaryDirectory = (await getTemporaryDirectory()).path;
+    await DicoManager.open();
     await Entry.init();
+    await Dict.fetchTargetList();
   }
 
   @override
@@ -181,6 +183,7 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
     with WidgetsBindingObserver {
   Iterable<String>? _dicoTargets;
   AppLifecycleState? _oldState;
+  Future<void> _open = Future.value();
 
   @override
   void initState() {
@@ -216,7 +219,14 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
 
       if (tmpFile.existsSync()) {
         _dicoTargets = List.from(jsonDecode(tmpFile.readAsStringSync()));
-        DicoManager.load(_dicoTargets ?? []);
+
+        final openRet = DicoManager.open();
+
+        if (openRet is Future) {
+          _open = openRet.then((value) => DicoManager.load(_dicoTargets ?? []));
+        } else {
+          DicoManager.load(_dicoTargets ?? []);
+        }
       }
 
       _dicoTargets = null;
@@ -227,6 +237,15 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
 
   @override
   Widget build(BuildContext context) {
-    return widget.child;
+    return FutureBuilder(
+      future: _open,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          const Material(child: Center(child: CircularProgressIndicator()));
+        }
+
+        return widget.child;
+      },
+    );
   }
 }
