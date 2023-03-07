@@ -44,7 +44,8 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
     routes: [
       GoRoute(
         path: '/home',
-        pageBuilder: (context, state) => mainPageBuilder(const HomePage()),
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: HomePage()),
       ),
       GoRoute(
           path: '/list',
@@ -62,22 +63,17 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
           }),
       GoRoute(
         path: '/search',
-        pageBuilder: (context, state) => mainPageBuilder(const SearchPage()),
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: SearchPage()),
       ),
       GoRoute(
         path: '/settings',
-        pageBuilder: (context, state) => mainPageBuilder(const SettingsPage()),
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: SettingsPage()),
       ),
     ],
   )
 ]);
-
-Page<dynamic> mainPageBuilder(Widget page) {
-  return CustomTransitionPage(
-      child: page,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-          child);
-}
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -102,7 +98,7 @@ class HomePage extends StatelessWidget {
           IconButton(
             onPressed: () {},
             icon: const Icon(Icons.notifications),
-          )
+          ),
         ],
         title: Text(
           'Memo',
