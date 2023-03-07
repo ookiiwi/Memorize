@@ -446,6 +446,18 @@ class _EntryViewier extends State<EntryViewier> {
                 builder: (context, _) => MemoListView(
                   list: list,
                   controller: mlvController,
+                  onTap: (entry) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) {
+                          return EntryView(
+                            entries: entries,
+                            entryId: entry.id,
+                          );
+                        },
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -699,7 +711,11 @@ class EntrySearch extends StatefulWidget {
 class _EntrySearch extends State<EntrySearch> {
   Map<String, List<Widget>> entries = {};
   Map<String, List<ListEntry>> entriesData = {};
+  Map<String, int> findOffset = {};
+  Map<String, Key> targetKey = {};
   int selectedTarget = 0;
+  String prevSearch = '';
+  bool noMoreEntries = false;
 
   late List<String> targets;
   final PageController resultAreasCtrl = PageController();
@@ -732,7 +748,35 @@ class _EntrySearch extends State<EntrySearch> {
       padding: const EdgeInsets.only(top: 10),
       child: entriesData[target]!.isEmpty == true
           ? const Center(child: Text("No result >_<"))
-          : MemoListView(key: UniqueKey(), entries: entriesData[target]!),
+          : MemoListView(
+              key: targetKey[target], // change key if new search
+              entries: entriesData[target]!,
+              onTap: widget.onItemSelected != null
+                  ? (entry) => widget.onItemSelected!(entry)
+                  : null,
+              onLoad: () {
+                return; // Bug in flutter_dico or libdico => segfault
+                if (noMoreEntries) return;
+                print("load more");
+                entriesData[target]!.addAll(
+                    DicoManager.find(target, prevSearch, findOffset[target]!)
+                        .expand((e) => e.ids)
+                        .map((e) => ListEntry(e, target))
+                        .toList());
+
+                final offset = entriesData[target]!.length;
+
+                if (offset < 20) {
+                  noMoreEntries = true;
+
+                  if (offset == 0) return;
+                }
+
+                findOffset[target] = findOffset[target]! + offset;
+
+                setState(() {});
+              },
+            ),
     );
   }
 
@@ -782,7 +826,6 @@ class _EntrySearch extends State<EntrySearch> {
           child: PageView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             controller: resultAreasCtrl,
-            //onPageChanged: (value) => setState(() => selectedTarget = value),
             itemCount: targets.length,
             itemBuilder: (context, i) => buildResultArea(
               context,
@@ -823,15 +866,19 @@ class _EntrySearch extends State<EntrySearch> {
             ),
           ),
           onChanged: (value) {
-            entries[targets[selectedTarget]] = [];
-            entriesData[targets[selectedTarget]] = [];
-
             for (var target in entriesData.keys) {
+              findOffset[target] = 0;
+              targetKey[target] = UniqueKey();
+              entries[target]?.clear();
               entriesData[target] = DicoManager.find(target, value)
                   .expand((e) => e.ids)
                   .map((e) => ListEntry(e, target))
                   .toList();
+
+              findOffset[target] = entriesData[target]!.length;
             }
+
+            prevSearch = value;
 
             setState(() {});
           },
