@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:developer' as dev;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -32,26 +31,50 @@ class ListViewer extends StatefulWidget {
 
   static final Map<String, MemoList> _cache = {};
 
-  static Future<MemoList> preload(FileInfo info) async {
+  static FutureOr<MemoList> preload(FileInfo info) {
     final list = MemoList.open(info.path);
+    final futures = <Future>[];
 
-    EntryViewier.preload(list.entries);
+    for (var e in list.targets) {
+      if (Dict.exists(e)) continue;
 
-    _cache[info.path] = list;
+      futures.add(Dict.download(e));
+    }
 
-    return list;
+    if (futures.isEmpty) {
+      return _preload(list);
+    }
+
+    return Future.wait(futures).then((value) => _preload(list));
+  }
+
+  static FutureOr<MemoList> _preload(MemoList list) {
+    final cnt = 20.clamp(0, list.entries.length);
+    final page = DicoManager.getAll(list.entries.sublist(0, cnt));
+
+    MemoList setEntries(List<ListEntry> entries) {
+      list.entries.setRange(0, cnt, entries);
+      _cache[list.filename] = list;
+      return list;
+    }
+
+    if (page is List<ListEntry>) {
+      return setEntries(page);
+    }
+
+    return page.then((value) => setEntries(value));
   }
 }
 
 class _ListViewer extends State<ListViewer> {
   MemoList? list;
-  List<String>? localTargets;
-  List<String>? remoteTargets;
+  List<String> availableTargets = Dict.listAllTargets()..sort();
   bool _doRename = false;
   Future<void> fLoadTargets = Future.value();
+  List<String> _dltargets = [];
 
   bool get isListInit =>
-      list != null && list!.name.isNotEmpty && list!.target.isNotEmpty;
+      list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
 
   late final _popUpMenuItems = {
     'about': () {
@@ -71,10 +94,6 @@ class _ListViewer extends State<ListViewer> {
 
     stopwatch.start();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      dev.log("build lv in ${stopwatch.elapsed}");
-    });
-
     if (widget.list != null) {
       list = widget.list!..save();
     } else if (widget.fileinfo != null) {
@@ -82,37 +101,30 @@ class _ListViewer extends State<ListViewer> {
     }
 
     if (list != null && isListInit) {
-      // check all targets dl before assign fLoad
-      //fLoadTargets = loadTargets()..then((value) => setState(() {}));
+      fLoadTargets = loadTargets();
     }
   }
 
-  Future<void> loadTargets() async {
+  Future<void> loadTargets() {
     assert(list != null);
 
-    if (list!.entries.isEmpty) return;
+    if (list!.entries.isEmpty) return Future.value();
 
-    final allTargets = await Dict.listRemoteTargets();
-
-    await loadTarget(list!.target, allTargets);
-
-    for (var entry in list!.entries) {
-      await loadTarget(entry.target, allTargets);
-    }
-
-    return;
+    return loadTarget(list!.targets);
   }
 
-  Future<void> loadTarget(String target, List<String> availableTargets) async {
-    for (var tar in availableTargets) {
-      if (tar.startsWith(target)) {
-        if (Dict.exists(tar)) continue;
+  Future<void> loadTarget(Set<String> targets) {
+    final futures = <Future>[];
+    _dltargets = [];
 
-        await Dict.download(tar);
-      }
+    for (var target in targets) {
+      if (Dict.exists(target)) continue;
+
+      futures.add(Dict.download(target));
+      _dltargets.add(target);
     }
 
-    return;
+    return Future.wait(futures);
   }
 
   void openSearchPage() {
@@ -122,7 +134,7 @@ class _ListViewer extends State<ListViewer> {
       PageRouteBuilder(
         pageBuilder: (context, _, __) {
           return EntrySearch(
-            target: list!.target,
+            targets: list!.targets,
             onItemSelected: (entry) {
               if (!list!.entries
                   .any((e) => e.id == entry.id && e.target == entry.target)) {
@@ -201,7 +213,7 @@ class _ListViewer extends State<ListViewer> {
           setState(() {
             if (value.isEmpty) return;
 
-            list ??= MemoList('', '');
+            list ??= MemoList('');
             list?.rename(value);
           });
         },
@@ -212,12 +224,7 @@ class _ListViewer extends State<ListViewer> {
   Widget buildTargetDropDown(BuildContext context) {
     final ValueNotifier targetsNotifier = ValueNotifier([]);
     Future<void> targetDl = Future.value();
-
-    if (localTargets == null) {
-      localTargets = Dict.listTargets().toList()..sort();
-      Dict.listRemoteTargets()
-          .then((value) => setState(() => localTargets = value..sort()));
-    }
+    final mainLangExp = RegExp(r'\w{3}-\w{3}');
 
     return SafeArea(
       child: Center(
@@ -234,23 +241,27 @@ class _ListViewer extends State<ListViewer> {
                   alignment: AlignmentDirectional.center,
                   borderRadius: BorderRadius.circular(20),
                   hint: const Text('Target'),
-                  value: list?.target.isNotEmpty == true ? list!.target : null,
+                  value: list?.targets.isNotEmpty == true
+                      ? list!.targets.first
+                      : null,
                   onChanged: (value) => setState(() {
                     if (value == null) return;
-                    list ??= MemoList('', '');
-                    list!.target = value;
+                    list ??= MemoList('');
+                    list!.targets.add(value);
                     if (list!.name.isNotEmpty) {
                       list!.save();
                     }
 
                     if (!Dict.exists(value)) {
-                      targetDl = Future.wait(localTargets!
-                          .where((e) => e.startsWith(value))
+                      targetDl = Future.wait(availableTargets
+                          .where(
+                              (e) => e.startsWith(value) || value.startsWith(e))
                           .map((e) => Dict.download(e)));
                       setState(() {});
                     }
                   }),
-                  items: localTargets!
+                  items: availableTargets
+                      .where((e) => mainLangExp.hasMatch(e))
                       .map(
                         (e) => DropdownMenuItem(
                           value: e,
@@ -319,12 +330,51 @@ class _ListViewer extends State<ListViewer> {
             future: fLoadTargets,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(child: CircularProgressIndicator());
+                final totalListeners = <ValueNotifier>[];
+                final receivedListeners = <ValueNotifier>[];
+
+                for (var e in _dltargets) {
+                  final p = Dict.getDownloadProgress(e);
+
+                  if (p == null) continue;
+
+                  totalListeners.add(p.total);
+                  receivedListeners.add(p.received);
+                }
+
+                final recListenable = Listenable.merge(receivedListeners);
+
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      AnimatedBuilder(
+                        animation: recListenable,
+                        builder: (context, _) {
+                          double received = 0;
+                          double total = 0;
+
+                          assert(totalListeners.length ==
+                              receivedListeners.length);
+
+                          for (int i = 0; i < totalListeners.length; ++i) {
+                            total += totalListeners[i].value;
+                            received += receivedListeners[i].value;
+                          }
+
+                          return Text(
+                              "${(received / total * 100).toStringAsFixed(0)}%");
+                        },
+                      )
+                    ],
+                  ),
+                );
               }
 
               return Stack(
                 children: [
-                  list?.target.isNotEmpty == true && list!.entries.isNotEmpty
+                  list?.targets.isNotEmpty == true && list!.entries.isNotEmpty
                       ? EntryViewier(
                           list: list!,
                           selectionController: _selectionController,
@@ -372,31 +422,6 @@ class EntryViewier extends StatefulWidget {
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
-
-  static FutureOr<List<ListEntry>> preload(List<ListEntry> entries) =>
-      _loadEntries(entries, 0);
-
-  static FutureOr<List<ListEntry>> _loadEntries(
-      List<ListEntry> entries, int page) async {
-    final start = (page * pageSize).clamp(0, entries.length);
-    final end = (start + pageSize).clamp(0, entries.length);
-    final pageEntries = entries.sublist(start, end);
-    final ret = <ListEntry>[];
-
-    List<ListEntry> ent;
-    if (pageEntries.length == 1) {
-      ent = [
-        pageEntries.first.copyWith(
-            data:
-                DicoManager.get(pageEntries.first.target, pageEntries.first.id))
-      ];
-    } else {
-      ent = await DicoManager.getAll(pageEntries);
-    }
-    ret.addAll(ent);
-
-    return ret;
-  }
 }
 
 class _EntryViewier extends State<EntryViewier> {
@@ -406,22 +431,6 @@ class _EntryViewier extends State<EntryViewier> {
   int get pageSize => EntryViewier.pageSize;
 
   List<ListEntry> get entries => widget.list.entries;
-
-  @override
-  void initState() {
-    super.initState();
-
-    final cnt = pageSize.clamp(0, entries.length);
-    final pageEntries = entries.sublist(0, cnt);
-    final firstPage = <ListEntry>[];
-
-    firstPage.addAll(DicoManager.getAllSync(pageEntries));
-
-    assert(firstPage.length == cnt,
-        "Got ${firstPage.length} entries instead of $cnt");
-
-    entries.replaceRange(0, cnt, firstPage);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -699,9 +708,9 @@ class StatsViewer extends StatelessWidget {
 }
 
 class EntrySearch extends StatefulWidget {
-  const EntrySearch({super.key, this.onItemSelected, required this.target});
+  const EntrySearch({super.key, this.onItemSelected, required this.targets});
 
-  final String target;
+  final Set<String> targets;
   final void Function(ListEntry entry)? onItemSelected;
 
   @override
@@ -717,7 +726,8 @@ class _EntrySearch extends State<EntrySearch> {
   String prevSearch = '';
   bool noMoreEntries = false;
 
-  late List<String> targets;
+  late List<String> targets = widget.targets.toList()
+    ..sort((a, b) => a.length.compareTo(b.length));
   final PageController resultAreasCtrl = PageController();
   final resultAreasIndicatorOffset = ValueNotifier<double>(0.0);
 
@@ -725,12 +735,7 @@ class _EntrySearch extends State<EntrySearch> {
   void initState() {
     super.initState();
 
-    DicoManager.load([widget.target], loadSubTargets: true);
-
-    targets = DicoManager.targets
-        .where((e) => e.startsWith(widget.target))
-        .toList()
-      ..sort();
+    DicoManager.load(targets, loadSubTargets: false);
 
     for (var target in targets) {
       entries[target] = [];
@@ -789,7 +794,7 @@ class _EntrySearch extends State<EntrySearch> {
               return Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: targets.map((e) {
-                  final tar = e.replaceFirst(RegExp('${widget.target}-?'), '');
+                  final tar = e.replaceFirst(RegExp(r'^\w{3}-\w{3}-?'), '');
                   return MaterialButton(
                     minWidth: constraints.maxWidth / targets.length,
                     onPressed: () => resultAreasCtrl.animateToPage(
@@ -930,7 +935,7 @@ class AboutPage extends StatelessWidget {
               const Spacer(),
               Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Text(list.target),
+                child: Text(list.targets.first),
               ),
             ],
           )
