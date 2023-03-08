@@ -71,7 +71,7 @@ class _ListViewer extends State<ListViewer> {
   List<String> availableTargets = Dict.listAllTargets()..sort();
   bool _doRename = false;
   Future<void> fLoadTargets = Future.value();
-  List<String> _dltargets = [];
+  final Map<String, DictDownload> _dltargets = {};
 
   bool get isListInit =>
       list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
@@ -108,20 +108,21 @@ class _ListViewer extends State<ListViewer> {
   Future<void> loadTargets() {
     assert(list != null);
 
-    if (list!.entries.isEmpty) return Future.value();
+    if (list!.targets.isEmpty) return Future.value();
 
-    return loadTarget(list!.targets);
-  }
-
-  Future<void> loadTarget(Set<String> targets) {
     final futures = <Future>[];
-    _dltargets = [];
+    _dltargets.clear();
 
-    for (var target in targets) {
+    for (var target in list!.targets) {
       if (Dict.exists(target)) continue;
 
       futures.add(Dict.download(target));
-      _dltargets.add(target);
+
+      final info = Dict.getDownloadProgress(target);
+
+      if (info != null) {
+        _dltargets[target] = info;
+      }
     }
 
     return Future.wait(futures);
@@ -213,7 +214,7 @@ class _ListViewer extends State<ListViewer> {
           setState(() {
             if (value.isEmpty) return;
 
-            list ??= MemoList('');
+            list ??= MemoList('', {});
             list?.rename(value);
           });
         },
@@ -223,56 +224,59 @@ class _ListViewer extends State<ListViewer> {
 
   Widget buildTargetDropDown(BuildContext context) {
     final ValueNotifier targetsNotifier = ValueNotifier([]);
-    Future<void> targetDl = Future.value();
-    final mainLangExp = RegExp(r'\w{3}-\w{3}');
+    final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
 
     return SafeArea(
       child: Center(
-        child: FutureBuilder(
-          future: targetDl, // TODO: bug -> always loading
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const CircularProgressIndicator();
-            } else {
-              return ValueListenableBuilder(
-                valueListenable: targetsNotifier,
-                builder: (context, _, __) => DropdownButton<String>(
-                  iconSize: 0.0,
-                  alignment: AlignmentDirectional.center,
-                  borderRadius: BorderRadius.circular(20),
-                  hint: const Text('Target'),
-                  value: list?.targets.isNotEmpty == true
-                      ? list!.targets.first
-                      : null,
-                  onChanged: (value) => setState(() {
-                    if (value == null) return;
-                    list ??= MemoList('');
-                    list!.targets.add(value);
-                    if (list!.name.isNotEmpty) {
-                      list!.save();
-                    }
+        child: ValueListenableBuilder(
+          valueListenable: targetsNotifier,
+          builder: (context, _, __) => DropdownButton<String>(
+            iconSize: 0.0,
+            alignment: AlignmentDirectional.center,
+            borderRadius: BorderRadius.circular(20),
+            hint: const Text('Target'),
+            value:
+                list?.targets.isNotEmpty == true ? list!.targets.first : null,
+            onChanged: (value) => setState(() {
+              if (value == null) return;
 
-                    if (!Dict.exists(value)) {
-                      targetDl = Future.wait(availableTargets
-                          .where(
-                              (e) => e.startsWith(value) || value.startsWith(e))
-                          .map((e) => Dict.download(e)));
-                      setState(() {});
-                    }
-                  }),
-                  items: availableTargets
-                      .where((e) => mainLangExp.hasMatch(e))
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e,
-                          child: Text(e),
-                        ),
-                      )
-                      .toList(),
-                ),
-              );
-            }
-          },
+              final futures = <Future>[];
+              _dltargets.clear();
+
+              list ??= MemoList('', {});
+              list!.targets.clear();
+
+              for (var target in availableTargets) {
+                if (!target.startsWith(value) && !value.startsWith(target)) {
+                  continue;
+                }
+
+                if (!Dict.exists(target)) {
+                  futures.add(Dict.download(target));
+
+                  final info = Dict.getDownloadProgress(target);
+
+                  if (info != null) {
+                    _dltargets[target] = info;
+                  }
+                }
+
+                list!.targets.add(target);
+              }
+
+              if (list!.name.isNotEmpty) list!.save();
+              if (futures.isNotEmpty) fLoadTargets = Future.wait(futures);
+            }),
+            items: availableTargets
+                .where((e) => mainLangExp.hasMatch(e))
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e,
+                    child: Text(e),
+                  ),
+                )
+                .toList(),
+          ),
         ),
       ),
     );
@@ -289,7 +293,8 @@ class _ListViewer extends State<ListViewer> {
         title: list?.name.isNotEmpty == true && !_doRename
             ? TextButton(
                 onPressed: () => setState(() => _doRename = true),
-                child: Text(list!.name))
+                child: Text(list!.name),
+              )
             : buildTitleField(context),
         centerTitle: true,
         actions: [
@@ -330,44 +335,40 @@ class _ListViewer extends State<ListViewer> {
             future: fLoadTargets,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
-                final totalListeners = <ValueNotifier>[];
-                final receivedListeners = <ValueNotifier>[];
+                final recListenable = Listenable.merge(_dltargets.values
+                    .fold([], (p, e) => p + [e.total, e.received]));
 
-                for (var e in _dltargets) {
-                  final p = Dict.getDownloadProgress(e);
+                return Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: AnimatedBuilder(
+                    animation: recListenable,
+                    builder: (context, _) {
+                      double received = 0;
+                      double total = 0.1;
+                      int dlCnt = 0;
 
-                  if (p == null) continue;
+                      for (var e in _dltargets.values) {
+                        total += e.total.value;
+                        received += e.received.value;
 
-                  totalListeners.add(p.total);
-                  receivedListeners.add(p.received);
-                }
+                        if (e.total.value == e.received.value) {
+                          ++dlCnt;
+                        }
+                      }
 
-                final recListenable = Listenable.merge(receivedListeners);
-
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(),
-                      AnimatedBuilder(
-                        animation: recListenable,
-                        builder: (context, _) {
-                          double received = 0;
-                          double total = 0;
-
-                          assert(totalListeners.length ==
-                              receivedListeners.length);
-
-                          for (int i = 0; i < totalListeners.length; ++i) {
-                            total += totalListeners[i].value;
-                            received += receivedListeners[i].value;
-                          }
-
-                          return Text(
-                              "${(received / total * 100).toStringAsFixed(0)}%");
-                        },
-                      )
-                    ],
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                                "Download dico ($dlCnt/${_dltargets.length})"),
+                          ),
+                          LinearProgressIndicator(value: received / total)
+                        ],
+                      );
+                    },
                   ),
                 );
               }
