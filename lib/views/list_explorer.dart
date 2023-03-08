@@ -1,8 +1,9 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/selectable.dart';
+import 'package:path/path.dart' as p;
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
@@ -13,52 +14,35 @@ enum Filter { asc, dsc, rct }
 class ListExplorer extends StatefulWidget {
   const ListExplorer({Key? key}) : super(key: key);
 
-  static String current = 'fe';
-
   @override
   State<ListExplorer> createState() => _ListExplorer();
-
-  static void init() {
-    if (kIsWeb) return;
-
-    final dir = Directory('fe');
-    final dirFile = File('fe/.entries');
-
-    if (!dir.existsSync()) dir.createSync();
-    if (!dirFile.existsSync()) {
-      dirFile
-        ..createSync()
-        ..writeAsStringSync('{}');
-    }
-  }
 }
 
 class _ListExplorer extends State<ListExplorer> {
   final key = GlobalKey();
-  late Future<List<FileInfo>> _fItems;
   final _controller = TextEditingController();
   final double globalPadding = 10;
   final _selectionController = SelectionController<FileInfo>();
   final _menuBtnCtrl = MenuButtonController();
   List<Widget> Function()? _menuBuilder;
   Filter filter = Filter.asc;
+  List<FileInfo> _dirContent = [];
 
   double _addBtnTurns = 0.0;
 
   ModalRoute? _route;
   String collectionHistory = '';
 
-  late final String _initDir;
-  String get root => 'fe';
-  String get currentCollection =>
-      Directory.current.path.replaceFirst(RegExp('.*/$root'), '');
+  final root = '$applicationDocumentDirectory/fe';
+  late String currentDir = root;
+  String get currentCollection => currentDir.replaceFirst(RegExp('^$root'), '');
 
   @override
   void initState() {
     super.initState();
 
-    _initDir = Directory.current.path;
-    Directory.current = root;
+    final dir = Directory(root);
+    if (!dir.existsSync()) dir.createSync();
 
     _selectionController.addListener(() {
       bool isEnabled = _selectionController.isEnabled;
@@ -88,19 +72,21 @@ class _ListExplorer extends State<ListExplorer> {
     _controller.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
-    Directory.current = _initDir;
+
     super.dispose();
   }
 
   void _changeCollection(String path) {
+    assert(path.startsWith(root));
     assert(!collectionHistory.startsWith(RegExp(r'(.*\/fe)|fe')));
 
-    if (!collectionHistory.startsWith(path)) {
-      collectionHistory = path;
+    final cleanPath = path.replaceFirst(RegExp('^$root'), '');
+
+    if (!collectionHistory.startsWith(cleanPath)) {
+      collectionHistory = cleanPath;
     }
 
-    Directory.current =
-        '$_initDir/$root/' + path.replaceFirst(RegExp('^/'), '');
+    currentDir = path;
 
     _updateData();
 
@@ -108,36 +94,25 @@ class _ListExplorer extends State<ListExplorer> {
   }
 
   void _updateData() {
-    assert(Directory.current.path.startsWith(RegExp('.*/$root')));
+    assert(currentDir.startsWith(root));
 
-    _fItems = Future.value(
-      List.from(
-        Directory.current.listSync().map((e) {
-          final name = e.path.split('/').last.trim();
+    _dirContent =
+        Directory(currentDir).listSync().fold<List<FileInfo>>([], (p, e) {
+      final name = e.path.split('/').last.trim();
 
-          if (name.startsWith('.')) {
-            return null;
-          }
+      if (name.startsWith('.')) return p;
 
-          return FileInfo(
-            name,
-            e.path,
-            e.statSync().type,
-          );
-        }).toList()
-          ..removeWhere((e) => e == null),
-      ),
-    );
+      return p..add(FileInfo(name, e.path, e.statSync().type));
+    });
   }
 
   Future<bool> _canPop() async {
     if (Navigator.of(context).canPop()) {
       return true;
+    } else if (currentDir != root) {
+      _changeCollection(p.canonicalize('$currentDir/..'));
     }
-    //else if (fs.wd != root) {
-    //  fs.cd('..');
-    //  _updateData();
-    //}
+
     return false;
   }
 
@@ -145,6 +120,7 @@ class _ListExplorer extends State<ListExplorer> {
     return [
       FloatingActionButton(
         heroTag: "dirAddBtn",
+        tooltip: "New collection",
         onPressed: () {
           _closeMenu();
 
@@ -156,7 +132,7 @@ class _ListExplorer extends State<ListExplorer> {
               hasConfirmed: (value) {
                 setState(() {
                   if (value && _controller.text.isNotEmpty) {
-                    final dir = Directory(_controller.text);
+                    final dir = Directory(p.join(currentDir, _controller.text));
 
                     assert(!dir.existsSync());
 
@@ -171,10 +147,11 @@ class _ListExplorer extends State<ListExplorer> {
         child: const Icon(Icons.folder),
       ),
       FloatingActionButton(
+        tooltip: "New list",
         onPressed: () {
           _closeMenu();
 
-          context.push('/list');
+          context.push('/list', extra: {'dir': currentDir});
         },
         child: const Icon(Icons.list),
       )
@@ -184,6 +161,7 @@ class _ListExplorer extends State<ListExplorer> {
   List<Widget> buildSelectionButtons() {
     return [
       FloatingActionButton(
+        tooltip: 'Delete item',
         onPressed: () {
           for (var e in _selectionController.selection) {
             File(e.path).deleteSync(recursive: true);
@@ -210,6 +188,7 @@ class _ListExplorer extends State<ListExplorer> {
     _menuBtnCtrl.close();
     _selectionController.isEnabled = false;
     _selectionController.selection.clear();
+    _menuBuilder = null; // release widgets
 
     setState(() {});
   }
@@ -279,9 +258,10 @@ class _ListExplorer extends State<ListExplorer> {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
+              tooltip: 'Home collection',
               padding: const EdgeInsets.only(),
               onPressed: () {
-                _changeCollection('/');
+                _changeCollection(root);
               },
               icon: Icon(
                 Icons.home_rounded,
@@ -292,7 +272,8 @@ class _ListExplorer extends State<ListExplorer> {
               child: CollectionHistory(
                   history: collectionHistory,
                   current: currentCollection,
-                  onCollectionChange: _changeCollection),
+                  onCollectionChange: (value) =>
+                      _changeCollection(p.join(root, value))),
             ),
             Padding(
               padding: const EdgeInsets.only(left: 0),
@@ -313,6 +294,8 @@ class _ListExplorer extends State<ListExplorer> {
 
   @override
   Widget build(BuildContext ctx) {
+    _sortItems(_dirContent);
+
     return Container(
       padding: EdgeInsets.only(
         top: globalPadding,
@@ -323,48 +306,26 @@ class _ListExplorer extends State<ListExplorer> {
         Column(
           children: [
             buildHeader(),
-
-            //page view
             Expanded(
               child: Container(
                 margin: const EdgeInsets.only(top: 20),
                 decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     color: Theme.of(context).colorScheme.background),
-                child: FutureBuilder<List<FileInfo>>(
-                  future: _fItems,
-                  builder: ((context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    } else {
-                      final items = snapshot.data as List<FileInfo>;
-                      _sortItems(items);
-
-                      return PageView.builder(
-                        itemCount: 1,
-                        itemBuilder: (ctx, i) {
-                          return Container(
-                            color: Colors.transparent,
-                            child: ListExplorerItems(
-                              selectionController: _selectionController,
-                              items: items,
-                              onItemTap: (info) {
-                                if (info.type ==
-                                    FileSystemEntityType.directory) {
-                                  _changeCollection(info.path
-                                      .replaceFirst(RegExp('.*/$root'), ''));
-                                  setState(() {});
-                                } else {
-                                  context
-                                      .push('/list', extra: {'fileinfo': info});
-                                }
-                              },
-                            ),
-                          );
-                        },
-                      );
-                    }
-                  }),
+                child: Container(
+                  color: Colors.transparent,
+                  child: ListExplorerItems(
+                    selectionController: _selectionController,
+                    items: _dirContent,
+                    onItemTap: (info) {
+                      if (info.type == FileSystemEntityType.directory) {
+                        _changeCollection(info.path);
+                        setState(() {});
+                      } else {
+                        context.push('/list', extra: {'fileinfo': info});
+                      }
+                    },
+                  ),
                 ),
               ),
             ),
@@ -377,6 +338,7 @@ class _ListExplorer extends State<ListExplorer> {
             controller: _menuBtnCtrl,
             button: FloatingActionButton(
               heroTag: "listMenuBtn",
+              tooltip: "Open add menu",
               onPressed: () {
                 if (_selectionController.isEnabled) {
                   _selectionController.isEnabled = false;
@@ -477,8 +439,14 @@ class _ListExplorerItems extends State<ListExplorerItems> {
               final item = items[i];
 
               return VisibilityDetector(
-                key: ValueKey(i),
-                onVisibilityChanged: (_) => ListViewer.preload(item),
+                key: ValueKey(item.path),
+                onVisibilityChanged: item.type == FileSystemEntityType.directory
+                    ? null
+                    : (_) {
+                        if (File(item.path).existsSync()) {
+                          ListViewer.preload(item);
+                        }
+                      },
                 child: Selectable(
                   value: item,
                   controller: selectionController,
@@ -705,9 +673,10 @@ class _CollectionHistory extends State<CollectionHistory> {
       scrollDirection: Axis.horizontal,
       itemCount: collections.length,
       itemBuilder: (context, i) {
-        final path = '/' + collections.sublist(0, i + 1).join('/');
+        final path = collections.sublist(0, i + 1).join('/');
+        final current = widget.current?.replaceFirst(RegExp(r'^\/'), '');
 
-        if (path == widget.current) {
+        if (path == current) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => controller.scrollToIndex(i),
           );
@@ -723,8 +692,7 @@ class _CollectionHistory extends State<CollectionHistory> {
             },
             child: Text(
               collections[i],
-              style: TextStyle(
-                  color: path == widget.current ? Colors.white : null),
+              style: TextStyle(color: path == current ? Colors.white : null),
             ),
           ),
         );
