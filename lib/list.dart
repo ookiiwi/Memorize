@@ -83,8 +83,6 @@ class MemoList {
 
     if (file.existsSync()) {
       file.renameSync(_filename);
-    } else {
-      File(_filename).createSync();
     }
   }
 }
