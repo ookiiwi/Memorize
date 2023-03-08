@@ -34,13 +34,14 @@ class ListEntry extends Equatable {
 }
 
 class MemoList {
-  MemoList(String filename)
+  MemoList(String filename, this.targets)
       : _filename = filename,
         id = ObjectId(),
         entries = [];
   MemoList.fromJson(String filename, Map<String, dynamic> json)
       : _filename = filename,
         id = ObjectId.fromHexString(json['id']),
+        targets = Set.from(json['targets']),
         entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))) {
     for (var e in entries) {
       targets.add(e.target);
@@ -59,10 +60,11 @@ class MemoList {
   final List<ListEntry> entries;
   String get filename => _filename;
   String get name => basename(_filename);
-  Set<String> get targets => entries.map((e) => e.target).toSet();
+  final Set<String> targets;
 
   Map<String, dynamic> toJson() => {
         'id': id.hexString,
+        'targets': targets.toList(),
         'entries': entries.map((e) => e.toJson()).toList(),
       };
 
