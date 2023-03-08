@@ -54,7 +54,7 @@ class Dict {
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
     final file = File(filename);
 
-    return file.existsSync() && _dlManager[target] == null;
+    return file.existsSync();
   }
 
   static DictDownload? getDownloadProgress(String target) => _dlManager[target];
@@ -62,6 +62,7 @@ class Dict {
   static Future<Response> download(String target) {
     final filename =
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
+    final tmpfilename = '$filename.tmp';
 
     try {
       final receivedNotifier = ValueNotifier(0.0);
@@ -73,7 +74,7 @@ class Dict {
 
       final response = _dio.download(
         '/$target.$_fileExtension',
-        filename,
+        tmpfilename,
         onReceiveProgress: (received, total) {
           if (total != -1) {
             if (totalNotifier.value == 0.1) {
@@ -88,7 +89,14 @@ class Dict {
       _dlManager[target] =
           DictDownload(receivedNotifier, totalNotifier, response);
 
-      return response..then((value) => _dlManager.remove(target));
+      return response
+        ..then((value) {
+          final tmpfile = File(tmpfilename);
+          tmpfile.copySync(filename);
+          tmpfile.deleteSync();
+
+          _dlManager.remove(target);
+        });
     } on DioError {
       final file = File(filename);
       if (file.existsSync()) file.deleteSync();
@@ -115,7 +123,11 @@ class Dict {
     return dir.listSync().fold([], (p, e) {
       final name = e.path.split('/').last;
 
-      return [...p, if (!name.startsWith('.')) name.replaceFirst('.dico', '')];
+      return [
+        ...p,
+        if (!name.startsWith('.') && name.endsWith('.dico'))
+          name.replaceFirst('.dico', '')
+      ];
     });
   }
 
@@ -150,7 +162,9 @@ class Dict {
 
       file.writeAsStringSync(jsonEncode(targets));
     } on DioError {
-      rethrow;
+      if (listAllTargets().isEmpty) {
+        throw Exception("Target list don't exists localy");
+      }
     }
   }
 }
