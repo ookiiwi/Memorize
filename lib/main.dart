@@ -6,13 +6,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/views/mobile/main.dart'
     if (dart.library.js) 'package:memorize/views/web/main.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_io/io.dart';
+
+/// Must be called only once on startup
+Future<void> loadData() async {
+  final appRoot = await getApplicationDocumentsDirectory();
+  Directory.current = appRoot;
+
+  applicationDocumentDirectory =
+      (await getApplicationDocumentsDirectory()).path;
+  temporaryDirectory = (await getTemporaryDirectory()).path;
+  await DicoManager.open();
+  await Entry.init();
+  await Dict.fetchTargetList();
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -138,19 +150,6 @@ class _SplashScreen extends State<SplashScreen> {
   void initState() {
     super.initState();
     _dataLoaded = loadData();
-  }
-
-  Future<void> loadData() async {
-    final appRoot = await getApplicationDocumentsDirectory();
-    Directory.current = appRoot;
-    ListExplorer.init();
-
-    applicationDocumentDirectory =
-        (await getApplicationDocumentsDirectory()).path;
-    temporaryDirectory = (await getTemporaryDirectory()).path;
-    await DicoManager.open();
-    await Entry.init();
-    await Dict.fetchTargetList();
   }
 
   @override
