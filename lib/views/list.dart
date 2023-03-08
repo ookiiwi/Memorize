@@ -11,20 +11,25 @@ import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
+import 'package:path/path.dart' as p;
 
 class ListViewer extends StatefulWidget {
-  const ListViewer({super.key})
+  const ListViewer({super.key, required this.dir})
       : list = null,
-        fileinfo = null;
+        fileinfo = null,
+        assert(dir != '');
   const ListViewer.fromList({super.key, required this.list})
       : fileinfo = null,
+        dir = '',
         assert(list != null);
   ListViewer.fromFile({super.key, required this.fileinfo})
       : list = _cache[fileinfo?.path],
+        dir = '',
         assert(fileinfo != null);
 
   final MemoList? list;
   final FileInfo? fileinfo;
+  final String dir;
 
   @override
   State<StatefulWidget> createState() => _ListViewer();
@@ -215,7 +220,13 @@ class _ListViewer extends State<ListViewer> {
             if (value.isEmpty) return;
 
             list ??= MemoList('', {});
-            list?.rename(value);
+            if (list!.filename.isEmpty) {
+              assert(widget.dir.isNotEmpty);
+              list!.rename(p.join(widget.dir, value));
+              list!.save();
+            } else {
+              list!.rename(value);
+            }
           });
         },
       ),
@@ -286,10 +297,7 @@ class _ListViewer extends State<ListViewer> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-        ),
+        leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
         title: list?.name.isNotEmpty == true && !_doRename
             ? TextButton(
                 onPressed: () => setState(() => _doRename = true),
