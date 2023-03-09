@@ -32,6 +32,7 @@ class _ListExplorer extends State<ListExplorer> {
 
   ModalRoute? _route;
   String collectionHistory = '';
+  final collectionHistoryCtrl = AutoScrollController();
 
   final root = '$applicationDocumentDirectory/fe';
   late String currentDir = root;
@@ -82,6 +83,7 @@ class _ListExplorer extends State<ListExplorer> {
 
     final cleanPath = path.replaceFirst(RegExp('^$root'), '');
 
+    // update history if path longer or different
     if (!collectionHistory.startsWith(cleanPath)) {
       collectionHistory = cleanPath;
     }
@@ -128,18 +130,22 @@ class _ListExplorer extends State<ListExplorer> {
             context: context,
             builder: (ctx) => TextFieldDialog(
               controller: _controller,
-              hintText: 'dirname',
+              hintText: 'Collection name',
               hasConfirmed: (value) {
-                setState(() {
-                  if (value && _controller.text.isNotEmpty) {
-                    final dir = Directory(p.join(currentDir, _controller.text));
+                if (value && _controller.text.isNotEmpty) {
+                  final dir = Directory(p.join(currentDir, _controller.text));
 
-                    assert(!dir.existsSync());
-
-                    dir.createSync();
-                    _updateData();
+                  if (dir.existsSync()) {
+                    return '${_controller.text} already exists';
                   }
-                });
+
+                  dir.createSync();
+                  _updateData();
+                }
+
+                setState(() {});
+
+                return null;
               },
             ),
           );
@@ -165,6 +171,14 @@ class _ListExplorer extends State<ListExplorer> {
         onPressed: () {
           for (var e in _selectionController.selection) {
             File(e.path).deleteSync(recursive: true);
+
+            final cleanPath = e.path.replaceFirst(RegExp('^$root'), '');
+
+            if (e.type == FileSystemEntityType.directory &&
+                collectionHistory.startsWith(cleanPath)) {
+              collectionHistory =
+                  cleanPath.replaceFirst(RegExp(r'\/[^\/]*$'), '');
+            }
           }
 
           _updateData();
@@ -262,6 +276,10 @@ class _ListExplorer extends State<ListExplorer> {
               padding: const EdgeInsets.only(),
               onPressed: () {
                 _changeCollection(root);
+
+                if (collectionHistory.isNotEmpty) {
+                  collectionHistoryCtrl.scrollToIndex(0);
+                }
               },
               icon: Icon(
                 Icons.home_rounded,
@@ -270,6 +288,7 @@ class _ListExplorer extends State<ListExplorer> {
             ),
             Expanded(
               child: CollectionHistory(
+                  scrollController: collectionHistoryCtrl,
                   history: collectionHistory,
                   current: currentCollection,
                   onCollectionChange: (value) =>
@@ -554,7 +573,9 @@ class TextFieldDialog extends StatefulWidget {
   final TextEditingController? controller;
   final String? confirmText;
   final String? cancelText;
-  final void Function(bool value) hasConfirmed;
+
+  /// If returned value != null, it is displayed as an error message
+  final String? Function(bool value) hasConfirmed;
 
   @override
   State<StatefulWidget> createState() => _TextFieldDialog();
@@ -565,36 +586,46 @@ class _TextFieldDialog extends State<TextFieldDialog> {
   TextEditingController? get controller => widget.controller;
   String? get confirmText => widget.confirmText;
   String? get cancelText => widget.cancelText;
-  void Function(bool value) get hasConfirmed => widget.hasConfirmed;
+  String? Function(bool value) get hasConfirmed => widget.hasConfirmed;
+  String? _errorMessage;
 
   Widget _buildDialog() {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        fillColor: Theme.of(context).colorScheme.background,
-        filled: true,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          fillColor: Colors.transparent,
+          filled: true,
+          hintText: hintText,
+          errorText: _errorMessage,
         ),
-        hintText: hintText,
       ),
     );
   }
 
-  Widget _buildConfirmBtn(
-      {required bool Function() onTap, required String text}) {
+  Widget _buildConfirmBtn({required bool value, required String text}) {
     return ConfirmationButton(
-        onTap: () {
-          hasConfirmed(onTap());
-          controller?.clear();
-          Navigator.of(context).pop();
-        },
-        text: text);
+      text: text,
+      onTap: () {
+        _errorMessage = hasConfirmed(value);
+
+        if (_errorMessage != null) {
+          setState(() {});
+          return;
+        }
+
+        controller?.clear();
+        Navigator.of(context).pop();
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      elevation: 0,
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -602,18 +633,22 @@ class _TextFieldDialog extends State<TextFieldDialog> {
           Container(
             margin: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(30), color: Colors.white),
+              borderRadius: BorderRadius.circular(30),
+              color: Colors.white,
+            ),
             child: _buildDialog(),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildConfirmBtn(
-                  onTap: () => false, text: cancelText ?? 'Cancel'),
-              _buildConfirmBtn(
-                  onTap: () => true, text: confirmText ?? 'Confirm'),
-            ],
-          )
+          Padding(
+            padding: const EdgeInsets.all(5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildConfirmBtn(value: false, text: cancelText ?? 'Cancel'),
+                const SizedBox(width: 20),
+                _buildConfirmBtn(value: true, text: confirmText ?? 'Confirm'),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -629,18 +664,29 @@ class ConfirmationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primaryContainer;
+    final onPrimaryColor = Theme.of(context).colorScheme.onPrimaryContainer;
+
     return GestureDetector(
-        onTap: () {
-          onTap();
-        },
-        child: Container(
-          height: 50,
-          width: 100,
-          margin: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-              color: Colors.blue, borderRadius: BorderRadius.circular(30)),
-          child: Center(child: Text(text)),
-        ));
+      onTap: () {
+        onTap();
+      },
+      child: Container(
+        height: 50,
+        width: 100,
+        margin: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: primaryColor,
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(color: onPrimaryColor),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -649,10 +695,12 @@ class CollectionHistory extends StatefulWidget {
       {super.key,
       required this.history,
       this.current,
+      this.scrollController,
       required this.onCollectionChange});
 
   final String history;
   final String? current;
+  final AutoScrollController? scrollController;
   final void Function(String path) onCollectionChange;
 
   @override
@@ -663,7 +711,7 @@ class _CollectionHistory extends State<CollectionHistory> {
   List<String> get collections =>
       widget.history.split('/')..removeWhere((e) => e.isEmpty);
 
-  final controller = AutoScrollController();
+  late final controller = widget.scrollController ?? AutoScrollController();
 
   @override
   Widget build(BuildContext context) {
