@@ -57,8 +57,10 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
                   fileinfo: extra!['fileinfo'] as FileInfo);
             } else if (extra?.containsKey('list') == true) {
               return ListViewer.fromList(list: extra!['list']);
+            } else if (extra?.containsKey('dir') == true) {
+              return ListViewer(dir: extra!['dir']);
             } else {
-              return const ListViewer();
+              throw Exception('Invalid list arguments');
             }
           }),
       GoRoute(
