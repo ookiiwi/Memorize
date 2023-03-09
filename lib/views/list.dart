@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -77,6 +78,7 @@ class _ListViewer extends State<ListViewer> {
   bool _doRename = false;
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
+  String? _listnameError;
 
   bool get isListInit =>
       list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
@@ -213,17 +215,29 @@ class _ListViewer extends State<ListViewer> {
         autofocus: true,
         controller: TextEditingController(text: list?.name),
         decoration: InputDecoration(
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.circular(20))),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          errorText: _listnameError,
+        ),
         onSubmitted: (value) {
           setState(() {
             if (value.isEmpty) return;
 
-            list ??= MemoList('', {});
-            if (list!.filename.isEmpty) {
+            final filename = p.join(widget.dir, value);
+
+            // Check if filename already exists
+            if (filename != list?.filename && File(filename).existsSync()) {
+              _listnameError = '$value already exists';
+              return;
+            }
+
+            _listnameError = null;
+
+            if (list == null) {
               assert(widget.dir.isNotEmpty);
-              list!.rename(p.join(widget.dir, value));
-              list!.save();
+
+              list = MemoList(filename, {})..save();
             } else {
               list!.rename(value);
             }
