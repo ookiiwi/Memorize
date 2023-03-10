@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/widgets/entry/base.dart';
 import 'package:xml/xml.dart';
 
 class DictDownload {
@@ -16,7 +17,7 @@ class DictDownload {
 
   final ValueNotifier<double> received;
   final ValueNotifier<double> total;
-  final Future<Response> response;
+  final Future<void> response;
 }
 
 class Dict {
@@ -59,7 +60,7 @@ class Dict {
 
   static DictDownload? getDownloadProgress(String target) => _dlManager[target];
 
-  static Future<Response> download(String target) {
+  static Future<void> download(String target) {
     final filename =
         '$applicationDocumentDirectory/dict/$target.$_fileExtension';
     final tmpfilename = '$filename.tmp';
@@ -84,19 +85,20 @@ class Dict {
             receivedNotifier.value = received.toDouble();
           }
         },
-      );
+      ).then((value) {
+        final tmpfile = File(tmpfilename);
+        tmpfile.copySync(filename);
+        tmpfile.deleteSync();
+
+        _dlManager.remove(target);
+
+        return Entry.init();
+      });
 
       _dlManager[target] =
           DictDownload(receivedNotifier, totalNotifier, response);
 
-      return response
-        ..then((value) {
-          final tmpfile = File(tmpfilename);
-          tmpfile.copySync(filename);
-          tmpfile.deleteSync();
-
-          _dlManager.remove(target);
-        });
+      return response;
     } on DioError {
       final file = File(filename);
       if (file.existsSync()) file.deleteSync();
