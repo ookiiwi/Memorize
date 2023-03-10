@@ -1,10 +1,9 @@
 import 'package:kana_kit/kana_kit.dart';
-import 'package:string_similarity/string_similarity.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'package:characters/characters.dart';
 
 const kanaKit = KanaKit();
-late final Map<String, List<String>> maptable;
+Map<String, List<String>> maptable = {};
 
 class FuriganaText {
   FuriganaText(this.text, [this.furigana]);
