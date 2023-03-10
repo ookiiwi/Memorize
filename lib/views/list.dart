@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dico/flutter_dico.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
@@ -84,6 +86,58 @@ class _ListViewer extends State<ListViewer> {
       list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
 
   late final _popUpMenuItems = {
+    if (kDebugMode)
+      'gen': () {
+        final kanji = {
+          '愛',
+          '木',
+          '目',
+          '炎',
+          '車',
+          '人',
+          '薬',
+          '森',
+          '金',
+          '刀',
+          '竜',
+          '胸',
+          '花',
+          '火',
+          '日',
+          '血',
+          '地',
+          '針',
+          '千',
+          '乳',
+          '赤',
+          '茶',
+          '青',
+          '緑',
+          '帆',
+          '戸',
+          '世',
+          '実',
+          '美',
+          '詩',
+          '行',
+          '字',
+          '亜',
+          '有',
+          '或',
+          '歩',
+          '里',
+          '回',
+          '程'
+        };
+
+        for (var e in kanji) {
+          list?.entries
+              .add(ListEntry(Reader.dicoidFromKey(e), 'jpn-eng-kanji'));
+          list?.save();
+
+          setState(() {});
+        }
+      },
     'about': () {
       assert(isListInit);
       Navigator.of(context).push(
@@ -102,7 +156,7 @@ class _ListViewer extends State<ListViewer> {
     stopwatch.start();
 
     if (widget.list != null) {
-      list = widget.list!..save();
+      list = widget.list;
     } else if (widget.fileinfo != null) {
       list = MemoList.open(widget.fileinfo!.path);
     }
@@ -144,13 +198,19 @@ class _ListViewer extends State<ListViewer> {
           return EntrySearch(
             targets: list!.targets,
             onItemSelected: (entry) {
-              if (!list!.entries
-                  .any((e) => e.id == entry.id && e.target == entry.target)) {
+              bool addEntry = !list!.entries
+                  .any((e) => e.id == entry.id && e.target == entry.target);
+
+              if (addEntry) {
                 list!.entries.add(entry);
                 list!.save();
               }
 
-              Navigator.of(context).maybePop();
+              Navigator.of(context).maybePop().then((value) {
+                if (addEntry) {
+                  setState(() {});
+                }
+              });
             },
           );
         },
@@ -397,7 +457,7 @@ class _ListViewer extends State<ListViewer> {
 
               return Stack(
                 children: [
-                  list?.targets.isNotEmpty == true && list!.entries.isNotEmpty
+                  isListInit && list!.entries.isNotEmpty
                       ? EntryViewier(
                           list: list!,
                           selectionController: _selectionController,
