@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 class MemoListViewController extends ChangeNotifier {
   bool _isSelectionEnabled = false;
@@ -21,10 +24,12 @@ class MemoListView extends StatefulWidget {
       this.entries = const [],
       this.controller,
       this.onTap,
-      this.onLoad});
+      this.onLoad,
+      this.itemExtent = 50});
 
   final MemoList? list;
   final List<ListEntry> entries;
+  final int itemExtent;
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
   final VoidCallback? onLoad;
@@ -36,15 +41,19 @@ class MemoListView extends StatefulWidget {
 class _MemoListView extends State<MemoListView> {
   List<ListEntry> get entries => widget.list?.entries ?? widget.entries;
   MemoListViewController? get controller => widget.controller;
-  final extent = 500.0;
-  int loadedEntries = 0;
-  bool _loadingEntries = false;
+  int get itemExtent => widget.itemExtent;
+
+  final scrollController = ScrollController();
+
+  int pageCnt = 10;
+  int prevPage = -1;
+  int currentPage = 0;
+  int nextPage = 1;
 
   @override
   void initState() {
     super.initState();
 
-    loadEntries(extent + 1);
     controller?.addListener(_controllerListener);
   }
 
@@ -56,6 +65,16 @@ class _MemoListView extends State<MemoListView> {
   void dispose() {
     controller?.removeListener(_controllerListener);
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MemoListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // reload current page
+    _loadPage(prevPage);
+    _loadPage(currentPage);
+    _loadPage(nextPage);
   }
 
   Widget buildEntry(BuildContext context, ListEntry entry) {
@@ -81,7 +100,8 @@ class _MemoListView extends State<MemoListView> {
                   child: EntryRenderer(
                     mode: DisplayMode.preview,
                     entry: Entry.guess(
-                      xmlDoc: entry.data!,
+                      xmlDoc:
+                          entry.data ?? DicoManager.get(entry.target, entry.id),
                       target: entry.target,
                     ),
                   ),
@@ -100,7 +120,6 @@ class _MemoListView extends State<MemoListView> {
               setState(() {
                 entries.remove(entry);
                 widget.list?.save();
-                --loadedEntries;
               });
             },
             icon: const Icon(Icons.cancel_outlined),
@@ -109,60 +128,97 @@ class _MemoListView extends State<MemoListView> {
     ]);
   }
 
-  void loadEntries(double extentAfter) {
-    final loadCntMax =
-        (entries.length - loadedEntries).clamp(0, entries.length);
-    final loadCnt = 20.clamp(0, loadCntMax);
+  void _unloadPage(int page) {
+    final start = (page * pageCnt).clamp(0, entries.length);
+    final end = (start + pageCnt).clamp(0, entries.length);
 
-    if (_loadingEntries || extentAfter < extent || loadCntMax == 0) return;
+    for (int i = 0; i < end; ++i) {
+      entries[i] = entries[i].copyWith();
+    }
+  }
 
-    _loadingEntries = true;
+  /// setState on resolve
+  FutureOr<void> _loadPage(int page) {
+    final start = (page * pageCnt).clamp(0, entries.length);
+    final end = (start + pageCnt).clamp(0, entries.length);
 
-    assert(loadedEntries + loadCnt <= entries.length);
+    if (start == end) return Future.value();
 
-    void setEntries(List<ListEntry> page) {
-      entries.setRange(loadedEntries, loadedEntries + loadCnt, page);
-
-      _loadingEntries = false;
-      loadedEntries += loadCnt;
-
-      if (mounted) setState(() {});
+    final pageContent = DicoManager.getAll(entries.sublist(start, end));
+    if (pageContent is Future<List<ListEntry>>) {
+      return pageContent.then((value) {
+        entries.setRange(start, end, value);
+        if (mounted) setState(() {});
+      });
     }
 
-    final tmp = DicoManager.getAll(
-        entries.sublist(loadedEntries, loadedEntries + loadCnt));
+    entries.setRange(start, end, pageContent);
+    setState(() {});
+  }
 
-    // slip first page
-    if (widget.onLoad != null && loadedEntries != 0) widget.onLoad!();
+  bool isCenterOfPage(int i) {
+    int page = i ~/ pageCnt;
+    int index = i - pageCnt * page;
 
-    if (tmp is List<ListEntry>) {
-      setEntries(tmp); // avoid async dispatch overhead
-    } else {
-      tmp.then((value) => setEntries(value));
-    }
+    return index == pageCnt ~/ 2;
   }
 
   @override
   Widget build(BuildContext context) {
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        loadEntries(notification.metrics.extentAfter);
-
-        return false;
-      },
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(
-            left: 10, right: 10, bottom: kBottomNavigationBarHeight + 56 + 10),
-        separatorBuilder: (context, index) => Divider(
-          indent: 12,
-          endIndent: 12,
-          thickness: 0.2,
-          color: Theme.of(context).colorScheme.outline,
-        ),
-        itemCount: loadedEntries,
-        itemBuilder: (context, i) => buildEntry(context, entries[i]),
+    return ListView.separated(
+      controller: scrollController,
+      shrinkWrap: true,
+      padding: const EdgeInsets.only(
+          left: 10, right: 10, bottom: kBottomNavigationBarHeight + 56 + 10),
+      separatorBuilder: (context, index) => Divider(
+        indent: 12,
+        endIndent: 12,
+        thickness: 0.2,
+        color: Theme.of(context).colorScheme.outline,
       ),
+      itemCount: entries.length,
+      itemBuilder: (context, i) => isCenterOfPage(i)
+          ? Container(
+              color: Colors.amber,
+              child: VisibilityDetector(
+                key: ValueKey(i),
+                onVisibilityChanged: (info) {
+                  if (info.visibleFraction != 1) return;
+
+                  final page = i ~/ pageCnt;
+
+                  print('page: $page');
+
+                  if (page == nextPage) {
+                    print("next unload $prevPage load ${nextPage + 1}");
+
+                    if (prevPage >= 0) _unloadPage(prevPage);
+
+                    ++prevPage;
+                    ++currentPage;
+                    ++nextPage;
+
+                    if (nextPage * pageCnt < entries.length) {
+                      _loadPage(nextPage);
+                    }
+                  } else if (page == prevPage) {
+                    print("prev unload $nextPage load ${prevPage - 1}");
+
+                    if (nextPage * pageCnt < entries.length) {
+                      _unloadPage(nextPage);
+                    }
+
+                    --prevPage;
+                    --currentPage;
+                    --nextPage;
+
+                    _loadPage(prevPage);
+                  }
+                },
+                child: buildEntry(context, entries[i]),
+              ),
+            )
+          : buildEntry(context, entries[i]),
     );
   }
 }
