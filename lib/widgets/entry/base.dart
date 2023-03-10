@@ -45,26 +45,35 @@ abstract class Entry {
   List<Widget> buildSenses(BuildContext context);
   List<Widget> buildNotes(BuildContext context);
 
-  static FutureOr<void> init() async {
+  static FutureOr<void> init() {
     final localTargets = Dict.listTargets().join(",");
 
-    if (RegExp(r"^jpn-.*").hasMatch(localTargets)) {
+    if (RegExp(r"jpn-\w{3}(-\w+)?").hasMatch(localTargets)) {
       final filepath =
           join(applicationDocumentDirectory, 'maptable', 'kanji.json');
       File file = File(filepath);
 
-      if (!file.existsSync()) {
-        await Dio().download('http://192.168.1.13:8080/kanji.json', filepath);
+      void initMaptable() {
+        final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
+          if (key is String) {
+            return List<String>.from(value as List);
+          }
+
+          return value;
+        });
+
+        maptable = Map<String, List<String>>.from(tmp);
       }
 
-      final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
-        if (key is String) {
-          return List<String>.from(value as List);
-        }
-
-        return value;
-      });
-      maptable = Map<String, List<String>>.from(tmp);
+      if (!file.existsSync()) {
+        Dio()
+            .download('http://192.168.1.13:8080/kanji.json', filepath)
+            .then((value) {
+          initMaptable();
+        });
+      } else {
+        initMaptable();
+      }
     }
   }
 }
