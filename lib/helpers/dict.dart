@@ -65,7 +65,9 @@ class Dict {
 
     if (!dicodir.existsSync()) return null;
 
-    final content = dicodir.listSync().map((e) => e.path).toList()..sort();
+    final content = dicodir.listSync().fold<List<String>>(
+        [], (p, e) => e.path.endsWith('.dico') ? [...p, e.path] : p).toList()
+      ..sort();
 
     return content.isEmpty ? null : join(dicodir.path, content.last);
   }
