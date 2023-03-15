@@ -10,6 +10,7 @@ import 'package:memorize/app_constants.dart';
 import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
 class DictDownload {
@@ -22,48 +23,112 @@ class DictDownload {
 
 class Dict {
   static final _dlManager = <String, DictDownload>{};
+  static final _updatableTargets = <String>{};
+  static final _updatableListeners = <VoidCallback>[];
   static const _fileExtension = 'dico';
   static final _dio =
       Dio(BaseOptions(baseUrl: 'http://192.168.1.13:8080/${Writer.version}'));
   static final _targetListFilepath =
       '$applicationDocumentDirectory/targets.json';
 
-  static Reader open(String target) =>
-      Reader('$applicationDocumentDirectory/dict/$target.$_fileExtension');
+  static Set<String> get updatableTargets => Set.from(_updatableTargets);
 
-  static String get(int id, String target) {
-    final dir = applicationDocumentDirectory;
-    final reader = Reader('$dir/dict/$target.$_fileExtension');
-    final ret = _get([id, reader]);
+  static Reader open(String target, [String? version]) {
+    final diconame = version != null
+        ? '$applicationDocumentDirectory/dict/$target/$target-$version.$_fileExtension'
+        : _getLatestDico(target);
 
-    print('get close reader');
-    reader.close();
+    if (diconame == null) {
+      throw Exception("Cannot get version for $target");
+    }
 
-    return ret;
+    return Reader(diconame);
   }
 
-  static String _get(List args) {
-    final id = args[0];
-    final reader = args[1];
+  static String get(int id, String target, [String? dicoVersion]) {
+    final reader = open(target);
     final ret = reader.get(id);
+
+    reader.close();
 
     return utf8.decode(ret);
   }
 
-  static bool exists(String target) {
-    final filename =
-        '$applicationDocumentDirectory/dict/$target.$_fileExtension';
-    final file = File(filename);
+  static void addUpdateListener(VoidCallback listener) =>
+      _updatableListeners.add(listener);
 
-    return file.existsSync();
+  static void removeUpdateListener(void Function() listener) =>
+      _updatableListeners.remove(listener);
+
+  static String? _getLatestDico(String target) {
+    final dicodir = Directory('$applicationDocumentDirectory/dict/$target');
+
+    if (!dicodir.existsSync()) return null;
+
+    final content = dicodir.listSync().map((e) => e.path).toList()..sort();
+
+    return content.isEmpty ? null : join(dicodir.path, content.last);
   }
+
+  static Future<String?> _getLatestDicoRemote(String target) async {
+    try {
+      final response = await _dio.get('/$target');
+      final List<String> content = List.from(response.data)..sort();
+      final ret = content.isEmpty ? null : content.last;
+
+      if (ret != null &&
+          !RegExp('^$target' + r'-\d+\.\d+\.\d+\.dico$').hasMatch(ret)) {
+        throw Exception("Invalid dico: $ret");
+      }
+
+      return ret;
+    } on DioError {
+      rethrow;
+    }
+  }
+
+  static Future<List<String>> listUpdatable() async {
+    final ret = <String>[];
+    final targets = listTargets();
+
+    for (var target in targets) {
+      final latestAvailable = await _getLatestDicoRemote(target);
+      final latestLocal = _getLatestDico(target)
+          ?.replaceFirst('$applicationDocumentDirectory/dict/$target/', '');
+
+      if (latestLocal!.compareTo(latestAvailable!) < 0) {
+        ret.add(target);
+      }
+    }
+
+    return ret;
+  }
+
+  /// Register updatable targets
+  static Future<List<String>> checkUpdatable() async {
+    final up = await listUpdatable();
+
+    if (!_updatableTargets.containsAll(up)) {
+      for (var e in _updatableListeners) {
+        e();
+      }
+
+      _updatableTargets.addAll(up);
+    }
+
+    return up;
+  }
+
+  static bool exists(String target) => _getLatestDico(target) != null;
 
   static DictDownload? getDownloadProgress(String target) => _dlManager[target];
 
-  static Future<void> download(String target) {
-    final filename =
-        '$applicationDocumentDirectory/dict/$target.$_fileExtension';
-    final tmpfilename = '$filename.tmp';
+  static Future<void> download(String target, [String? version]) {
+    assert(!exists(target));
+
+    final diconame = version != null ? '$target-$version.$_fileExtension' : '';
+    final filedir = '$applicationDocumentDirectory/dict/$target';
+    final tmpfilename = '$filedir/$target.tmp';
 
     try {
       final receivedNotifier = ValueNotifier(0.0);
@@ -74,8 +139,9 @@ class Dict {
       }
 
       final response = _dio.download(
-        '/$target.$_fileExtension',
+        '/$target/${diconame.isNotEmpty ? diconame : ""}',
         tmpfilename,
+        queryParameters: {'latest': true},
         onReceiveProgress: (received, total) {
           if (total != -1) {
             if (totalNotifier.value == 0.1) {
@@ -86,11 +152,31 @@ class Dict {
           }
         },
       ).then((value) {
+        String filename = '$filedir/$diconame';
         final tmpfile = File(tmpfilename);
-        tmpfile.copySync(filename);
-        tmpfile.deleteSync();
+
+        if (diconame.isEmpty) {
+          final disp = value.headers['Content-Disposition'];
+
+          if (disp != null && disp.isNotEmpty) {
+            final fname =
+                disp.first.replaceFirst(RegExp(r'.*filename=(?=.*\.dico)'), '');
+            filename += fname;
+          }
+        }
+
+        if (!filename.endsWith('/')) {
+          tmpfile.renameSync(filename);
+        } else {
+          tmpfile.deleteSync();
+        }
 
         _dlManager.remove(target);
+        _updatableTargets.remove(target);
+
+        for (var e in _updatableListeners) {
+          e();
+        }
 
         return Entry.init();
       });
@@ -100,7 +186,7 @@ class Dict {
 
       return response;
     } on DioError {
-      final file = File(filename);
+      final file = File(tmpfilename);
       if (file.existsSync()) file.deleteSync();
 
       rethrow;
@@ -108,13 +194,12 @@ class Dict {
   }
 
   static void remove(String target) {
-    final filename =
-        '$applicationDocumentDirectory/dict/$target.$_fileExtension';
-    final file = File(filename);
+    final filename = '$applicationDocumentDirectory/dict/$target';
+    final dir = Directory(filename);
 
-    assert(file.existsSync());
+    assert(dir.existsSync());
 
-    file.deleteSync();
+    dir.deleteSync(recursive: true);
   }
 
   static Iterable<String> listTargets() {
@@ -123,13 +208,13 @@ class Dict {
     if (!dir.existsSync()) return [];
 
     return dir.listSync().fold([], (p, e) {
-      final name = e.path.split('/').last;
+      final target = e.path.split('/').last;
 
-      return [
-        ...p,
-        if (!name.startsWith('.') && name.endsWith('.dico'))
-          name.replaceFirst('.dico', '')
-      ];
+      if (Directory(e.path).listSync().isEmpty) {
+        return p;
+      }
+
+      return [...p, target];
     });
   }
 
@@ -146,17 +231,7 @@ class Dict {
   static Future<void> fetchTargetList() async {
     try {
       final response = await _dio.get('/');
-
-      final String body = response.data;
-
-      final exp =
-          RegExp(r'<td class="display-name"><a href=".*?">(.*)<\/a><\/td>');
-      final matches = exp.allMatches(body);
-
-      final targets = matches
-          .map((e) => e.group(1)!.replaceFirst('.dico', ''))
-          .toList()
-        ..removeWhere((e) => e.endsWith('/'));
+      final List<String> targets = List.from(response.data);
 
       final file = File(_targetListFilepath);
 
