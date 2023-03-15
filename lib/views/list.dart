@@ -380,16 +380,19 @@ class _ListViewer extends State<ListViewer> {
             : buildTitleField(context),
         centerTitle: true,
         actions: [
-          AbsorbPointer(
-            absorbing: !isListInit,
-            child: IconButton(
-              onPressed: openSearchPage,
-              icon: const Icon(Icons.add),
-              color: isListInit
-                  ? null
-                  : Theme.of(context).colorScheme.primary.withOpacity(0.4),
-            ),
-          ),
+          FutureBuilder(
+              future: fLoadTargets,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.done) {
+                  _dltargets.clear();
+                }
+
+                return IconButton(
+                  onPressed:
+                      isListInit && _dltargets.isEmpty ? openSearchPage : null,
+                  icon: const Icon(Icons.add),
+                );
+              }),
           PopupMenuButton(
             enabled: isListInit,
             position: PopupMenuPosition.under,
