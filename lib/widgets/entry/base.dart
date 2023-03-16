@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
+import 'package:memorize/widgets/entry/eng.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
@@ -32,6 +33,8 @@ abstract class Entry {
         xmlDoc: xmlDoc,
         showReading: showReading,
       );
+    } else if (target.startsWith('eng-')) {
+      return EntryEng(xmlDoc: xmlDoc, showReading: showReading);
     }
 
     throw Exception();
@@ -40,10 +43,11 @@ abstract class Entry {
   final XmlDocument xmlDoc;
   final bool showReading;
 
-  Widget buildMainForm(BuildContext context, [double? fontSize]);
-  List<Widget> buildOtherForms(BuildContext context);
-  List<Widget> buildSenses(BuildContext context);
-  List<Widget> buildNotes(BuildContext context);
+  Widget buildMainForm(BuildContext context, DisplayMode displayMode,
+      {double? fontSize});
+  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]);
+  List<Widget> buildSenses(BuildContext context, [double? fontSize]);
+  List<Widget> buildNotes(BuildContext context, [double? fontSize]);
 
   static FutureOr<void> init() {
     final localTargets = Dict.listTargets().join(",");
@@ -67,7 +71,7 @@ abstract class Entry {
 
       if (!file.existsSync()) {
         Dio()
-            .download('http://192.168.1.13:8080/kanji.json', filepath)
+            .download('http://192.168.1.13:8080/maptable/kanji.json', filepath)
             .then((value) {
           initMaptable();
         });
@@ -83,30 +87,35 @@ class EntryRenderer extends StatelessWidget {
 
   final DisplayMode mode;
   final Entry entry;
+  final mainFontSize = 40.0;
+  final secondaryFontSize = 20.0;
 
   Widget buildPreview(BuildContext context) {
-    return entry.buildMainForm(context);
+    return entry.buildMainForm(context, mode);
   }
 
   Widget buildDetailed(BuildContext context) {
-    final otherForms = entry.buildOtherForms(context);
-    final notes = entry.buildNotes(context);
+    final otherForms = entry.buildOtherForms(context, secondaryFontSize);
+    final notes = entry.buildNotes(context, secondaryFontSize);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                entry.buildMainForm(context, 40),
-                //buildMeta(context),
-              ],
+          Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  entry.buildMainForm(context, mode, fontSize: mainFontSize),
+                  //buildMeta(context),
+                ],
+              ),
             ),
           ),
-          ...entry.buildSenses(context),
+          ...entry.buildSenses(context, secondaryFontSize),
           if (otherForms.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 15, bottom: 8),
@@ -139,7 +148,7 @@ class EntryRenderer extends StatelessWidget {
   }
 
   Widget buildQuiz(BuildContext context) {
-    return entry.buildMainForm(context);
+    return entry.buildMainForm(context, mode);
   }
 
   @override
