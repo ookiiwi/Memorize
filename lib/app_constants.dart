@@ -7,7 +7,8 @@ class IsoLanguage {
     'eng': {'name': 'English', 'nativeName': 'English'},
     'fra': {'name': 'French', 'nativeName': 'Français'},
     'afr': {'name': 'Afrikaans', 'nativeName': 'Afrikaans'},
-    'deu': {'name': 'German', 'nativeName': 'Deutsh'}
+    'deu': {'name': 'German', 'nativeName': 'Deutsh'},
+    'rus': {'name': 'Russian', 'nativeName': 'русский язык'}
   };
 
   static String getFullname(String code) {
