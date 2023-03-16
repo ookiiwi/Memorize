@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/main.dart' as app;
 
@@ -79,27 +80,75 @@ void main() {
     expect(find.text(entry), findsOneWidget);
   }
 
+  Future<void> testNewListSave(WidgetTester tester) async {
+    const listname = 'listsave';
+    await newList(tester, listname);
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.download_rounded), findsOneWidget);
+
+    await tester.tap(find.text('Afrikaans'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('French'));
+    await tester.pumpAndSettle();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    expect(find.text('French'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.delete));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> testNewList(WidgetTester tester, String listname,
       String dicoTarget, String entry) async {
+    final parts = dicoTarget.split('-');
+    final src = IsoLanguage.getFullname(parts[0]);
+    final dst = IsoLanguage.getFullname(parts[1]);
+
     await newList(tester, listname);
 
     await tester.tap(find.text(listname));
     await tester.pumpAndSettle();
 
     // set target
-    final targetFinder = find.text('Target');
-    await tester.tap(targetFinder.first);
+    await tester.tap(find.text('English'));
     await tester.pumpAndSettle();
 
-    final dicoTargetFinder = find.text(dicoTarget);
-    await tester.tap(dicoTargetFinder.first);
-    await tester.pump();
+    await tester.tap(find.text(src).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Afrikaans'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(dst).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.download_rounded));
+    await tester.pumpAndSettle();
 
     expectDicoDownload();
 
     await waitForDownload(tester, dicoTarget);
 
-    expect(find.text(dicoTarget), findsWidgets);
+    expect(find.text(src), findsOneWidget);
+    expect(find.text(dst), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
@@ -125,8 +174,6 @@ void main() {
     // open list
     await tester.tap(find.text(listname));
     await tester.pumpAndSettle();
-
-    expectDicoDownload();
 
     await waitForDownload(tester, dicoTarget);
 
@@ -159,6 +206,7 @@ void main() {
     app.main();
     await tester.pumpAndSettle();
 
+    await testNewListSave(tester);
     await testNewList(tester, listname, dicoTarget, kanji);
     await testRemoveDicoAndOpen(tester, listname, 'jpn-eng-kanji', kanji);
     await testRemoveEntry(tester, '馬');
