@@ -3,15 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memorize/widgets/selectable.dart';
 
 Future<void> initEmptyList(WidgetTester tester, String listname) async {
-  final listnameTxtField = find.byType(TextField);
-  expect(listnameTxtField, findsOneWidget);
-
-  await tester.enterText(listnameTxtField, listname);
-  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await tester.tap(find.text('noname'));
   await tester.pumpAndSettle();
 
+  await fillTextFieldDialog(tester, listname);
+
   expect(find.text(listname), findsOneWidget);
-  expect(find.text('Target'), findsOneWidget);
+  expect(find.byIcon(Icons.swap_horiz_rounded), findsOneWidget);
+}
+
+Future<void> fillTextFieldDialog(WidgetTester tester, String text) async {
+  final txtfield = find.byType(TextField);
+
+  expect(txtfield, findsOneWidget);
+
+  await tester.enterText(txtfield, text);
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.text('Confirm'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> triggerBackButton(WidgetTester tester) async {
