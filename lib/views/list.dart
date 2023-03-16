@@ -84,10 +84,14 @@ class _ListViewer extends State<ListViewer> {
   List<String> availableTargets = Dict.listAllTargets()..sort();
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
-  bool? _needDlDico;
+  bool? _needDlDico = false;
+  final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
 
   bool get isListInit =>
-      list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
+      list != null &&
+      list!.name.isNotEmpty &&
+      list!.targets.isNotEmpty &&
+      _needDlDico == false;
 
   late final _popUpMenuItems = {
     if (kDebugMode)
@@ -151,13 +155,10 @@ class _ListViewer extends State<ListViewer> {
   };
 
   final _selectionController = SelectionController();
-  final stopwatch = Stopwatch();
 
   @override
   void initState() {
     super.initState();
-
-    stopwatch.start();
 
     if (widget.list != null) {
       list = widget.list;
@@ -165,12 +166,25 @@ class _ListViewer extends State<ListViewer> {
       list = MemoList.open(widget.fileinfo!.path);
     }
 
-    if (isListInit && list!.entries.isNotEmpty) {
-      fLoadTargets = loadTargets();
+    if (list != null) {
+      if (list!.targets.isEmpty) {
+        final initTarget = getInitTarget();
+
+        if (initTarget != null) {
+          list!.targets.add(initTarget);
+        }
+      }
+
+      fLoadTargets = loadTargets(checkOnly: list!.entries.isEmpty);
+    }
+
+    if (list?.filename.isEmpty != false) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => showRenameDialog(context));
     }
   }
 
-  Future<void> loadTargets() {
+  Future<void> loadTargets({bool checkOnly = false}) {
     assert(list != null);
 
     if (list!.targets.isEmpty) return Future.value();
@@ -181,6 +195,12 @@ class _ListViewer extends State<ListViewer> {
     for (var target in list!.targets) {
       if (Dict.exists(target)) continue;
 
+      if (list?.entries.isEmpty != false) {
+        _needDlDico = true;
+      }
+
+      if (checkOnly) continue;
+
       futures.add(Dict.download(target));
 
       final info = Dict.getDownloadProgress(target);
@@ -190,7 +210,26 @@ class _ListViewer extends State<ListViewer> {
       }
     }
 
-    return Future.wait(futures);
+    return Future.wait(futures)
+      ..then((value) {
+        if (!checkOnly) {
+          _needDlDico = false;
+        }
+      });
+  }
+
+  String? getInitTarget() {
+    String? target = list?.targets
+        .firstWhere((e) => mainLangExp.hasMatch(e), orElse: () => '');
+
+    if (target?.isEmpty != false) {
+      target = availableTargets.firstWhere(
+        (e) => mainLangExp.hasMatch(e),
+        orElse: () => '',
+      );
+    }
+
+    return target!.isEmpty ? null : target;
   }
 
   void openSearchPage() {
@@ -273,8 +312,6 @@ class _ListViewer extends State<ListViewer> {
   }
 
   Widget buildTargetDropDown(BuildContext context) {
-    final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
-
     void onTargetSelected(String? e) {
       setState(() {
         list?.targets.clear();
@@ -305,14 +342,11 @@ class _ListViewer extends State<ListViewer> {
     }
 
     Pair<String>? pairFromListTarget() {
-      final target = list?.targets
-          .firstWhere((e) => mainLangExp.hasMatch(e), orElse: () => '');
+      final target = getInitTarget();
 
-      if (target?.isEmpty != false) {
-        return null;
-      }
+      if (target == null) return null;
 
-      final parts = target!.split('-');
+      final parts = target.split('-');
 
       return Pair(
         IsoLanguage.getFullname(parts[0]),
@@ -350,7 +384,7 @@ class _ListViewer extends State<ListViewer> {
     );
   }
 
-  void showRenameDialog() {
+  void showRenameDialog(BuildContext mainContext) {
     showDialog(
         context: context,
         builder: (context) {
@@ -361,13 +395,19 @@ class _ListViewer extends State<ListViewer> {
             hintText: 'List name',
             hasConfirmed: (value) {
               if (!value) {
-                Navigator.of(context).maybePop();
+                Navigator.of(context).maybePop().then((value) {
+                  if (list?.filename.isEmpty != false) {
+                    Navigator.of(mainContext).maybePop();
+                  }
+                });
 
                 return null;
               }
 
-              final text = controller.text;
-              if (text.isEmpty) return null;
+              final text = controller.text.trim();
+              if (text.isEmpty) {
+                return 'List name cannot be blank';
+              }
 
               final filename = p.join(
                   list?.filename.isEmpty == false
@@ -393,6 +433,16 @@ class _ListViewer extends State<ListViewer> {
                 list!.rename(text);
               }
 
+              if (list!.targets.isEmpty) {
+                final initTarget = getInitTarget();
+
+                if (initTarget != null) {
+                  list!.targets.add(initTarget);
+                }
+
+                fLoadTargets = loadTargets(checkOnly: true);
+              }
+
               setState(() {});
 
               return null;
@@ -401,13 +451,51 @@ class _ListViewer extends State<ListViewer> {
         });
   }
 
+  Widget buildDicoDownload(BuildContext context) {
+    final recListenable = Listenable.merge(
+        _dltargets.values.fold([], (p, e) => p + [e.total, e.received]));
+
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 30),
+      child: AnimatedBuilder(
+        animation: recListenable,
+        builder: (context, _) {
+          double received = 0;
+          double total = 0.1;
+          int dlCnt = 0;
+
+          for (var e in _dltargets.values) {
+            total += e.total.value;
+            received += e.received.value;
+
+            if (e.total.value == e.received.value) {
+              ++dlCnt;
+            }
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text("Download dico ($dlCnt/${_dltargets.length})"),
+              ),
+              LinearProgressIndicator(value: received / total)
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
         title: TextButton(
-          onPressed: showRenameDialog,
+          onPressed: () => showRenameDialog(context),
           child: Text(list?.name.isEmpty == false ? list!.name : 'noname'),
         ),
         centerTitle: true,
@@ -425,26 +513,30 @@ class _ListViewer extends State<ListViewer> {
                   icon: const Icon(Icons.add),
                 );
               }),
-          PopupMenuButton(
-            enabled: isListInit,
-            position: PopupMenuPosition.under,
-            color: Theme.of(context).colorScheme.secondary,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            onSelected: (void Function() value) => value(),
-            itemBuilder: (context) => _popUpMenuItems.entries
-                .map(
-                  (e) => PopupMenuItem(
-                    value: e.value,
-                    child: Text(
-                      e.key,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSecondary),
+          FutureBuilder(
+            future: fLoadTargets,
+            builder: (context, snapshot) => PopupMenuButton(
+              enabled: isListInit,
+              position: PopupMenuPosition.under,
+              color: Theme.of(context).colorScheme.secondary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              onSelected: (void Function() value) => value(),
+              itemBuilder: (context) => _popUpMenuItems.entries
+                  .map(
+                    (e) => PopupMenuItem(
+                      value: e.value,
+                      child: Text(
+                        e.key,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSecondary,
+                        ),
+                      ),
                     ),
-                  ),
-                )
-                .toList(),
+                  )
+                  .toList(),
+            ),
           ),
         ],
       ),
@@ -453,42 +545,7 @@ class _ListViewer extends State<ListViewer> {
             future: fLoadTargets,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) {
-                final recListenable = Listenable.merge(_dltargets.values
-                    .fold([], (p, e) => p + [e.total, e.received]));
-
-                return Container(
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: AnimatedBuilder(
-                    animation: recListenable,
-                    builder: (context, _) {
-                      double received = 0;
-                      double total = 0.1;
-                      int dlCnt = 0;
-
-                      for (var e in _dltargets.values) {
-                        total += e.total.value;
-                        received += e.received.value;
-
-                        if (e.total.value == e.received.value) {
-                          ++dlCnt;
-                        }
-                      }
-
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Text(
-                                "Download dico ($dlCnt/${_dltargets.length})"),
-                          ),
-                          LinearProgressIndicator(value: received / total)
-                        ],
-                      );
-                    },
-                  ),
-                );
+                return buildDicoDownload(context);
               }
 
               return Stack(
@@ -534,8 +591,6 @@ class _ListViewer extends State<ListViewer> {
 }
 
 class EntryViewier extends StatefulWidget {
-  static int pageSize = 20;
-
   const EntryViewier(
       {super.key,
       required this.list,
@@ -554,7 +609,6 @@ class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
   final mlvController = MemoListViewController();
-  int get pageSize => EntryViewier.pageSize;
 
   List<ListEntry> get entries => widget.list.entries;
 
@@ -639,7 +693,12 @@ class _EntryView extends State<EntryView> {
         title: const Text('Entries'),
         actions: [
           IconButton(
-            onPressed: () {},
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) =>
+                    EntryViewInfo(entry: entries[_controller.page!.toInt()]),
+              ),
+            ),
             icon: const Icon(Icons.info_outline),
           )
         ],
@@ -690,7 +749,9 @@ class _EntryView extends State<EntryView> {
 }
 
 class EntryViewInfo extends StatefulWidget {
-  const EntryViewInfo({super.key});
+  const EntryViewInfo({super.key, required this.entry});
+
+  final ListEntry entry;
 
   @override
   State<StatefulWidget> createState() => _EntryViewInfo();
@@ -709,6 +770,11 @@ class _EntryViewInfo extends State<EntryViewInfo> {
       body: SafeArea(
         bottom: false,
         child: ListView(children: [
+          if (kDebugMode)
+            ListTile(
+              title: const Text('Entry id'),
+              trailing: Text('${widget.entry.id}'),
+            ),
           ListTile(
             title: const Text("Furigana support"),
             trailing: Switch(
