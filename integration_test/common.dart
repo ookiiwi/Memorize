@@ -3,9 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:memorize/widgets/selectable.dart';
 
 Future<void> initEmptyList(WidgetTester tester, String listname) async {
-  await tester.tap(find.text('noname'));
-  await tester.pumpAndSettle();
-
   await fillTextFieldDialog(tester, listname);
 
   expect(find.text(listname), findsOneWidget);
