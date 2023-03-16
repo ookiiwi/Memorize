@@ -169,6 +169,40 @@ class _MemoListView extends State<MemoListView> {
     return index == pageCnt ~/ 2;
   }
 
+  void _onVisibilityChanged(VisibilityInfo info, int index) {
+    if (info.visibleFraction != 1) return;
+
+    final page = index ~/ pageCnt;
+
+    print('page: $page');
+
+    if (page == nextPage) {
+      print("next unload $prevPage load ${nextPage + 1}");
+
+      if (prevPage >= 0) _unloadPage(prevPage);
+
+      ++prevPage;
+      ++currentPage;
+      ++nextPage;
+
+      if (nextPage * pageCnt < entries.length) {
+        _loadPage(nextPage);
+      }
+    } else if (page == prevPage) {
+      print("prev unload $nextPage load ${prevPage - 1}");
+
+      if (nextPage * pageCnt < entries.length) {
+        _unloadPage(nextPage);
+      }
+
+      --prevPage;
+      --currentPage;
+      --nextPage;
+
+      _loadPage(prevPage);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
@@ -177,8 +211,8 @@ class _MemoListView extends State<MemoListView> {
       padding: const EdgeInsets.only(
           left: 10, right: 10, bottom: kBottomNavigationBarHeight + 56 + 10),
       separatorBuilder: (context, index) => Divider(
-        indent: 12,
-        endIndent: 12,
+        indent: 8,
+        endIndent: 8,
         thickness: 0.2,
         color: Theme.of(context).colorScheme.outline,
       ),
@@ -188,39 +222,7 @@ class _MemoListView extends State<MemoListView> {
               color: Colors.amber,
               child: VisibilityDetector(
                 key: ValueKey(i),
-                onVisibilityChanged: (info) {
-                  if (info.visibleFraction != 1) return;
-
-                  final page = i ~/ pageCnt;
-
-                  print('page: $page');
-
-                  if (page == nextPage) {
-                    print("next unload $prevPage load ${nextPage + 1}");
-
-                    if (prevPage >= 0) _unloadPage(prevPage);
-
-                    ++prevPage;
-                    ++currentPage;
-                    ++nextPage;
-
-                    if (nextPage * pageCnt < entries.length) {
-                      _loadPage(nextPage);
-                    }
-                  } else if (page == prevPage) {
-                    print("prev unload $nextPage load ${prevPage - 1}");
-
-                    if (nextPage * pageCnt < entries.length) {
-                      _unloadPage(nextPage);
-                    }
-
-                    --prevPage;
-                    --currentPage;
-                    --nextPage;
-
-                    _loadPage(prevPage);
-                  }
-                },
+                onVisibilityChanged: (info) => _onVisibilityChanged(info, i),
                 child: buildEntry(context, entries[i]),
               ),
             )
