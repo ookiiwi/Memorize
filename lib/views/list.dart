@@ -6,12 +6,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dico/flutter_dico.dart';
 import 'package:intl/intl.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/mlv.dart';
+import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
@@ -42,6 +45,8 @@ class ListViewer extends StatefulWidget {
   static FutureOr<MemoList> preload(FileInfo info) {
     final list = MemoList.open(info.path);
     final futures = <Future>[];
+
+    if (list.entries.isEmpty) return list;
 
     for (var e in list.targets) {
       if (Dict.exists(e)) continue;
@@ -77,10 +82,9 @@ class ListViewer extends StatefulWidget {
 class _ListViewer extends State<ListViewer> {
   MemoList? list;
   List<String> availableTargets = Dict.listAllTargets()..sort();
-  bool _doRename = false;
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
-  String? _listnameError;
+  bool? _needDlDico;
 
   bool get isListInit =>
       list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
@@ -161,7 +165,7 @@ class _ListViewer extends State<ListViewer> {
       list = MemoList.open(widget.fileinfo!.path);
     }
 
-    if (list != null && isListInit) {
+    if (isListInit && list!.entries.isNotEmpty) {
       fLoadTargets = loadTargets();
     }
   }
@@ -268,103 +272,133 @@ class _ListViewer extends State<ListViewer> {
     );
   }
 
-  Widget buildTitleField(BuildContext context) {
-    return SizedBox(
-      height: kToolbarHeight - 5,
-      child: TextField(
-        autofocus: true,
-        controller: TextEditingController(text: list?.name),
-        decoration: InputDecoration(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
+  Widget buildTargetDropDown(BuildContext context) {
+    final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
+
+    void onTargetSelected(String? e) {
+      setState(() {
+        list?.targets.clear();
+
+        if (e == null) {
+          _needDlDico = null;
+          return;
+        }
+
+        _needDlDico = false;
+
+        list ??= MemoList('', {});
+
+        for (var target in availableTargets) {
+          if (!target.startsWith(e) && !e.startsWith(target)) {
+            continue;
+          }
+
+          list!.targets.add(target);
+
+          if (!Dict.exists(target)) _needDlDico = true;
+        }
+
+        if (list!.name.isNotEmpty) {
+          list!.save();
+        }
+      });
+    }
+
+    Pair<String>? pairFromListTarget() {
+      final target = list?.targets
+          .firstWhere((e) => mainLangExp.hasMatch(e), orElse: () => '');
+
+      if (target?.isEmpty != false) {
+        return null;
+      }
+
+      final parts = target!.split('-');
+
+      return Pair(
+        IsoLanguage.getFullname(parts[0]),
+        IsoLanguage.getFullname(parts[1]),
+        value: target,
+      );
+    }
+
+    return SafeArea(
+      child: Center(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: PairSelector<String>(
+              selectedPair: pairFromListTarget(),
+              onSelected: (e) => mounted
+                  ? onTargetSelected(e)
+                  : WidgetsBinding.instance
+                      .addPostFrameCallback((_) => onTargetSelected(e)),
+              pairs: availableTargets
+                  .where((e) => mainLangExp.hasMatch(e))
+                  .map((e) {
+                final parts = e.split('-');
+
+                return Pair(
+                  IsoLanguage.getFullname(parts[0]),
+                  IsoLanguage.getFullname(parts[1]),
+                  value: e,
+                );
+              }).toList(),
+            ),
           ),
-          errorText: _listnameError,
         ),
-        onSubmitted: (value) {
-          setState(() {
-            if (value.isEmpty) return;
-
-            final filename = p.join(widget.dir, value);
-
-            // Check if filename already exists
-            if (filename != list?.filename && File(filename).existsSync()) {
-              _listnameError = '$value already exists';
-              return;
-            }
-
-            _listnameError = null;
-
-            if (list == null) {
-              assert(widget.dir.isNotEmpty);
-
-              list = MemoList(filename, {})..save();
-            } else {
-              list!.rename(value);
-            }
-          });
-        },
       ),
     );
   }
 
-  Widget buildTargetDropDown(BuildContext context) {
-    final ValueNotifier targetsNotifier = ValueNotifier([]);
-    final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
+  void showRenameDialog() {
+    showDialog(
+        context: context,
+        builder: (context) {
+          final controller = TextEditingController(text: list?.name);
 
-    return SafeArea(
-      child: Center(
-        child: ValueListenableBuilder(
-          valueListenable: targetsNotifier,
-          builder: (context, _, __) => DropdownButton<String>(
-            iconSize: 0.0,
-            alignment: AlignmentDirectional.center,
-            borderRadius: BorderRadius.circular(20),
-            hint: const Text('Target'),
-            value:
-                list?.targets.isNotEmpty == true ? list!.targets.first : null,
-            onChanged: (value) => setState(() {
-              if (value == null) return;
+          return TextFieldDialog(
+            controller: controller,
+            hintText: 'List name',
+            hasConfirmed: (value) {
+              if (!value) {
+                Navigator.of(context).maybePop();
 
-              final futures = <Future>[];
-              _dltargets.clear();
-
-              list ??= MemoList('', {});
-              list!.targets.clear();
-
-              for (var target in availableTargets) {
-                if (!target.startsWith(value) && !value.startsWith(target)) {
-                  continue;
-                }
-
-                if (!Dict.exists(target)) {
-                  futures.add(Dict.download(target));
-
-                  final info = Dict.getDownloadProgress(target);
-
-                  if (info != null) {
-                    _dltargets[target] = info;
-                  }
-                }
-
-                list!.targets.add(target);
+                return null;
               }
 
-              if (list!.name.isNotEmpty) list!.save();
-              if (futures.isNotEmpty) fLoadTargets = Future.wait(futures);
-            }),
-            items: availableTargets
-                .where((e) => mainLangExp.hasMatch(e))
-                .map(
-                  (e) => DropdownMenuItem(
-                    value: e,
-                    child: Text(e),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ),
-    );
+              final text = controller.text;
+              if (text.isEmpty) return null;
+
+              final filename = p.join(
+                  list?.filename.isEmpty == false
+                      ? p.dirname(list!.filename)
+                      : widget.dir,
+                  text);
+
+              assert(filename != text);
+
+              if (filename == list?.filename) {
+                return null;
+              }
+
+              // Check if filename already exists
+              if (File(filename).existsSync()) {
+                return '$text already exists';
+              }
+
+              if (list?.name.isEmpty != false) {
+                assert(widget.dir.isNotEmpty);
+                list = MemoList(filename, list?.targets ?? {})..save();
+              } else {
+                list!.rename(text);
+              }
+
+              setState(() {});
+
+              return null;
+            },
+          );
+        });
   }
 
   @override
@@ -372,12 +406,10 @@ class _ListViewer extends State<ListViewer> {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
-        title: list?.name.isNotEmpty == true && !_doRename
-            ? TextButton(
-                onPressed: () => setState(() => _doRename = true),
-                child: Text(list!.name),
-              )
-            : buildTitleField(context),
+        title: TextButton(
+          onPressed: showRenameDialog,
+          child: Text(list?.name.isEmpty == false ? list!.name : 'noname'),
+        ),
         centerTitle: true,
         actions: [
           FutureBuilder(
@@ -397,8 +429,9 @@ class _ListViewer extends State<ListViewer> {
             enabled: isListInit,
             position: PopupMenuPosition.under,
             color: Theme.of(context).colorScheme.secondary,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             onSelected: (void Function() value) => value(),
             itemBuilder: (context) => _popUpMenuItems.entries
                 .map(
@@ -464,26 +497,32 @@ class _ListViewer extends State<ListViewer> {
                       ? EntryViewier(
                           list: list!,
                           selectionController: _selectionController,
+                          onDeleteEntry: (_) => setState(() {}),
                         )
                       : buildTargetDropDown(context),
-                  if (isListInit && list!.entries.isNotEmpty)
+                  if (list?.entries.isNotEmpty == true || _needDlDico == true)
                     Positioned(
                       bottom: kBottomNavigationBarHeight + 10,
                       right: 20,
-                      child: FloatingActionButton(
-                        onPressed: () {
-                          assert(isListInit);
+                      child: (list?.entries.isNotEmpty == true)
+                          ? FloatingActionButton(
+                              onPressed: () {
+                                assert(isListInit);
 
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => QuizLauncher(
-                                entries: list!.entries,
-                              ),
+                                Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (context) => QuizLauncher(
+                                    entries: list!.entries,
+                                  ),
+                                ));
+                              },
+                              child: const Icon(Icons.play_arrow_rounded),
+                            )
+                          : FloatingActionButton(
+                              onPressed: () => setState(() {
+                                fLoadTargets = loadTargets();
+                              }),
+                              child: const Icon(Icons.download_rounded),
                             ),
-                          );
-                        },
-                        child: const Icon(Icons.play_arrow_rounded),
-                      ),
                     ),
                 ],
               );
@@ -497,14 +536,15 @@ class _ListViewer extends State<ListViewer> {
 class EntryViewier extends StatefulWidget {
   static int pageSize = 20;
 
-  const EntryViewier({
-    super.key,
-    required this.list,
-    this.selectionController,
-  });
+  const EntryViewier(
+      {super.key,
+      required this.list,
+      this.selectionController,
+      this.onDeleteEntry});
 
   final MemoList list;
   final SelectionController? selectionController;
+  final void Function(ListEntry entry)? onDeleteEntry;
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
@@ -540,6 +580,7 @@ class _EntryViewier extends State<EntryViewier> {
                 animation: selectionController ?? ValueNotifier(null),
                 builder: (context, _) => MemoListView(
                   list: list,
+                  onDelete: widget.onDeleteEntry,
                   controller: mlvController,
                   onTap: (entry) {
                     Navigator.of(context).push(
@@ -994,6 +1035,10 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final parts = list.targets.first.split('-');
+    final src = IsoLanguage.getFullname(parts[0]);
+    final dst = IsoLanguage.getFullname(parts[1]);
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -1005,26 +1050,17 @@ class AboutPage extends StatelessWidget {
       ),
       body: Column(
         children: [
-          Row(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  'Default target',
-                  style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onBackground
-                          .withOpacity(0.6)),
-                ),
-              ),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(list.targets.first),
-              ),
-            ],
-          )
+          ListTile(
+            title: Text(
+              'Default dico',
+              style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onBackground
+                      .withOpacity(0.6)),
+            ),
+            trailing: Text('$src - $dst'),
+          ),
         ],
       ),
     );
