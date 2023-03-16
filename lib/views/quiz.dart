@@ -37,7 +37,7 @@ class _QuizLauncher extends State<QuizLauncher> {
   static const _iconSizeRadius = _iconSize * 0.5;
 
   final _playButtonDiameter = 200.0;
-  final _playButtonRadius = 200.0 * 0.5;
+  late final _playButtonRadius = _playButtonDiameter * 0.5;
   final _optSelection = <int>{};
 
   QuizMode _mode = QuizMode.linear;
@@ -242,7 +242,9 @@ class _Quiz extends State<Quiz> {
     if (answers.isNotEmpty) return;
 
     questions = widget.questions.toList();
-    answers = widget.answers.map((e) => buildCard(context, e)).toList();
+    answers = widget.answers
+        .map((e) => buildCard(context, e, scrollWrap: true))
+        .toList();
 
     if (widget.mode == QuizMode.random) {
       assert(answers.length == questions.length);
@@ -266,7 +268,7 @@ class _Quiz extends State<Quiz> {
   }
 
   Widget buildCard(BuildContext context, Widget child,
-      {bool center = false, bool setTimer = false}) {
+      {bool center = false, bool setTimer = false, bool scrollWrap = false}) {
     final cardColor = Theme.of(context).colorScheme.primaryContainer;
     final textColor = Theme.of(context).colorScheme.onPrimaryContainer;
     final textTheme = Theme.of(context)
@@ -284,6 +286,10 @@ class _Quiz extends State<Quiz> {
         ),
       ),
     );
+
+    if (scrollWrap) {
+      card = SingleChildScrollView(child: card);
+    }
 
     return setTimer
         ? Card(
