@@ -25,6 +25,7 @@ class MemoListView extends StatefulWidget {
       this.controller,
       this.onTap,
       this.onLoad,
+      this.onDelete,
       this.itemExtent = 50});
 
   final MemoList? list;
@@ -33,6 +34,7 @@ class MemoListView extends StatefulWidget {
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
   final VoidCallback? onLoad;
+  final void Function(ListEntry entry)? onDelete;
 
   @override
   State<StatefulWidget> createState() => _MemoListView();
@@ -121,6 +123,10 @@ class _MemoListView extends State<MemoListView> {
                 entries.remove(entry);
                 widget.list?.save();
               });
+
+              if (widget.onDelete != null) {
+                widget.onDelete!(entry);
+              }
             },
             icon: const Icon(Icons.cancel_outlined),
           ),
