@@ -55,9 +55,6 @@ void main() {
       await tester.tap(find.byTooltip('New list'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('noname'));
-      await tester.pumpAndSettle();
-
       await fillTextFieldDialog(tester, name);
 
       if (i == 0) {
