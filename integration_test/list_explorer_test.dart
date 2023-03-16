@@ -18,7 +18,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(name), findsOneWidget);
-    expect(find.text('Target'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('Afrikaans'), findsOneWidget);
 
     await triggerBackButton(tester);
   }
@@ -54,9 +55,10 @@ void main() {
       await tester.tap(find.byTooltip('New list'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), name);
-      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.tap(find.text('noname'));
       await tester.pumpAndSettle();
+
+      await fillTextFieldDialog(tester, name);
 
       if (i == 0) {
         await triggerBackButton(tester);
@@ -65,7 +67,11 @@ void main() {
 
     expect(find.text('$name already exists'), findsOneWidget);
 
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
     await triggerBackButton(tester);
+    await tester.pumpAndSettle();
 
     expect(find.widgetWithText(Selectable, name), findsOneWidget);
     await deleteList(tester, name);
