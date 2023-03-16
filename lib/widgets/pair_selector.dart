@@ -37,11 +37,6 @@ class _PairSelector<T> extends State<PairSelector<T>> {
     if (pairs.isNotEmpty) {
       key = selectedPair?.first ?? pairs.first.first;
       value = selectedPair?.second ?? pairs.first.second;
-
-      if (widget.onSelected != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) =>
-            widget.onSelected!(selectedPair?.value ?? pairs.first.value));
-      }
     }
   }
 
