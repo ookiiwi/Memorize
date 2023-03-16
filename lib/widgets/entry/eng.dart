@@ -50,6 +50,6 @@ class EntryEng extends Entry {
 
   @override
   List<Widget> buildNotes(BuildContext context, [double? fontSize]) {
-    throw UnimplementedError();
+    return [];
   }
 }
