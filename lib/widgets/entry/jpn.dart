@@ -15,7 +15,8 @@ class EntryJpn extends Entry {
       int? cnt,
       double? fontSize,
       bool noRuby = false,
-      bool includeRestr = false}) {
+      bool includeRestr = false,
+      bool? enableReading}) {
     final k = xmlDoc
         .queryXPath(".//form[@type='k_ele']/orth")
         .nodes
@@ -61,6 +62,10 @@ class EntryJpn extends Entry {
     }
 
     Widget wrapWord(String word, String reading) {
+      if (!(enableReading ?? showReading)) {
+        return Text(word);
+      }
+
       final furi = noRuby ? [] : splitFurigana(word, reading);
 
       if (furi.isEmpty) {
@@ -128,19 +133,21 @@ class EntryJpn extends Entry {
   }
 
   @override
-  Widget buildMainForm(BuildContext context, [double? fontSize]) {
+  Widget buildMainForm(BuildContext context, DisplayMode displayMode,
+      {double? fontSize}) {
     return buildWords(cnt: 1, fontSize: fontSize).first;
   }
 
   @override
-  List<Widget> buildOtherForms(BuildContext context) {
-    final words = buildWords(offset: 1, noRuby: true, includeRestr: true);
+  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
+    final words = buildWords(
+        offset: 1, noRuby: true, includeRestr: true, fontSize: fontSize);
 
     return words;
   }
 
   @override
-  List<Widget> buildSenses(BuildContext context) {
+  List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
     return xmlDoc.queryXPath('.//sense').nodes.map(
       (e) {
         final pos = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
@@ -197,7 +204,7 @@ class EntryJpn extends Entry {
   }
 
   @override
-  List<Widget> buildNotes(BuildContext context) {
+  List<Widget> buildNotes(BuildContext context, [double? fontSize]) {
     final notes = xmlDoc.queryXPath(".//form").nodes
       ..retainWhere((e) => e.children
           .any((e) => e.name?.localName == 'lbl' && e.children.isNotEmpty));
@@ -265,7 +272,8 @@ class EntryJpnKanji extends Entry {
   }
 
   @override
-  Widget buildMainForm(BuildContext context, [double? fontSize]) {
+  Widget buildMainForm(BuildContext context, DisplayMode displayMode,
+      {double? fontSize}) {
     final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!;
 
     return Text(
@@ -275,10 +283,10 @@ class EntryJpnKanji extends Entry {
   }
 
   @override
-  List<Widget> buildOtherForms(BuildContext context) => [];
+  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) => [];
 
   @override
-  List<Widget> buildSenses(BuildContext context) {
+  List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
     final r_kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
 
     return [
@@ -291,5 +299,5 @@ class EntryJpnKanji extends Entry {
   }
 
   @override
-  List<Widget> buildNotes(BuildContext context) => [];
+  List<Widget> buildNotes(BuildContext context, [double? fontSize]) => [];
 }
