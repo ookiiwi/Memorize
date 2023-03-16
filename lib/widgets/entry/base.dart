@@ -109,7 +109,18 @@ class EntryRenderer extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  entry.buildMainForm(context, mode, fontSize: mainFontSize),
+                  Expanded(
+                    child: Center(
+                      child: FittedBox(
+                        fit: BoxFit.fitWidth,
+                        child: entry.buildMainForm(
+                          context,
+                          mode,
+                          fontSize: mainFontSize,
+                        ),
+                      ),
+                    ),
+                  ),
                   //buildMeta(context),
                 ],
               ),
