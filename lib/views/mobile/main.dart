@@ -69,10 +69,16 @@ final router = GoRouter(initialLocation: '/${_routes[0]}', routes: [
             const NoTransitionPage(child: SearchPage()),
       ),
       GoRoute(
-        path: '/settings',
-        pageBuilder: (context, state) =>
-            const NoTransitionPage(child: SettingsPage()),
-      ),
+          path: '/settings',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: SettingsPage()),
+          routes: [
+            GoRoute(
+              path: 'dictionary',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: DictionaryPage()),
+            )
+          ]),
     ],
   )
 ]);
