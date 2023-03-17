@@ -13,6 +13,12 @@ import 'package:memorize/widgets/entry/base.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
+/// Not critical if a previously fetch list exists locally
+class FetchTargetListError implements Exception {}
+
+/// Critical error
+class DictDownloadError implements Exception {}
+
 class DictDownload {
   const DictDownload(this.received, this.total, this.response);
 
@@ -73,20 +79,16 @@ class Dict {
   }
 
   static Future<String?> _getLatestDicoRemote(String target) async {
-    try {
-      final response = await _dio.get('/$target');
-      final List<String> content = List.from(response.data)..sort();
-      final ret = content.isEmpty ? null : content.last;
+    final response = await _dio.get('/$target');
+    final List<String> content = List.from(response.data)..sort();
+    final ret = content.isEmpty ? null : content.last;
 
-      if (ret != null &&
-          !RegExp('^$target' + r'-\d+\.\d+\.\d+\.dico$').hasMatch(ret)) {
-        throw Exception("Invalid dico: $ret");
-      }
-
-      return ret;
-    } on DioError {
-      rethrow;
+    if (ret != null &&
+        !RegExp('^$target' + r'-\d+\.\d+\.\d+\.dico$').hasMatch(ret)) {
+      throw Exception("Invalid dico: $ret");
     }
+
+    return ret;
   }
 
   static Future<List<String>> listUpdatable() async {
@@ -125,12 +127,17 @@ class Dict {
 
   static DictDownload? getDownloadProgress(String target) => _dlManager[target];
 
-  static Future<void> download(String target, [String? version]) {
-    assert(!exists(target));
-
+  static Future<void> download(String target, [String? version]) async {
     final diconame = version != null ? '$target-$version.$_fileExtension' : '';
     final filedir = '$applicationDocumentDirectory/dict/$target';
     final tmpfilename = '$filedir/$target.tmp';
+
+    void onError() {
+      /// file deletion handled by dio
+
+      _dlManager.remove(target);
+      throw DictDownloadError();
+    }
 
     try {
       final receivedNotifier = ValueNotifier(0.0);
@@ -156,6 +163,10 @@ class Dict {
       ).then((value) {
         String filename = '$filedir/$diconame';
         final tmpfile = File(tmpfilename);
+
+        if (!tmpfile.existsSync()) {
+          onError();
+        }
 
         if (diconame.isEmpty) {
           final disp = value.headers['Content-Disposition'];
@@ -186,12 +197,9 @@ class Dict {
       _dlManager[target] =
           DictDownload(receivedNotifier, totalNotifier, response);
 
-      return response;
+      await response;
     } on DioError {
-      final file = File(tmpfilename);
-      if (file.existsSync()) file.deleteSync();
-
-      rethrow;
+      onError();
     }
   }
 
@@ -241,9 +249,7 @@ class Dict {
 
       file.writeAsStringSync(jsonEncode(targets));
     } on DioError {
-      if (listAllTargets().isEmpty) {
-        throw Exception("Target list don't exists localy");
-      }
+      throw FetchTargetListError();
     }
   }
 }
@@ -367,10 +373,15 @@ class DicoManager {
         ensureLibdicoInitialized();
 
         final target = message.target;
-        _checkOpen(target);
 
-        final ret = _readers[target]!.getAll(message.ids);
-        p.send(ret);
+        try {
+          _checkOpen(target);
+
+          final ret = _readers[target]!.getAll(message.ids);
+          p.send(ret);
+        } catch (e) {
+          p.send(e);
+        }
       } else if (message == null) {
         break;
       }
@@ -400,6 +411,12 @@ class DicoManager {
 
       return _getAllEvents!.next.then(
         (value) {
+          if (value is Exception) {
+            throw value;
+          }
+
+          assert(value is Map<int, List<int>>);
+
           for (var e in e.value) {
             final ent = value[e.id];
 
