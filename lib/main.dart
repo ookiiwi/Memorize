@@ -6,24 +6,136 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/views/mobile/main.dart'
-    if (dart.library.js) 'package:memorize/views/web/main.dart';
-import 'package:memorize/widgets/entry/base.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:memorize/list.dart';
+import 'package:memorize/views/splash_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_io/io.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:memorize/file_system.dart';
+import 'package:memorize/views/list.dart';
+import 'package:memorize/views/list_explorer.dart';
+import 'package:memorize/views/search.dart';
+import 'package:memorize/views/settings.dart';
+import 'package:memorize/widgets/bar.dart';
 
-/// Must be called only once on startup
-Future<void> loadData() async {
-  final appRoot = await getApplicationDocumentsDirectory();
-  Directory.current = appRoot;
+final _routerNavKey = GlobalKey<NavigatorState>();
+const _routes = ['home', 'search', 'settings'];
 
-  applicationDocumentDirectory =
-      (await getApplicationDocumentsDirectory()).path;
-  temporaryDirectory = (await getTemporaryDirectory()).path;
-  await DicoManager.open();
-  await Entry.init();
-  await Dict.fetchTargetList();
+final router = GoRouter(initialLocation: '/splash', routes: [
+  GoRoute(
+      path: '/splash',
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: SplashScreen())),
+  ShellRoute(
+    navigatorKey: _routerNavKey,
+    builder: (context, state, child) {
+      final appBarIconColor = Theme.of(context).colorScheme.onBackground;
+      final appBarColor =
+          Theme.of(context).colorScheme.background.withOpacity(0.5);
+
+      return Scaffold(
+        extendBody: true,
+        body: SafeArea(bottom: false, child: child),
+        bottomNavigationBar: BottomNavBar(
+          backgroundColor: appBarColor,
+          onTap: (i) {
+            final location = '/${_routes[i]}';
+
+            if (GoRouter.of(context).location == location) {
+              GoRouter.of(context).refresh();
+            }
+
+            context.go(location);
+          },
+          items: [
+            Icon(Icons.home_rounded, color: appBarIconColor),
+            Icon(Icons.search_rounded, color: appBarIconColor),
+            Icon(Icons.settings, color: appBarIconColor),
+          ],
+        ),
+      );
+    },
+    routes: [
+      GoRoute(
+        path: '/home',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: HomePage()),
+      ),
+      GoRoute(
+          path: '/list',
+          builder: (context, state) {
+            assert(state.extra != null);
+
+            final Map extra = state.extra as Map;
+            final FileInfo? fileinfo = extra['fileinfo'];
+            final MemoList? list = extra['list'];
+            final String? dir = extra['dir'];
+
+            if (fileinfo != null) {
+              return ListViewer.fromFile(fileinfo: fileinfo);
+            } else if (list != null) {
+              return ListViewer.fromList(list: list);
+            } else if (dir != null) {
+              return ListViewer(dir: dir);
+            }
+
+            throw Exception('Invalid list arguments');
+          }),
+      GoRoute(
+        path: '/search',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: SearchPage()),
+      ),
+      GoRoute(
+          path: '/settings',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: SettingsPage()),
+          routes: [
+            GoRoute(
+              path: 'dictionary',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: DictionaryPage()),
+            )
+          ]),
+    ],
+  )
+]);
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    bool lightBrightness = MyApp.of(context).themeMode == ThemeMode.light;
+
+    return Scaffold(
+      extendBody: true,
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            onPressed: () {
+              lightBrightness = !lightBrightness;
+              MyApp.of(context).themeMode =
+                  lightBrightness ? ThemeMode.light : ThemeMode.dark;
+            },
+            icon: Icon(
+                lightBrightness ? Icons.light_mode : Icons.nightlight_round),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.notifications),
+          ),
+        ],
+        title: Text(
+          'Memo',
+          textScaleFactor: 1.75,
+          style: GoogleFonts.zenMaruGothic(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: const SafeArea(bottom: false, child: ListExplorer()),
+    );
+  }
 }
 
 void main() {
@@ -33,9 +145,7 @@ void main() {
   Provider.debugCheckInvalidValueType = null;
 
   runApp(
-    LifecycleWatcher(
-      child: SplashScreen(builder: (context) => MyApp()),
-    ),
+    LifecycleWatcher(child: MyApp()),
   );
 }
 
@@ -134,77 +244,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key, required this.builder}) : super(key: key);
-
-  final WidgetBuilder builder;
-
-  @override
-  State<SplashScreen> createState() => _SplashScreen();
-}
-
-class _SplashScreen extends State<SplashScreen> {
-  late Future<void> _dataLoaded;
-  String? errorMessage;
-
-  void errorHandler() {
-    if (Dict.listAllTargets().isEmpty) {
-      errorMessage = 'Cannot initialize the app  @_@';
-      setState(() {});
-    }
-  }
-
-  Future<void> _loadData() {
-    return loadData()
-        .then(
-      (value) => errorMessage = null,
-    )
-        .catchError(
-      (err) {
-        errorHandler();
-      },
-      test: (error) => error is FetchTargetListError,
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-
-    _dataLoaded = _loadData();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      child: FutureBuilder(
-        future: _dataLoaded,
-        builder: (BuildContext context, AsyncSnapshot snapshot) {
-          if (errorMessage != null) {
-            return MaterialApp(
-              home: LoadingFailureWidget(
-                message: errorMessage!,
-                onRetry: () => setState(() {
-                  _dataLoaded = Dict.fetchTargetList()
-                      .then((value) => errorMessage = null)
-                      .catchError(
-                        (err) {},
-                        test: (error) => error is FetchTargetListError,
-                      );
-                }),
-              ),
-            );
-          } else if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          } else {
-            return widget.builder(context);
-          }
-        },
-      ),
-    );
-  }
-}
-
 class LifecycleWatcher extends StatefulWidget {
   const LifecycleWatcher({super.key, required this.child});
 
@@ -281,32 +320,6 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
 
         return widget.child;
       },
-    );
-  }
-}
-
-class LoadingFailureWidget extends StatelessWidget {
-  const LoadingFailureWidget({super.key, required this.message, this.onRetry});
-
-  final String message;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(message),
-              if (onRetry != null)
-                TextButton(
-                  onPressed: onRetry,
-                  child: const Text('Retry'),
-                )
-            ]),
-      ),
     );
   }
 }
