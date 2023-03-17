@@ -152,65 +152,65 @@ class _PairSelector<T> extends State<PairSelector<T>> {
     showDialog(
       context: context,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 100),
-          child: Container(
-            decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: Theme.of(context).colorScheme.background),
-            child: StatefulBuilder(builder: (context, setDialogState) {
-              setup();
+        return Dialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 50, vertical: 100),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          backgroundColor: Theme.of(context).colorScheme.background,
+          child: StatefulBuilder(builder: (context, setDialogState) {
+            setup();
 
-              return ListView(
-                shrinkWrap: true,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: TextField(
-                        onChanged: (value) {
-                          text = value;
-                          setDialogState(() {});
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Language',
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10.0,
-                            vertical: 5.0,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            borderSide: BorderSide.none,
-                          ),
+            return ListView(
+              shrinkWrap: true,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: TextField(
+                      onChanged: (value) {
+                        text = value;
+                        setDialogState(() {});
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Language',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10.0,
+                          vertical: 5.0,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide.none,
                         ),
                       ),
                     ),
                   ),
-                  if (available.isNotEmpty || selectedIsAvailable == true)
-                    buildLanguageList(
-                      context,
-                      searchKey,
-                      available,
-                      'Available $message',
-                      selected: selectedIsAvailable == true
-                          ? buildSelected(context)
-                          : null,
-                    ),
-                  if (unavailable.isNotEmpty || selectedIsAvailable == false)
-                    buildLanguageList(
-                      context,
-                      searchKey,
-                      unavailable,
-                      'Unavailable $message',
-                      selected: selectedIsAvailable == false
-                          ? buildSelected(context)
-                          : null,
-                    )
-                ],
-              );
-            }),
-          ),
+                ),
+                if (available.isNotEmpty || selectedIsAvailable == true)
+                  buildLanguageList(
+                    context,
+                    searchKey,
+                    available,
+                    'Available $message',
+                    selected: selectedIsAvailable == true
+                        ? buildSelected(context)
+                        : null,
+                  ),
+                if (unavailable.isNotEmpty || selectedIsAvailable == false)
+                  buildLanguageList(
+                    context,
+                    searchKey,
+                    unavailable,
+                    'Unavailable $message',
+                    selected: selectedIsAvailable == false
+                        ? buildSelected(context)
+                        : null,
+                  )
+              ],
+            );
+          }),
         );
       },
     );
