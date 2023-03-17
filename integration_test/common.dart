@@ -52,3 +52,14 @@ Future<void> newList(WidgetTester tester, String listname) async {
   // expect to see black box with <name> on it
   expect(find.widgetWithText(Selectable, listname), findsOneWidget);
 }
+
+Future<void> deleteList(WidgetTester tester, String listname) async {
+  await tester.longPress(find.text(listname));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.byType(Checkbox));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.byIcon(Icons.delete));
+  await tester.pumpAndSettle();
+}
