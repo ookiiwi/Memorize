@@ -247,27 +247,21 @@ class EntryJpnKanji extends Entry {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        [r_kun, Colors.blue.shade300],
-        [r_on, Colors.red.shade300],
-        [r_nanori, Colors.green.shade300]
-      ]
-          .map(
-            (item) => Wrap(
-              children: (item[0] as List)
-                  .map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 2, vertical: 10),
-                      child: decodeText(e.text!, item[1] as Color),
-                    ),
-                  )
-                  .toList(),
+    return Wrap(
+      children: List.from(
+        [
+          [r_kun, Colors.blue.shade300],
+          [r_on, Colors.red.shade300],
+          [r_nanori, Colors.green.shade300]
+        ].expand(
+          (item) => (item[0] as List).map(
+            (e) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+              child: decodeText(e.text!, item[1] as Color),
             ),
-          )
-          .toList(),
+          ),
+        ),
+      ),
     );
   }
 
