@@ -58,24 +58,37 @@ class ListViewer extends StatefulWidget {
       return _preload(list);
     }
 
-    return Future.wait(futures).then((value) => _preload(list));
+    return Future.wait(futures, eagerError: true).then((value) {
+      return _preload(list);
+    }).catchError(
+      (err) => list,
+      test: (error) => error is DictDownloadError,
+    );
   }
 
   static FutureOr<MemoList> _preload(MemoList list) {
-    final cnt = 20.clamp(0, list.entries.length);
-    final page = DicoManager.getAll(list.entries.sublist(0, cnt));
+    try {
+      final cnt = 20.clamp(0, list.entries.length);
+      final page = DicoManager.getAll(list.entries.sublist(0, cnt));
 
-    MemoList setEntries(List<ListEntry> entries) {
-      list.entries.setRange(0, cnt, entries);
-      _cache[list.filename] = list;
+      MemoList setEntries(List<ListEntry> entries) {
+        list.entries.setRange(0, cnt, entries);
+        _cache[list.filename] = list;
+        return list;
+      }
+
+      if (page is List<ListEntry>) {
+        return setEntries(page);
+      }
+
+      return page.then((value) => setEntries(value)).catchError((err) {
+        debugPrint('Cannot preload list');
+        return list;
+      });
+    } catch (_) {
+      debugPrint('Cannot preload list');
       return list;
     }
-
-    if (page is List<ListEntry>) {
-      return setEntries(page);
-    }
-
-    return page.then((value) => setEntries(value));
   }
 }
 
@@ -85,13 +98,15 @@ class _ListViewer extends State<ListViewer> {
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
   bool? _needDlDico = false;
+  bool _initiateDl = false;
   final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
+  String? errorMessage; // critical
 
   bool get isListInit =>
-      list != null &&
-      list!.name.isNotEmpty &&
-      list!.targets.isNotEmpty &&
-      _needDlDico == false;
+      list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
+
+  bool get canInteract =>
+      isListInit && _needDlDico == false && errorMessage == null;
 
   late final _popUpMenuItems = {
     if (kDebugMode)
@@ -184,6 +199,17 @@ class _ListViewer extends State<ListViewer> {
     }
   }
 
+  void onDownloadError() {
+    print('dico erro handle');
+    errorMessage = 'error mazafaka #_#';
+
+    if (list?.entries.isEmpty != false) {
+      print('show snack');
+    }
+
+    setState(() {});
+  }
+
   Future<void> loadTargets({bool checkOnly = false}) {
     assert(list != null);
 
@@ -210,12 +236,18 @@ class _ListViewer extends State<ListViewer> {
       }
     }
 
-    return Future.wait(futures)
-      ..then((value) {
-        if (!checkOnly) {
-          _needDlDico = false;
-        }
-      });
+    return Future.wait(futures, eagerError: true).then((value) {
+      if (!checkOnly) {
+        _needDlDico = false;
+      }
+
+      errorMessage = null;
+    }).catchError(
+      (err) {
+        onDownloadError();
+      },
+      test: (error) => error is DictDownloadError,
+    );
   }
 
   String? getInitTarget() {
@@ -234,6 +266,7 @@ class _ListViewer extends State<ListViewer> {
 
   void openSearchPage() {
     assert(isListInit);
+    assert(errorMessage == null);
 
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -491,102 +524,108 @@ class _ListViewer extends State<ListViewer> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
-        title: TextButton(
-          onPressed: () => showRenameDialog(context),
-          child: Text(list?.name.isEmpty == false ? list!.name : 'noname'),
-        ),
-        centerTitle: true,
-        actions: [
-          FutureBuilder(
-              future: fLoadTargets,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done) {
-                  _dltargets.clear();
-                }
+    return FutureBuilder(
+        future: fLoadTargets,
+        builder: (context, snapshot) {
+          if (errorMessage == null &&
+              snapshot.connectionState == ConnectionState.done) {
+            _dltargets.clear();
+          }
 
-                return IconButton(
-                  onPressed:
-                      isListInit && _dltargets.isEmpty ? openSearchPage : null,
-                  icon: const Icon(Icons.add),
-                );
-              }),
-          FutureBuilder(
-            future: fLoadTargets,
-            builder: (context, snapshot) => PopupMenuButton(
-              enabled: isListInit,
-              position: PopupMenuPosition.under,
-              color: Theme.of(context).colorScheme.secondary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+          return Scaffold(
+            appBar: AppBar(
+              leading:
+                  BackButton(onPressed: () => Navigator.of(context).maybePop()),
+              title: TextButton(
+                onPressed: () => showRenameDialog(context),
+                child:
+                    Text(list?.name.isEmpty == false ? list!.name : 'noname'),
               ),
-              onSelected: (void Function() value) => value(),
-              itemBuilder: (context) => _popUpMenuItems.entries
-                  .map(
-                    (e) => PopupMenuItem(
-                      value: e.value,
-                      child: Text(
-                        e.key,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSecondary,
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-        ],
-      ),
-      body: PageView(children: [
-        FutureBuilder(
-            future: fLoadTargets,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return buildDicoDownload(context);
-              }
-
-              return Stack(
-                children: [
-                  isListInit && list!.entries.isNotEmpty
-                      ? EntryViewier(
-                          list: list!,
-                          selectionController: _selectionController,
-                          onDeleteEntry: (_) => setState(() {}),
-                        )
-                      : buildTargetDropDown(context),
-                  if (list?.entries.isNotEmpty == true || _needDlDico == true)
-                    Positioned(
-                      bottom: kBottomNavigationBarHeight + 10,
-                      right: 20,
-                      child: (list?.entries.isNotEmpty == true)
-                          ? FloatingActionButton(
-                              onPressed: () {
-                                assert(isListInit);
-
-                                Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (context) => QuizLauncher(
-                                    entries: list!.entries,
-                                  ),
-                                ));
-                              },
-                              child: const Icon(Icons.play_arrow_rounded),
-                            )
-                          : FloatingActionButton(
-                              onPressed: () => setState(() {
-                                fLoadTargets = loadTargets();
-                              }),
-                              child: const Icon(Icons.download_rounded),
+              centerTitle: true,
+              actions: [
+                IconButton(
+                  onPressed: canInteract ? openSearchPage : null,
+                  icon: const Icon(Icons.add),
+                ),
+                PopupMenuButton(
+                  enabled: canInteract,
+                  position: PopupMenuPosition.under,
+                  color: Theme.of(context).colorScheme.secondary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  onSelected: (void Function() value) => value(),
+                  itemBuilder: (context) => _popUpMenuItems.entries
+                      .map(
+                        (e) => PopupMenuItem(
+                          value: e.value,
+                          child: Text(
+                            e.key,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSecondary,
                             ),
-                    ),
-                ],
-              );
-            }),
-        buildStats(context)
-      ]),
-    );
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+            ),
+            body: PageView(children: [
+              errorMessage != null && list?.entries.isNotEmpty == true
+                  ? Center(child: Text(errorMessage!))
+                  : Builder(builder: (context) {
+                      if (_initiateDl &&
+                          snapshot.connectionState != ConnectionState.done) {
+                        return buildDicoDownload(context);
+                      }
+
+                      return Stack(
+                        children: [
+                          isListInit && list!.entries.isNotEmpty
+                              ? EntryViewier(
+                                  list: list!,
+                                  selectionController: _selectionController,
+                                  onDeleteEntry: (_) => setState(() {}),
+                                )
+                              : buildTargetDropDown(context),
+                          if (list?.entries.isNotEmpty == true ||
+                              _needDlDico == true)
+                            Positioned(
+                              bottom: kBottomNavigationBarHeight + 10,
+                              right: 20,
+                              child: (list?.entries.isNotEmpty == true)
+                                  ? FloatingActionButton(
+                                      onPressed: () {
+                                        assert(isListInit);
+
+                                        Navigator.of(context)
+                                            .push(MaterialPageRoute(
+                                          builder: (context) => QuizLauncher(
+                                            entries: list!.entries,
+                                          ),
+                                        ));
+                                      },
+                                      child:
+                                          const Icon(Icons.play_arrow_rounded),
+                                    )
+                                  : FloatingActionButton(
+                                      onPressed: () => setState(() {
+                                        _initiateDl = true;
+                                        fLoadTargets = loadTargets()
+                                          ..then(
+                                              (value) => _initiateDl = false);
+                                      }),
+                                      child: const Icon(Icons.download_rounded),
+                                    ),
+                            ),
+                        ],
+                      );
+                    }),
+              buildStats(context)
+            ]),
+          );
+        });
   }
 }
 
