@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -49,20 +50,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Play'), findsOneWidget);
+
+    await triggerBackButton(tester);
   }
 
   Future<void> waitForDownload(WidgetTester tester, String target) async {
-    bool dicoDownloaded = false;
-    if (Dict.getDownloadProgress(target)
-            ?.response
-            .then((value) => dicoDownloaded = true) ==
-        null) {
-      dicoDownloaded = true;
-    }
-
     do {
       await tester.pump();
-    } while (!dicoDownloaded);
+      await Future.delayed(Duration.zero);
+    } while (Dict.getDownloadProgress(target) != null);
 
     await tester.pump();
   }
@@ -78,6 +74,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(entry), findsOneWidget);
+  }
+
+  Future<void> setLanguage(WidgetTester tester, String target) async {
+    final parts = target.split('-');
+    final src = IsoLanguage.getFullname(parts[0]);
+    final dst = IsoLanguage.getFullname(parts[1]);
+
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(src).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Afrikaans'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(dst).last);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> genList(
+      WidgetTester tester, String listname, String dicoTarget) async {
+    final parts = dicoTarget.split('-');
+    final src = IsoLanguage.getFullname(parts[0]);
+    final dst = IsoLanguage.getFullname(parts[1]);
+
+    await newList(tester, listname);
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    // set target
+    await setLanguage(tester, dicoTarget);
+
+    await tester.tap(find.byIcon(Icons.download_rounded));
+    await tester.pumpAndSettle();
+
+    expectDicoDownload();
+
+    await waitForDownload(tester, dicoTarget);
+
+    expect(find.text(src), findsOneWidget);
+    expect(find.text(dst), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('gen'));
+    await tester.pumpAndSettle();
   }
 
   Future<void> testNewListSave(WidgetTester tester) async {
@@ -106,55 +151,12 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await tester.longPress(find.text(listname));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(Checkbox).first);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.delete));
-    await tester.pumpAndSettle();
+    await deleteList(tester, listname);
   }
 
   Future<void> testNewList(WidgetTester tester, String listname,
       String dicoTarget, String entry) async {
-    final parts = dicoTarget.split('-');
-    final src = IsoLanguage.getFullname(parts[0]);
-    final dst = IsoLanguage.getFullname(parts[1]);
-
-    await newList(tester, listname);
-
-    await tester.tap(find.text(listname));
-    await tester.pumpAndSettle();
-
-    // set target
-    await tester.tap(find.text('English'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text(src).last);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Afrikaans'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text(dst).last);
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.download_rounded));
-    await tester.pumpAndSettle();
-
-    expectDicoDownload();
-
-    await waitForDownload(tester, dicoTarget);
-
-    expect(find.text(src), findsOneWidget);
-    expect(find.text(dst), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.more_vert));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('gen'));
-    await tester.pumpAndSettle();
+    await genList(tester, listname, dicoTarget);
 
     await testEntrySearch(tester, entry, 'KANJI', true);
     //await testEntrySearch(tester, '蝙蝠', 'WORD', true);
@@ -197,11 +199,141 @@ void main() {
     expect(text, findsNothing);
   }
 
+  Future<void> setServeConnStatus([bool open = true]) async {
+    await Dio().get('http://192.168.1.13:8080/',
+        queryParameters: {'closeConn': !open}).catchError((err) {});
+  }
+
+  void checkIconButtonEnabled(WidgetTester tester, IconData icon,
+      [bool checkEnable = true]) {
+    expect(
+        tester
+            .widget<IconButton>(find.widgetWithIcon(IconButton, icon))
+            .onPressed,
+        checkEnable ? isNotNull : isNull);
+  }
+
+  Future<void> testInEmptyListNoInternet(WidgetTester tester) async {
+    const listname = 'emptyNoInternet';
+
+    await setServeConnStatus(false);
+
+    await newList(tester, listname);
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+    checkIconButtonEnabled(tester, Icons.add, false);
+
+    final dlIcon = find.byIcon(Icons.download_rounded);
+    await tester.tap(dlIcon);
+    await tester.pumpAndSettle();
+
+    expect(Dict.getDownloadProgress('eng-afr'), null);
+    expect(dlIcon, findsOneWidget);
+    checkIconButtonEnabled(tester, Icons.add, false);
+
+    await setServeConnStatus(true);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await deleteList(tester, listname);
+  }
+
+  Future<void> testInListNoInternet(WidgetTester tester) async {
+    const listname = 'noInternet';
+    const target = 'jpn-eng';
+
+    try {
+      Dict.remove(target);
+    } catch (_) {}
+
+    await setServeConnStatus(true);
+    await genList(tester, listname, target);
+    checkIconButtonEnabled(tester, Icons.add, true);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await setServeConnStatus(false);
+
+    try {
+      Dict.remove(target);
+    } catch (_) {}
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    expect(find.text('error mazafaka #_#'), findsOneWidget);
+    checkIconButtonEnabled(tester, Icons.add, false);
+
+    await setServeConnStatus(true);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // delete
+    await deleteList(tester, listname);
+  }
+
+  Future<void> testNoInternetWhileDl(WidgetTester tester) async {
+    const listname = 'loseConn';
+    const target = 'jpn-eng';
+
+    await setServeConnStatus(true);
+    await newList(tester, listname);
+
+    try {
+      Dict.remove(target);
+    } catch (_) {}
+
+    expect(Dict.exists(target), isFalse);
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await setLanguage(tester, target);
+
+    final dlIcon = find.byIcon(Icons.download_rounded);
+    await tester.tap(dlIcon);
+    await tester.pumpAndSettle();
+
+    /// close server
+
+    debugPrint('close server');
+    await waitForDownload(tester, target);
+
+    expect(dlIcon, findsOneWidget);
+    checkIconButtonEnabled(tester, Icons.add, false);
+
+    debugPrint('restart server');
+
+    await Future.delayed(
+        const Duration(seconds: 10)); // wait for server to restart
+
+    await tester.tap(dlIcon);
+    await tester.pumpAndSettle();
+
+    expectDicoDownload();
+
+    await waitForDownload(tester, target);
+
+    expect(dlIcon, findsNothing);
+    checkIconButtonEnabled(tester, Icons.add);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await deleteList(tester, listname);
+  }
+
   testWidgets('list', (tester) async {
     const listname = 'mylist';
     const dicoTarget = 'jpn-eng';
 
     const kanji = '馬';
+
+    await setServeConnStatus(true);
 
     app.main();
     await tester.pumpAndSettle();
@@ -211,7 +343,12 @@ void main() {
     await testRemoveDicoAndOpen(tester, listname, 'jpn-eng-kanji', kanji);
     await testRemoveEntry(tester, '馬');
     await testQuizLaunch(tester);
+    await triggerBackButton(tester);
+    await triggerBackButton(tester);
+    await deleteList(tester, listname);
 
-    // TODO: test target change
+    await testNoInternetWhileDl(tester);
+    await testInEmptyListNoInternet(tester);
+    await testInListNoInternet(tester);
   });
 }
