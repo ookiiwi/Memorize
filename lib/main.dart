@@ -144,12 +144,34 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreen extends State<SplashScreen> {
-  late final Future<void> _dataLoaded;
+  late Future<void> _dataLoaded;
+  String? errorMessage;
+
+  void errorHandler() {
+    if (Dict.listAllTargets().isEmpty) {
+      errorMessage = 'Cannot initialize the app  @_@';
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadData() {
+    return loadData()
+        .then(
+      (value) => errorMessage = null,
+    )
+        .catchError(
+      (err) {
+        errorHandler();
+      },
+      test: (error) => error is FetchTargetListError,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-    _dataLoaded = loadData();
+
+    _dataLoaded = _loadData();
   }
 
   @override
@@ -157,8 +179,22 @@ class _SplashScreen extends State<SplashScreen> {
     return Material(
       child: FutureBuilder(
         future: _dataLoaded,
-        builder: (BuildContext ctx, AsyncSnapshot snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+        builder: (BuildContext context, AsyncSnapshot snapshot) {
+          if (errorMessage != null) {
+            return MaterialApp(
+              home: LoadingFailureWidget(
+                message: errorMessage!,
+                onRetry: () => setState(() {
+                  _dataLoaded = Dict.fetchTargetList()
+                      .then((value) => errorMessage = null)
+                      .catchError(
+                        (err) {},
+                        test: (error) => error is FetchTargetListError,
+                      );
+                }),
+              ),
+            );
+          } else if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           } else {
             return widget.builder(context);
@@ -245,6 +281,32 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
 
         return widget.child;
       },
+    );
+  }
+}
+
+class LoadingFailureWidget extends StatelessWidget {
+  const LoadingFailureWidget({super.key, required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(message),
+              if (onRetry != null)
+                TextButton(
+                  onPressed: onRetry,
+                  child: const Text('Retry'),
+                )
+            ]),
+      ),
     );
   }
 }
