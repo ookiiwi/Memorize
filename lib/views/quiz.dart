@@ -151,10 +151,7 @@ class _QuizLauncher extends State<QuizLauncher> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back),
-        ),
+        leading: const BackButton(),
         title: const Text('Launcher'),
       ),
       body: LayoutBuilder(
