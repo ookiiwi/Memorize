@@ -4,10 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
-import 'package:memorize/main.dart' as app;
+import 'package:memorize/views/splash_screen.dart' as splash;
 import 'package:memorize/views/list.dart';
-
-import 'common.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +73,7 @@ void main() {
   }
 
   testWidgets('quiz', (tester) async {
-    await app.loadData();
+    await splash.loadData();
     ensureLibdicoInitialized();
 
     if (!Dict.exists('jpn-eng-kanji')) {
