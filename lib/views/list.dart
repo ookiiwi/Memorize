@@ -43,6 +43,10 @@ class ListViewer extends StatefulWidget {
 
   static final Map<String, MemoList> _cache = {};
 
+  static void unload(FileInfo info) {
+    _cache.remove(info.path);
+  }
+
   static FutureOr<MemoList> preload(FileInfo info) {
     final list = MemoList.open(info.path);
     final futures = <Future>[];
