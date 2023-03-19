@@ -172,6 +172,7 @@ class _ListExplorer extends State<ListExplorer> {
         onPressed: () {
           for (var e in _selectionController.selection) {
             File(e.path).deleteSync(recursive: true);
+            ListViewer.unload(e);
 
             final cleanPath = e.path.replaceFirst(RegExp('^$root'), '');
 
