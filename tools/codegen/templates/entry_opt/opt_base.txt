@@ -1,0 +1,39 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart';
+import 'package:collection/collection.dart';
+
+abstract class EntryOptions {
+  Map<String, dynamic> toJson();
+
+  void save([String? dir]) {
+    final file = File(join(dir ?? _optDir, runtimeType.toString()));
+
+    if (!file.existsSync()) file.createSync(recursive: true);
+
+    file.writeAsStringSync(jsonEncode(toJson()));
+  }
+
+  static T? findIn<T extends EntryOptions>(Iterable<EntryOptions?> opts) {
+    return opts.firstWhereOrNull((e) => e is T) as T?;
+  }
+
+  static List<EntryOptions> tryLoad(Set<String> targets) {
+    final ret = <EntryOptions>[];
+
+    for (var target in targets) {
+        <tryLoadTargetCheck>
+    }
+
+    return ret;
+  }
+
+  static Map<String, dynamic>? _tryLoadOpt(String className) {
+    final file = File('$_optDir/$className');
+
+    if (!file.existsSync()) return null;
+
+    return jsonDecode(file.readAsStringSync());
+  }
+}

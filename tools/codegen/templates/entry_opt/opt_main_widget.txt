@@ -1,0 +1,16 @@
+import 'package:flutter/material.dart';
+
+class EntryOptionsWidget extends StatelessWidget {
+  const EntryOptionsWidget({super.key, required this.opt});
+
+  final EntryOptions opt;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (opt.runtimeType) {
+      <cases>
+      default:
+        throw "Unknown opt $opt";
+    }
+  }
+}

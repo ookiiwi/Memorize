@@ -1,0 +1,9 @@
+class Entry<className>Options extends EntryOptions {
+    Entry<className>Options({<paramList>});
+    Entry<className>Options.fromJson(Map<String, dynamic> json) : <fromJsonInit>;
+
+    <members>
+
+    @override
+    Map<String, dynamic> toJson() => { <toJsonBody> };
+}

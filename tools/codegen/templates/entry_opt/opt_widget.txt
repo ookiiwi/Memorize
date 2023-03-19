@@ -1,0 +1,18 @@
+import 'package:flutter/material.dart';
+
+class Entry<className>OptionsWidget extends StatelessWidget {
+  const Entry<className>OptionsWidget({super.key, required this.opt});
+
+  final Entry<className>Options opt;
+
+  @override
+  Widget build(BuildContext context) {
+    return StatefulBuilder(
+      builder: (context, setState) => Column(
+        children: [
+          <items>
+        ],
+      ),
+    );
+  }
+}

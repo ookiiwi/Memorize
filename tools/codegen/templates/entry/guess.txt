@@ -1,0 +1,20 @@
+import 'package:memorize/widgets/entry/base.dart';
+import 'package:memorize/widgets/entry/opt.dart';
+import 'package:xml/xml.dart';
+
+Entry guessEntry({
+    required XmlDocument xmlDoc, 
+    required String target, /// Used if opts is empty
+    bool showReading = true,
+    Iterable<EntryOptions> opts = const [],
+    }) {
+    <guessBody>
+
+    throw "Unknown target $target";
+}
+
+EntryOptions? findOptFor(String target, Iterable<EntryOptions?> opts) {
+    <findForBody>
+
+    return null;
+}

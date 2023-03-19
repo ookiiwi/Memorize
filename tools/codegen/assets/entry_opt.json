@@ -1,0 +1,20 @@
+{
+    "Jpn": {
+        "scope": "^jpn-\\w{3}$",
+        "members": {
+            "hideFurigana": false
+        }
+    },
+    "JpnKanji": {
+        "scope": "^jpn-\\w{3}-kanji$",
+        "members": {
+            "hideOkurigana": false
+        }
+    },
+    "Eng": {
+        "scope": "^eng-\\w{3}$",
+        "members": {
+            "hidePronunciation": false
+        }
+    }
+}
