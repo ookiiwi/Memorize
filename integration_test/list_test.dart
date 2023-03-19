@@ -94,6 +94,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// end in list (not home)
   Future<void> genList(
       WidgetTester tester, String listname, String dicoTarget) async {
     final parts = dicoTarget.split('-');
@@ -327,6 +328,41 @@ void main() {
     await deleteList(tester, listname);
   }
 
+  Future<void> testListEntryOptions(
+      WidgetTester tester, String listname) async {
+    //const listname = 'entryopt';
+    bool hideOkurigana = false;
+
+    //await genList(tester, listname, 'jpn-eng');
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    for (var e in ['愛', '目']) {
+      await tester.tap(find.text(e));
+      await tester.pumpAndSettle();
+
+      if (hideOkurigana) {
+        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsNothing);
+      } else {
+        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsWidgets);
+      }
+
+      await tester.tap(find.byIcon(Icons.info_outline));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      hideOkurigana = !hideOkurigana;
+
+      await triggerBackButton(tester);
+      await triggerBackButton(tester);
+    }
+
+    await triggerBackButton(tester);
+  }
+
   testWidgets('list', (tester) async {
     const listname = 'mylist';
     const dicoTarget = 'jpn-eng';
@@ -340,6 +376,7 @@ void main() {
 
     await testNewListSave(tester);
     await testNewList(tester, listname, dicoTarget, kanji);
+    await testListEntryOptions(tester, listname);
     await testRemoveDicoAndOpen(tester, listname, 'jpn-eng-kanji', kanji);
     await testRemoveEntry(tester, '馬');
     await testQuizLaunch(tester);
