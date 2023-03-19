@@ -171,7 +171,6 @@ class DicoGeneralInfoPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
         title: const Text("Dico info"),
       ),
       body: ListView(
