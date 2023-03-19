@@ -13,6 +13,7 @@ import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
+import 'package:memorize/widgets/entry/opt.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
@@ -200,7 +201,6 @@ class _ListViewer extends State<ListViewer> {
   }
 
   void onDownloadError() {
-    print('dico erro handle');
     errorMessage = 'error mazafaka #_#';
 
     if (list?.entries.isEmpty != false) {
@@ -534,8 +534,6 @@ class _ListViewer extends State<ListViewer> {
 
           return Scaffold(
             appBar: AppBar(
-              leading:
-                  BackButton(onPressed: () => Navigator.of(context).maybePop()),
               title: TextButton(
                 onPressed: () => showRenameDialog(context),
                 child:
@@ -679,9 +677,12 @@ class _EntryViewier extends State<EntryViewier> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) {
+                          final options = EntryOptions.tryLoad(list.targets);
+
                           return EntryView(
                             entries: entries,
                             entryId: entry.id,
+                            entryOpts: options,
                           );
                         },
                       ),
@@ -698,10 +699,15 @@ class _EntryViewier extends State<EntryViewier> {
 }
 
 class EntryView<T> extends StatefulWidget {
-  const EntryView({super.key, this.entries = const [], required this.entryId});
+  const EntryView(
+      {super.key,
+      this.entries = const [],
+      required this.entryId,
+      this.entryOpts = const []});
 
   final T entryId;
   final Iterable<ListEntry> entries;
+  final Iterable<EntryOptions> entryOpts;
 
   @override
   State<StatefulWidget> createState() => _EntryView();
@@ -725,19 +731,20 @@ class _EntryView extends State<EntryView> {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0.0,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-        ),
         title: const Text('Entries'),
         actions: [
           IconButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) =>
-                    EntryViewInfo(entry: entries[_controller.page!.toInt()]),
+                builder: (context) {
+                  final entry = entries[_controller.page!.toInt()];
+
+                  return EntryViewInfo(
+                      entry: entry,
+                      opt: Entry.findOptFor(entry.target, widget.entryOpts)!);
+                },
               ),
-            ),
+            ).then((value) => setState(() {})),
             icon: const Icon(Icons.info_outline),
           )
         ],
@@ -775,6 +782,7 @@ class _EntryView extends State<EntryView> {
                     entry: Entry.guess(
                       xmlDoc: entries[i].data!,
                       target: entries[i].target,
+                      opts: widget.entryOpts,
                     ),
                   ),
                 ),
@@ -788,9 +796,10 @@ class _EntryView extends State<EntryView> {
 }
 
 class EntryViewInfo extends StatefulWidget {
-  const EntryViewInfo({super.key, required this.entry});
+  const EntryViewInfo({super.key, required this.entry, required this.opt});
 
   final ListEntry entry;
+  final EntryOptions opt;
 
   @override
   State<StatefulWidget> createState() => _EntryViewInfo();
@@ -801,9 +810,6 @@ class _EntryViewInfo extends State<EntryViewInfo> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
         title: const Text("Entry info"),
       ),
       body: SafeArea(
@@ -814,13 +820,7 @@ class _EntryViewInfo extends State<EntryViewInfo> {
               title: const Text('Entry id'),
               trailing: Text('${widget.entry.id}'),
             ),
-          ListTile(
-            title: const Text("Furigana support"),
-            trailing: Switch(
-              onChanged: (_) {},
-              value: true,
-            ),
-          )
+          EntryOptionsWidget(opt: widget.opt)
         ]),
       ),
     );

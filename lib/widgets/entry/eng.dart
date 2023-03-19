@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:memorize/widgets/entry/opt.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
-class EntryEng extends Entry {
-  EntryEng({required super.xmlDoc, super.showReading});
+class EntryEng extends Entry<EntryEngOptions> {
+  EntryEng({required super.xmlDoc, required super.opt});
 
   @override
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
       {double? fontSize}) {
     final text = xmlDoc.queryXPath('.//form/orth').node?.text ?? 'ERROR';
-    final pron =
-        showReading ? xmlDoc.queryXPath('.//form/pron').node?.text : null;
+    final pron = !opt.hidePronunciation
+        ? xmlDoc.queryXPath('.//form/pron').node?.text
+        : null;
     final style = TextStyle(fontSize: fontSize);
 
-    return (displayMode == DisplayMode.preview ? false : showReading) &&
+    return (displayMode == DisplayMode.preview
+                ? false
+                : !opt.hidePronunciation) &&
             pron != null
         ? RubyText([RubyTextData(text, ruby: '[$pron]')], style: style)
         : Text(text, style: style);

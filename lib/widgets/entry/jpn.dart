@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:memorize/widgets/entry/opt.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
-class EntryJpn extends Entry {
+class EntryJpn extends Entry<EntryJpnOptions> {
   EntryJpn({
     required super.xmlDoc,
-    super.showReading,
+    required super.opt,
   });
 
   List<Widget> buildWords(
@@ -62,8 +63,11 @@ class EntryJpn extends Entry {
     }
 
     Widget wrapWord(String word, String reading) {
-      if (!(enableReading ?? showReading)) {
-        return Text(word);
+      if (!(enableReading ?? !opt.hideFurigana)) {
+        return Text(
+          word,
+          style: TextStyle(fontSize: fontSize),
+        );
       }
 
       final furi = noRuby ? [] : splitFurigana(word, reading);
@@ -227,8 +231,11 @@ class EntryJpn extends Entry {
   }
 }
 
-class EntryJpnKanji extends Entry {
-  const EntryJpnKanji({required super.xmlDoc, super.showReading});
+class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
+  const EntryJpnKanji({
+    required super.xmlDoc,
+    required super.opt,
+  });
 
   Widget buildReadings(BuildContext context) {
     final r_on =
@@ -245,6 +252,15 @@ class EntryJpnKanji extends Entry {
             borderRadius: BorderRadius.circular(20), color: color),
         child: Text(text),
       );
+    }
+
+    print('hide: ${opt.hideOkurigana}');
+    if (opt.hideOkurigana) {
+      final exp = RegExp(r'.*(\..*|-.*)$');
+
+      r_kun.removeWhere((e) => exp.hasMatch(e.text!));
+      r_on.removeWhere((e) => exp.hasMatch(e.text!));
+      r_nanori.removeWhere((e) => exp.hasMatch(e.text!));
     }
 
     return Wrap(
@@ -288,7 +304,10 @@ class EntryJpnKanji extends Entry {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: buildReadings(context),
       ),
-      Text(r_kun.map((e) => e.text!).join(", "))
+      Text(
+        r_kun.map((e) => e.text!).join(", "),
+        style: TextStyle(fontSize: fontSize),
+      )
     ];
   }
 

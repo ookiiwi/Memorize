@@ -7,41 +7,36 @@ import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
-import 'package:memorize/widgets/entry/eng.dart';
-import 'package:memorize/widgets/entry/jpn.dart';
+import 'package:memorize/generated/entry.g.dart' as entry;
+import 'package:memorize/widgets/entry/opt.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
+export 'package:memorize/widgets/entry/eng.dart';
+export 'package:memorize/widgets/entry/jpn.dart';
+
 enum DisplayMode { preview, detailed, quiz }
 
-abstract class Entry {
-  const Entry({required this.xmlDoc, this.showReading = true});
-  factory Entry.guess({
+abstract class Entry<E extends EntryOptions> {
+  const Entry({required this.xmlDoc, required this.opt});
+
+  static Entry guess({
     required XmlDocument xmlDoc,
-    bool showReading = true,
     required String target,
+    bool showReading = true,
+
+    /// Used if opts is empty
+    Iterable<EntryOptions> opts = const [],
   }) {
-    if (target.startsWith('jpn-')) {
-      if (target.endsWith('-kanji')) {
-        return EntryJpnKanji(
-          xmlDoc: xmlDoc,
-          showReading: showReading,
-        );
-      }
+    return entry.guessEntry(xmlDoc: xmlDoc, target: target, opts: opts);
+  }
 
-      return EntryJpn(
-        xmlDoc: xmlDoc,
-        showReading: showReading,
-      );
-    } else if (target.startsWith('eng-')) {
-      return EntryEng(xmlDoc: xmlDoc, showReading: showReading);
-    }
-
-    throw Exception();
+  static EntryOptions? findOptFor(String target, Iterable<EntryOptions?> opts) {
+    return entry.findOptFor(target, opts);
   }
 
   final XmlDocument xmlDoc;
-  final bool showReading;
+  final E opt;
 
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
       {double? fontSize});
