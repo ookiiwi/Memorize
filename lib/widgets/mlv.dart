@@ -228,13 +228,10 @@ class _MemoListView extends State<MemoListView> {
       ),
       itemCount: entries.length,
       itemBuilder: (context, i) => isCenterOfPage(i)
-          ? Container(
-              color: Colors.amber,
-              child: VisibilityDetector(
-                key: ValueKey(i),
-                onVisibilityChanged: (info) => _onVisibilityChanged(info, i),
-                child: buildEntry(context, entries[i]),
-              ),
+          ? VisibilityDetector(
+              key: ValueKey(i),
+              onVisibilityChanged: (info) => _onVisibilityChanged(info, i),
+              child: buildEntry(context, entries[i]),
             )
           : buildEntry(context, entries[i]),
     );
