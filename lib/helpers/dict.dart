@@ -33,7 +33,7 @@ class Dict {
   static final _updatableListeners = <VoidCallback>[];
   static const _fileExtension = 'dico';
   static final _dio =
-      Dio(BaseOptions(baseUrl: 'http://192.168.1.13:8080/${Writer.version}'));
+      Dio(BaseOptions(baseUrl: 'http://$host:8080/${Writer.version}'));
   static final _targetListFilepath =
       '$applicationDocumentDirectory/targets.json';
 
@@ -240,6 +240,7 @@ class Dict {
 
   static Future<void> fetchTargetList() async {
     try {
+      // TODO: register response to avoid double fetch
       final response = await _dio.get('/');
       final List<String> targets = List.from(response.data);
 
