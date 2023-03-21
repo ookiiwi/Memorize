@@ -3,12 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/widgets/entry.dart';
-import 'package:path_provider/path_provider.dart';
 
 Future<void> loadData() async {
-  applicationDocumentDirectory =
-      (await getApplicationDocumentsDirectory()).path;
-  temporaryDirectory = (await getTemporaryDirectory()).path;
+  await initConstants();
   await DicoManager.open();
   await Entry.init();
   await Dict.fetchTargetList();
