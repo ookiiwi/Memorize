@@ -30,7 +30,7 @@ class MemoListView extends StatefulWidget {
 
   final MemoList? list;
   final List<ListEntry> entries;
-  final int itemExtent;
+  final double itemExtent;
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
   final VoidCallback? onLoad;
@@ -43,7 +43,7 @@ class MemoListView extends StatefulWidget {
 class _MemoListView extends State<MemoListView> {
   List<ListEntry> get entries => widget.list?.entries ?? widget.entries;
   MemoListViewController? get controller => widget.controller;
-  int get itemExtent => widget.itemExtent;
+  double get itemExtent => widget.itemExtent;
 
   final scrollController = ScrollController();
 
@@ -57,6 +57,12 @@ class _MemoListView extends State<MemoListView> {
     super.initState();
 
     controller?.addListener(_controllerListener);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    pageCnt = (MediaQuery.of(context).size.height * 0.6) ~/ itemExtent;
   }
 
   void _controllerListener() {
@@ -95,7 +101,11 @@ class _MemoListView extends State<MemoListView> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 50),
+                constraints: BoxConstraints(
+                  minWidth: 50,
+                  minHeight: itemExtent,
+                  maxHeight: itemExtent,
+                ),
                 child: Center(
                   widthFactor: 1,
                   heightFactor: 1,
