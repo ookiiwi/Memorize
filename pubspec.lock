@@ -284,6 +284,14 @@ packages:
       relative: true
     source: path
     version: "0.0.1"
+  flutter_dotenv:
+    dependency: "direct main"
+    description:
+      name: flutter_dotenv
+      sha256: d9283d92059a22e9834bc0a31336658ffba77089fb6f3cc36751f1fc7c6661a3
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.2"
   flutter_driver:
     dependency: transitive
     description: flutter
@@ -549,14 +557,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.3"
-  nested:
-    dependency: transitive
-    description:
-      name: nested
-      sha256: "03bac4c528c64c95c722ec99280375a6f2fc708eec17c7b3f07253b626cd2a20"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.0"
   node_preamble:
     dependency: transitive
     description:
@@ -661,6 +661,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.4"
+  pocketbase:
+    dependency: "direct main"
+    description:
+      name: pocketbase
+      sha256: d1eecbdf1540b963b1f40fb871e4e68798f8fa59c69de13cd11bf36c104b82d9
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.3"
   pool:
     dependency: transitive
     description:
@@ -677,14 +685,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.4"
-  provider:
-    dependency: "direct main"
-    description:
-      name: provider
-      sha256: cdbe7530b12ecd9eb455bdaa2fcb8d4dad22e80b8afb4798b41479d5ce26847f
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.0.5"
   pub_semver:
     dependency: transitive
     description:
