@@ -13,7 +13,9 @@ import 'package:visibility_detector/visibility_detector.dart';
 enum Filter { asc, dsc, rct }
 
 class ListExplorer extends StatefulWidget {
-  const ListExplorer({Key? key}) : super(key: key);
+  const ListExplorer({Key? key, this.adapter}) : super(key: key);
+
+  final ListExplorerAdapter? adapter;
 
   @override
   State<ListExplorer> createState() => _ListExplorer();
@@ -21,21 +23,17 @@ class ListExplorer extends StatefulWidget {
 
 class _ListExplorer extends State<ListExplorer> {
   final key = GlobalKey();
-  final _controller = TextEditingController();
   final double globalPadding = 10;
-  final _selectionController = SelectionController<FileInfo>();
-  final _menuBtnCtrl = MenuButtonController();
-  List<Widget> Function()? _menuBuilder;
   Filter filter = Filter.asc;
   List<FileInfo> _dirContent = [];
-
-  double _addBtnTurns = 0.0;
+  late final ListExplorerController controller;
+  late final ListExplorerAdapter adapter;
 
   ModalRoute? _route;
   String collectionHistory = '';
   final collectionHistoryCtrl = AutoScrollController();
 
-  final root = '$applicationDocumentDirectory/fe';
+  static final root = '$applicationDocumentDirectory/fe';
   late String currentDir = root;
   String get currentCollection => currentDir.replaceFirst(RegExp('^$root'), '');
 
@@ -46,15 +44,22 @@ class _ListExplorer extends State<ListExplorer> {
     final dir = Directory(root);
     if (!dir.existsSync()) dir.createSync();
 
-    _selectionController.addListener(() {
-      bool isEnabled = _selectionController.isEnabled;
+    controller = ListExplorerController(
+      updateData: _updateData,
+      onDelete: _onDeleteItem,
+      selectionController: SelectionController(),
+      getCurrentDir: () => currentDir,
+      refresh: () {
+        if (mounted) setState(() {});
+      },
+      changeCollection: _changeCollection,
+    );
 
-      if (isEnabled) {
-        _menuBuilder = buildSelectionButtons;
-      }
-
-      isEnabled ? _openMenu() : _closeMenu();
-    });
+    if (widget.adapter == null) {
+      adapter = const ListExplorerAdapter();
+    } else {
+      adapter = widget.adapter!;
+    }
 
     _updateData();
   }
@@ -71,7 +76,6 @@ class _ListExplorer extends State<ListExplorer> {
 
   @override
   void dispose() {
-    _controller.dispose();
     _route?.removeScopedWillPopCallback(_canPop);
     _route = null;
 
@@ -109,6 +113,14 @@ class _ListExplorer extends State<ListExplorer> {
     });
   }
 
+  void _onDeleteItem(FileInfo info) {
+    final cleanPath = info.path.replaceFirst(RegExp('^$root'), '');
+    if (info.type == FileSystemEntityType.directory &&
+        collectionHistory.startsWith(cleanPath)) {
+      collectionHistory = cleanPath.replaceFirst(RegExp(r'\/[^\/]*$'), '');
+    }
+  }
+
   Future<bool> _canPop() async {
     if (Navigator.of(context).canPop()) {
       return true;
@@ -117,96 +129,6 @@ class _ListExplorer extends State<ListExplorer> {
     }
 
     return false;
-  }
-
-  List<Widget> buildAddButtons() {
-    return [
-      FloatingActionButton(
-        heroTag: "dirAddBtn",
-        tooltip: "New collection",
-        onPressed: () {
-          _closeMenu();
-
-          showDialog(
-            context: context,
-            builder: (ctx) => TextFieldDialog(
-              controller: _controller,
-              hintText: 'Collection name',
-              hasConfirmed: (value) {
-                if (value && _controller.text.isNotEmpty) {
-                  final dir = Directory(p.join(currentDir, _controller.text));
-
-                  if (dir.existsSync()) {
-                    return '${_controller.text} already exists';
-                  }
-
-                  dir.createSync();
-                  _updateData();
-                }
-
-                setState(() {});
-
-                return null;
-              },
-            ),
-          );
-        },
-        child: const Icon(Icons.folder),
-      ),
-      FloatingActionButton(
-        tooltip: "New list",
-        onPressed: () {
-          _closeMenu();
-
-          context.push('/list', extra: {'dir': currentDir});
-        },
-        child: const Icon(Icons.list),
-      )
-    ];
-  }
-
-  List<Widget> buildSelectionButtons() {
-    return [
-      FloatingActionButton(
-        tooltip: 'Delete item',
-        onPressed: () {
-          for (var e in _selectionController.selection) {
-            File(e.path).deleteSync(recursive: true);
-            ListViewer.unload(e);
-
-            final cleanPath = e.path.replaceFirst(RegExp('^$root'), '');
-
-            if (e.type == FileSystemEntityType.directory &&
-                collectionHistory.startsWith(cleanPath)) {
-              collectionHistory =
-                  cleanPath.replaceFirst(RegExp(r'\/[^\/]*$'), '');
-            }
-          }
-
-          _updateData();
-          _closeMenu();
-        },
-        child: const Icon(Icons.delete),
-      ),
-    ];
-  }
-
-  void _openMenu() {
-    _addBtnTurns = 0.0;
-    _addBtnTurns += 3.0 / 8.0;
-    _menuBtnCtrl.open();
-
-    setState(() {});
-  }
-
-  void _closeMenu() {
-    _addBtnTurns = 0.0;
-    _menuBtnCtrl.close();
-    _selectionController.isEnabled = false;
-    _selectionController.selection.clear();
-    _menuBuilder = null; // release widgets
-
-    setState(() {});
   }
 
   Widget buildSearchFilter() {
@@ -307,6 +229,7 @@ class _ListExplorer extends State<ListExplorer> {
               padding: const EdgeInsets.only(left: 0),
               child: buildSearchFilter(),
             ),
+            ...adapter.buildHeaderTrailing(context, controller),
           ],
         ),
       ),
@@ -317,14 +240,14 @@ class _ListExplorer extends State<ListExplorer> {
   Widget build(BuildContext ctx) {
     _sortItems(_dirContent);
 
-    return Container(
-      padding: EdgeInsets.only(
-        top: globalPadding,
-        left: globalPadding,
-        right: globalPadding,
-      ),
-      child: Stack(children: [
-        Column(
+    return Stack(children: [
+      Padding(
+        padding: EdgeInsets.only(
+          top: globalPadding,
+          left: globalPadding,
+          right: globalPadding,
+        ),
+        child: Column(
           children: [
             buildHeader(),
             Expanded(
@@ -336,51 +259,264 @@ class _ListExplorer extends State<ListExplorer> {
                 child: Container(
                   color: Colors.transparent,
                   child: ListExplorerItems(
-                    selectionController: _selectionController,
+                    selectionController: controller.selectionController,
                     items: _dirContent,
-                    onItemTap: (info) {
-                      if (info.type == FileSystemEntityType.directory) {
-                        _changeCollection(info.path);
-                        setState(() {});
-                      } else {
-                        context.push('/list', extra: {'fileinfo': info});
-                      }
-                    },
+                    onItemTap: (info) =>
+                        adapter.onItemTap(context, controller, info),
                   ),
                 ),
               ),
             ),
           ],
         ),
-        Positioned(
-          right: 10,
-          bottom: kBottomNavigationBarHeight + 10,
-          child: MenuButton(
-            controller: _menuBtnCtrl,
-            button: FloatingActionButton(
-              heroTag: "listMenuBtn",
-              tooltip: "Open add menu",
-              onPressed: () {
-                if (_selectionController.isEnabled) {
-                  _selectionController.isEnabled = false;
-                  _closeMenu();
-                  return;
-                }
+      ),
+      adapter.buildFab(context, controller) ?? const SizedBox()
+    ]);
+  }
+}
 
-                _menuBuilder = buildAddButtons;
-                _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
-              },
-              child: AnimatedRotation(
-                turns: _addBtnTurns,
-                duration: const Duration(milliseconds: 200),
-                child: const Icon(Icons.add),
-              ),
-            ),
-            menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
-          ),
-        ),
-      ]),
+class ListExplorerMenuButton extends StatefulWidget {
+  const ListExplorerMenuButton({super.key, required this.controller});
+
+  final ListExplorerController controller;
+
+  @override
+  State<StatefulWidget> createState() => _ListExplorerMenuButton();
+}
+
+class _ListExplorerMenuButton extends State<ListExplorerMenuButton> {
+  final _menuBtnCtrl = MenuButtonController();
+  List<Widget> Function()? _menuBuilder;
+  double _addBtnTurns = 0.0;
+  final _controller = TextEditingController();
+  ListExplorerController get controller => widget.controller;
+  SelectionController get selectionController => controller.selectionController;
+  String get currentDir => controller.getCurrentDir();
+
+  @override
+  void initState() {
+    super.initState();
+
+    selectionController.addListener(() {
+      bool isEnabled = selectionController.isEnabled;
+
+      if (isEnabled) {
+        _menuBuilder = buildSelectionButtons;
+      }
+
+      isEnabled ? _openMenu() : _closeMenu();
+    });
+  }
+
+  static void addNewCollection(BuildContext context,
+      ListExplorerController controller, TextEditingController txtController) {
+    showDialog(
+      context: context,
+      builder: (ctx) => TextFieldDialog(
+        controller: txtController,
+        hintText: 'Collection name',
+        hasConfirmed: (value) {
+          if (value && txtController.text.isNotEmpty) {
+            final dir = Directory(
+                p.join(controller.getCurrentDir(), txtController.text));
+
+            if (dir.existsSync()) {
+              return '${txtController.text} already exists';
+            }
+
+            dir.createSync();
+            controller.updateData();
+          }
+
+          controller.refresh();
+
+          return null;
+        },
+      ),
     );
+  }
+
+  List<Widget> buildAddButtons() {
+    return [
+      FloatingActionButton(
+        heroTag: "dirAddBtn",
+        tooltip: "New collection",
+        onPressed: () {
+          _closeMenu();
+
+          addNewCollection(context, controller, _controller);
+        },
+        child: const Icon(Icons.folder),
+      ),
+      FloatingActionButton(
+        tooltip: "New list",
+        onPressed: () {
+          _closeMenu();
+
+          context.push('/list', extra: {'dir': currentDir});
+        },
+        child: const Icon(Icons.list),
+      )
+    ];
+  }
+
+  List<Widget> buildSelectionButtons() {
+    return [
+      FloatingActionButton(
+        tooltip: 'Delete item',
+        onPressed: () {
+          for (var e in selectionController.selection) {
+            // TODO: ask if remove from server
+
+            File(e.path).deleteSync(recursive: true);
+            ListViewer.unload(e);
+
+            controller.onDelete(e);
+          }
+
+          controller.updateData();
+          controller.refresh();
+
+          _closeMenu();
+        },
+        child: const Icon(Icons.delete),
+      ),
+    ];
+  }
+
+  void _openMenu() {
+    _addBtnTurns = 0.0;
+    _addBtnTurns += 3.0 / 8.0;
+    _menuBtnCtrl.open();
+
+    setState(() {});
+  }
+
+  void _closeMenu() {
+    _addBtnTurns = 0.0;
+    _menuBtnCtrl.close();
+    selectionController.isEnabled = false;
+    selectionController.selection.clear();
+    _menuBuilder = null; // release widgets
+
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MenuButton(
+      controller: _menuBtnCtrl,
+      button: FloatingActionButton(
+        heroTag: "listMenuBtn",
+        tooltip: "Open add menu",
+        onPressed: () {
+          if (selectionController.isEnabled) {
+            selectionController.isEnabled = false;
+            _closeMenu();
+            return;
+          }
+
+          _menuBuilder = buildAddButtons;
+          _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
+        },
+        child: AnimatedRotation(
+          turns: _addBtnTurns,
+          duration: const Duration(milliseconds: 200),
+          child: const Icon(Icons.add),
+        ),
+      ),
+      menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
+    );
+  }
+}
+
+class ListExplorerController {
+  const ListExplorerController(
+      {required this.updateData,
+      required this.onDelete,
+      required this.selectionController,
+      required this.getCurrentDir,
+      required this.refresh,
+      required this.changeCollection});
+
+  final VoidCallback updateData;
+  final void Function(FileInfo info) onDelete;
+  final SelectionController selectionController;
+  final String Function() getCurrentDir;
+  final VoidCallback refresh;
+  final void Function(String path) changeCollection;
+}
+
+class ListExplorerAdapter {
+  const ListExplorerAdapter();
+
+  Widget? buildFab(BuildContext context, ListExplorerController controller) {
+    return Positioned(
+      right: 20.0,
+      bottom: kBottomNavigationBarHeight + 5.0,
+      child: ListExplorerMenuButton(controller: controller),
+    );
+  }
+
+  List<Widget> buildHeaderTrailing(
+      BuildContext context, ListExplorerController controller) {
+    return [];
+  }
+
+  void onItemTap(
+      BuildContext context, ListExplorerController controller, FileInfo info) {
+    if (info.type == FileSystemEntityType.directory) {
+      controller.changeCollection(info.path);
+      controller.refresh();
+    } else {
+      context.push('/list', extra: {'fileinfo': info});
+    }
+  }
+}
+
+class ListExplorerCollectionPicker extends ListExplorerAdapter {
+  ListExplorerCollectionPicker({this.onValidate});
+
+  FileInfo selectedCollection = FileInfo(
+    'home',
+    _ListExplorer.root,
+    FileSystemEntityType.directory,
+  );
+
+  final void Function(FileInfo info)? onValidate;
+
+  @override
+  List<Widget> buildHeaderTrailing(
+      BuildContext context, ListExplorerController controller) {
+    final txtController = TextEditingController();
+
+    return [
+      IconButton(
+        onPressed: () {
+          _ListExplorerMenuButton.addNewCollection(
+            context,
+            controller,
+            txtController,
+          );
+        },
+        icon: const Icon(Icons.add),
+      )
+    ];
+  }
+
+  @override
+  Widget? buildFab(BuildContext context, ListExplorerController controller) {
+    return null;
+  }
+
+  @override
+  void onItemTap(
+      BuildContext context, ListExplorerController controller, FileInfo info) {
+    if (info.type != FileSystemEntityType.directory) return;
+
+    selectedCollection = info;
+    controller.changeCollection(info.path);
+    controller.refresh();
   }
 }
 
@@ -415,6 +551,7 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         }
       },
       child: Container(
+        padding: const EdgeInsets.all(8.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           color: Theme.of(context).colorScheme.primaryContainer,
@@ -422,6 +559,7 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         child: Center(
           child: Text(
             item.name,
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onPrimaryContainer,
             ),
