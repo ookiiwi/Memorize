@@ -7,8 +7,8 @@ import 'package:flutter_dico/flutter_dico.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/views/account.dart';
 import 'package:memorize/views/splash_screen.dart';
-import 'package:provider/provider.dart';
 import 'package:universal_io/io.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -83,10 +83,17 @@ final router = GoRouter(initialLocation: '/splash', routes: [
             throw Exception('Invalid list arguments');
           }),
       GoRoute(
-        path: '/search',
-        pageBuilder: (context, state) =>
-            const NoTransitionPage(child: SearchPage()),
-      ),
+          path: '/search',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: SearchPage()),
+          routes: [
+            GoRoute(
+              path: 'preview',
+              pageBuilder: (context, state) => NoTransitionPage(
+                child: ListPreview(list: state.extra as MemoList),
+              ),
+            )
+          ]),
       GoRoute(
           path: '/settings',
           pageBuilder: (context, state) =>
@@ -98,6 +105,11 @@ final router = GoRouter(initialLocation: '/splash', routes: [
                   const NoTransitionPage(child: DictionaryPage()),
             )
           ]),
+      GoRoute(
+        path: '/account',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: AccountPage()),
+      )
     ],
   )
 ]);
@@ -142,11 +154,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   ensureLibdicoInitialized();
 
-  Provider.debugCheckInvalidValueType = null;
-
-  runApp(
-    LifecycleWatcher(child: MyApp()),
-  );
+  runApp(LifecycleWatcher(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
