@@ -22,6 +22,14 @@ class _SettingsPage extends State<SettingsPage> {
       body: ListView(
         children: [
           ListTile(
+            title: const Text('Account'),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+            ),
+            onTap: () => context.push('/account'),
+          ),
+          ListTile(
             title: const Text('Dictionaries'),
             trailing: const Icon(
               Icons.arrow_forward_ios,
