@@ -132,47 +132,50 @@ class _SearchPage extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          const SliverAppBar(
-            title: Text("Search"),
-            centerTitle: true,
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'list name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide.none,
+      body: AnimatedBuilder(
+        animation: auth,
+        builder: (context, _) => CustomScrollView(
+          slivers: [
+            const SliverAppBar(
+              title: Text("Search"),
+              centerTitle: true,
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'list name',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
+                    onChanged: fetch,
                   ),
-                  onChanged: fetch,
                 ),
+                childCount: 1,
               ),
-              childCount: 1,
             ),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final listname = cleanFilename(results[index].data['list']);
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final listname = cleanFilename(results[index].data['list']);
 
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 30),
-                  onTap: () =>
-                      openList(results[index], results[index].data['list']),
-                  title: Text(listname),
-                );
-              },
-              childCount: results.length,
-            ),
-          )
-        ],
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 30),
+                    onTap: () =>
+                        openList(results[index], results[index].data['list']),
+                    title: Text(listname),
+                  );
+                },
+                childCount: results.length,
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
