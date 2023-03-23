@@ -200,9 +200,9 @@ void main() {
     expect(text, findsNothing);
   }
 
-  Future<void> setServeConnStatus([bool open = true]) async {
-    await Dio().get('http://192.168.1.13:8080/',
-        queryParameters: {'closeConn': !open}).catchError((err) {});
+  Future<void> setDicoServiceStatus([bool open = true]) async {
+    await Dio().get('http://$host:3000/services/dico',
+        queryParameters: {'open': open});
   }
 
   void checkIconButtonEnabled(WidgetTester tester, IconData icon,
@@ -217,7 +217,7 @@ void main() {
   Future<void> testInEmptyListNoInternet(WidgetTester tester) async {
     const listname = 'emptyNoInternet';
 
-    await setServeConnStatus(false);
+    await setDicoServiceStatus(false);
 
     await newList(tester, listname);
 
@@ -233,7 +233,7 @@ void main() {
     expect(dlIcon, findsOneWidget);
     checkIconButtonEnabled(tester, Icons.add, false);
 
-    await setServeConnStatus(true);
+    await setDicoServiceStatus(true);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -249,14 +249,14 @@ void main() {
       Dict.remove(target);
     } catch (_) {}
 
-    await setServeConnStatus(true);
+    await setDicoServiceStatus(true);
     await genList(tester, listname, target);
     checkIconButtonEnabled(tester, Icons.add, true);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await setServeConnStatus(false);
+    await setDicoServiceStatus(false);
 
     try {
       Dict.remove(target);
@@ -268,7 +268,7 @@ void main() {
     expect(find.text('error mazafaka #_#'), findsOneWidget);
     checkIconButtonEnabled(tester, Icons.add, false);
 
-    await setServeConnStatus(true);
+    await setDicoServiceStatus(true);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -281,7 +281,7 @@ void main() {
     const listname = 'loseConn';
     const target = 'jpn-eng';
 
-    await setServeConnStatus(true);
+    await setDicoServiceStatus(true);
     await newList(tester, listname);
 
     try {
@@ -302,15 +302,18 @@ void main() {
     /// close server
 
     debugPrint('close server');
+    await Future.delayed(const Duration(milliseconds: 500));
+    await setDicoServiceStatus(false);
     await waitForDownload(tester, target);
 
     expect(dlIcon, findsOneWidget);
     checkIconButtonEnabled(tester, Icons.add, false);
 
     debugPrint('restart server');
+    await setDicoServiceStatus(true);
 
     await Future.delayed(
-        const Duration(seconds: 10)); // wait for server to restart
+        const Duration(seconds: 2)); // wait for server to restart
 
     await tester.tap(dlIcon);
     await tester.pumpAndSettle();
@@ -330,10 +333,7 @@ void main() {
 
   Future<void> testListEntryOptions(
       WidgetTester tester, String listname) async {
-    //const listname = 'entryopt';
     bool hideOkurigana = false;
-
-    //await genList(tester, listname, 'jpn-eng');
 
     await tester.tap(find.text(listname));
     await tester.pumpAndSettle();
@@ -363,16 +363,91 @@ void main() {
     await triggerBackButton(tester);
   }
 
+  Future<void> goToSearch(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.search_rounded));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> goToHome(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.home_rounded));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> fetchList(WidgetTester tester, String listname) async {
+    await goToSearch(tester);
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.save_alt_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> testListFetch(WidgetTester tester, String listname) async {
+    await fetchList(tester, listname);
+
+    await goToHome(tester);
+    expect(find.text(listname), findsOneWidget);
+
+    await fetchList(tester, listname);
+    expect(find.text('List already exists'), findsOneWidget);
+
+    await triggerBackButton(tester);
+    await goToHome(tester);
+  }
+
+  Future<void> testListUpload(WidgetTester tester) async {
+    const usr = 'memo';
+    const pwd = '12345678';
+    const listname = 'Uploadlist';
+
+    Future<void> openUpload() async {
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Upload'));
+      await tester.pumpAndSettle();
+    }
+
+    await auth.signup(username: usr, password: pwd);
+
+    await genList(tester, listname, 'jpn-eng');
+
+    final uploadBtn = find.widgetWithText(MaterialButton, 'Upload');
+
+    await openUpload();
+    await tester.tap(uploadBtn);
+    await tester.pumpAndSettle();
+    expect(uploadBtn, findsNothing);
+
+    await goToHome(tester);
+    await deleteList(tester, listname);
+
+    await testListFetch(tester, listname);
+
+    final lists = await pb
+        .collection('memo_lists')
+        .getFullList(filter: 'owner = "${auth.user!.id}"');
+
+    for (var e in lists) {
+      await pb.collection('memo_lists').delete(e.id);
+    }
+
+    await auth.delete();
+  }
+
   testWidgets('list', (tester) async {
     const listname = 'mylist';
     const dicoTarget = 'jpn-eng';
 
     const kanji = '馬';
 
-    await setServeConnStatus(true);
-
     app.main();
     await tester.pumpAndSettle();
+    await setDicoServiceStatus(true);
 
     await testNewListSave(tester);
     await testNewList(tester, listname, dicoTarget, kanji);
@@ -387,5 +462,7 @@ void main() {
     await testNoInternetWhileDl(tester);
     await testInEmptyListNoInternet(tester);
     await testInListNoInternet(tester);
+
+    await testListUpload(tester);
   });
 }
