@@ -67,9 +67,6 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    await triggerBackButton(tester);
-    await tester.pumpAndSettle();
-
     expect(find.widgetWithText(Selectable, name), findsOneWidget);
     await deleteList(tester, name);
   }
