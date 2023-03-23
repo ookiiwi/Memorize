@@ -1,4 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:memorize/auth/auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketbase/pocketbase.dart';
 
@@ -6,6 +7,7 @@ late final String applicationDocumentDirectory;
 late final String temporaryDirectory;
 late final String host;
 late final PocketBase pb;
+final auth = Auth();
 
 Future<void> initConstants() async {
   await dotenv.load();
