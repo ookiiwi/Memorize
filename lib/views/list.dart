@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dico/flutter_dico.dart';
@@ -10,6 +12,7 @@ import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/views/auth.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
@@ -19,6 +22,7 @@ import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
+import 'package:pocketbase/pocketbase.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -166,7 +170,16 @@ class _ListViewer extends State<ListViewer> {
           setState(() {});
         }
       },
-    'about': () {
+    'Upload': () {
+      assert(isListInit);
+
+      if (list!.entries.isEmpty) return;
+
+      Navigator.of(context).push(MaterialPageRoute(builder: (context) {
+        return UploadPage(list: list!);
+      }));
+    },
+    'About': () {
       assert(isListInit);
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => AboutPage(list: list!)),
@@ -1170,7 +1183,125 @@ class AboutPage extends StatelessWidget {
             ),
             trailing: Text('$src - $dst'),
           ),
+          ListTile(
+            title: const Text('Record id'),
+            trailing: Text(list.recordId ?? 'N/A'),
+          )
         ],
+      ),
+    );
+  }
+}
+
+class UploadPage extends StatefulWidget {
+  const UploadPage({super.key, required this.list});
+
+  final MemoList list;
+
+  @override
+  State<StatefulWidget> createState() => _UploadPage();
+}
+
+class _UploadPage extends State<UploadPage> {
+  bool isPublic = false;
+  Future record = Future.value();
+  bool _uploading = false;
+
+  MemoList get list => widget.list;
+
+  void upload() async {
+    const collection = 'memo_lists';
+    final files = [
+      http.MultipartFile.fromString(
+        'list',
+        jsonEncode(list),
+        filename: list.name,
+      )
+    ];
+
+    _uploading = true;
+
+    if (list.recordId == null) {
+      record = pb.collection(collection).create(
+        body: {
+          'owner': pb.authStore.model.id,
+          'targets': list.targets.join(';'),
+          'isPublic': isPublic,
+        },
+        files: files,
+      ).then((value) {
+        list.recordId = value.id;
+        list.save();
+      });
+    } else {
+      record = pb.collection(collection).update(
+            list.recordId!,
+            body: {'isPublic': isPublic},
+            files: files,
+          );
+    }
+
+    record.then((value) {
+      Navigator.of(context).maybePop();
+    }).catchError((err) {
+      print('upload error: $e');
+      setState(() => _uploading = false);
+    }, test: (error) => error is ClientException);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Upload')),
+      body: AbsorbPointer(
+        absorbing: _uploading,
+        child: AnimatedBuilder(
+            animation: auth,
+            builder: (context, _) {
+              return auth.user == null
+                  ? const AuthPage()
+                  : ListView(
+                      padding: const EdgeInsets.all(10.0),
+                      children: [
+                        SwitchListTile(
+                          title: const Text('Visible to anyone?'),
+                          value: isPublic,
+                          onChanged: (_) =>
+                              setState(() => isPublic = !isPublic),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 30.0),
+                          child: AspectRatio(
+                            aspectRatio: 16 / 2,
+                            child: MaterialButton(
+                              onPressed: () => upload(),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              color: Theme.of(context).colorScheme.onBackground,
+                              child: FutureBuilder(
+                                future: record,
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState !=
+                                      ConnectionState.done) {
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onPrimaryContainer,
+                                      ),
+                                    );
+                                  }
+
+                                  return const Text('Upload');
+                                },
+                              ),
+                            ),
+                          ),
+                        )
+                      ],
+                    );
+            }),
       ),
     );
   }
