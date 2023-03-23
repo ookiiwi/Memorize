@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:equatable/equatable.dart';
-import 'package:objectid/objectid.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
@@ -34,20 +33,13 @@ class ListEntry extends Equatable {
 }
 
 class MemoList {
-  MemoList(String filename, this.targets)
-      : _filename = filename,
-        id = ObjectId(),
-        entries = [];
-  MemoList.fromJson(String filename, Map<String, dynamic> json)
-      : _filename = filename,
-        id = ObjectId.fromHexString(json['id']),
+  MemoList(this.filename, this.targets, {this.recordId}) : entries = [];
+  MemoList.fromJson(this.filename, Map<String, dynamic> json)
+      : recordId = json['recordId'],
         targets = Set.from(json['targets']),
-        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))) {
-    for (var e in entries) {
-      targets.add(e.target);
-    }
-  }
-  factory MemoList.open(String filename) {
+        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e)));
+
+  factory MemoList.open(String filename, {int? revision, bool noHead = false}) {
     final file = File(filename);
 
     assert(file.existsSync());
@@ -55,34 +47,31 @@ class MemoList {
     return MemoList.fromJson(filename, jsonDecode(file.readAsStringSync()));
   }
 
-  String _filename;
-  final ObjectId id;
+  String filename;
+  String? recordId;
   final List<ListEntry> entries;
-  String get filename => _filename;
-  String get name => basename(_filename);
   final Set<String> targets;
 
+  String get name => basename(filename);
+
   Map<String, dynamic> toJson() => {
-        'id': id.hexString,
+        if (recordId != null) 'recordId': recordId,
         'targets': targets.toList(),
         'entries': entries.map((e) => e.toJson()).toList(),
       };
 
   void save() {
     final file = File(filename);
-
-    if (!file.existsSync()) file.createSync();
-
     file.writeAsStringSync(jsonEncode(toJson()));
   }
 
   void rename(String newName) {
-    final file = File(_filename);
+    final file = File(filename);
 
-    _filename = _filename.replaceFirst(RegExp(name + r'$'), newName);
+    filename = filename.replaceFirst(RegExp(name + r'$'), newName);
 
     if (file.existsSync()) {
-      file.renameSync(_filename);
+      file.renameSync(filename);
     }
   }
 }
