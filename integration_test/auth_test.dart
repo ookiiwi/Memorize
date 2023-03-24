@@ -74,6 +74,23 @@ Future<void> delete(WidgetTester tester,
   }
 }
 
+Future<void> changePassword(
+    WidgetTester tester, String oldPassword, String newPassword,
+    [String? confirmPassword]) async {
+  await openAuthPage(tester);
+
+  await tester.tap(find.text('Change password'));
+  await tester.pumpAndSettle();
+
+  await _enterTextField(tester, 'Old password', oldPassword);
+  await _enterTextField(tester, 'New password', newPassword);
+  await _enterTextField(
+      tester, 'Confirm new password', confirmPassword ?? newPassword);
+
+  await tester.tap(find.widgetWithText(MaterialButton, 'Change password'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   const email = 'memo@memo.org';
   const username = 'memo';
@@ -141,6 +158,22 @@ void main() {
       usernameOrEmail: username,
       password: password,
     );
+    expect(find.text('Logout'), findsOneWidget);
+
+    // wrong old password
+    await changePassword(tester, 'password', password);
+    expect(find.text('Logout'), findsNothing);
+    await triggerBackButton(tester);
+
+    // wrong new password
+    await changePassword(tester, password, 'newpassword', 'oldpassword');
+    expect(find.text('Logout'), findsNothing);
+    await triggerBackButton(tester);
+
+    await changePassword(tester, password, password.split('').reversed.join());
+    expect(find.text('Logout'), findsOneWidget);
+
+    await changePassword(tester, password.split('').reversed.join(), password);
     expect(find.text('Logout'), findsOneWidget);
 
     await delete(tester, identity: username, password: password);
