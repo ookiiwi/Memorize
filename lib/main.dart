@@ -21,6 +21,7 @@ import 'package:memorize/widgets/bar.dart';
 
 final _routerNavKey = GlobalKey<NavigatorState>();
 const _routes = ['home', 'search', 'settings'];
+const _appBarIconSize = 36.0;
 
 final router = GoRouter(initialLocation: '/splash', routes: [
   GoRoute(
@@ -49,9 +50,11 @@ final router = GoRouter(initialLocation: '/splash', routes: [
             context.go(location);
           },
           items: [
-            Icon(Icons.home_rounded, color: appBarIconColor),
-            Icon(Icons.search_rounded, color: appBarIconColor),
-            Icon(Icons.settings, color: appBarIconColor),
+            Icon(Icons.home_rounded,
+                color: appBarIconColor, size: _appBarIconSize),
+            Icon(Icons.search_rounded,
+                color: appBarIconColor, size: _appBarIconSize),
+            Icon(Icons.settings, color: appBarIconColor, size: _appBarIconSize),
           ],
         ),
       );
