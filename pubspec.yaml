@@ -63,6 +63,7 @@ dependencies:
   async: ^2.10.0
   pocketbase: ^0.7.3
   flutter_dotenv: ^5.0.2
+  http: ^0.13.5
 
 dev_dependencies:
   integration_test:
