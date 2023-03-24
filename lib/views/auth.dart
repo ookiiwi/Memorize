@@ -357,6 +357,8 @@ class _ChangePasswordPage extends State<ChangePasswordPage> {
   final newCtrl = TextEditingController();
   final confirmCtrl = TextEditingController();
 
+  Future _loading = Future.value();
+
   String? oldError;
   String? newError;
   String? confirmError;
@@ -402,11 +404,23 @@ class _ChangePasswordPage extends State<ChangePasswordPage> {
             AuthSubmitButton(
               margin:
                   const EdgeInsets.symmetric(horizontal: 8.0, vertical: 30.0),
-              child: const Text('Change password'),
+              child: FutureBuilder(
+                  future: _loading,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return Center(
+                        child: CircularProgressIndicator(
+                          color: Theme.of(context).colorScheme.background,
+                        ),
+                      );
+                    }
+
+                    return const Text('Change password');
+                  }),
               onPressed: () {
                 if (!_formKey.currentState!.validate()) return;
 
-                auth
+                _loading = auth
                     .changePassword(
                   oldPassword: oldCtrl.text,
                   newPassword: newCtrl.text,
@@ -423,6 +437,8 @@ class _ChangePasswordPage extends State<ChangePasswordPage> {
                   },
                   test: (error) => error is ClientException,
                 );
+
+                setState(() {});
               },
             )
           ],
