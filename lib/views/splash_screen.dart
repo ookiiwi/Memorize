@@ -6,9 +6,14 @@ import 'package:memorize/widgets/entry.dart';
 
 Future<void> loadData() async {
   await initConstants();
+  await auth.load();
   await DicoManager.open();
   await Entry.init();
   await Dict.fetchTargetList();
+
+  if (auth.isLogged) {
+    await auth.refresh();
+  }
 }
 
 class SplashScreen extends StatefulWidget {
