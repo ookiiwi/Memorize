@@ -1,22 +1,48 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/auth/user.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:universal_io/io.dart';
 
 enum AuthState { authentificated, unknown }
 
 class Auth extends ChangeNotifier {
-  Auth({User? user}) : _user = user;
+  Auth() {
+    pb.authStore.onChange.listen((event) => notifyListeners());
+  }
 
-  User? _user;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final _authDataKey = 'authData';
 
-  User? get user => _user?.copyWith();
-  set user(User? user) {
-    if (user == _user) return;
+  String? get id => isLogged ? pb.authStore.model.id : null;
+  String? get username => isLogged ? pb.authStore.model.data['username'] : null;
+  String? get email => isLogged ? pb.authStore.model.data['email'] : null;
+  String? get name => isLogged ? pb.authStore.model.data['name'] : null;
+  String? get avatar => isLogged ? pb.authStore.model.data['avatar'] : null;
+  bool get isLogged => pb.authStore.isValid;
 
-    _user = user?.copyWith();
-    notifyListeners();
+  Future<void> load() async {
+    final tmp = await _storage.read(key: _authDataKey);
+
+    if (tmp == null) return;
+
+    final data = jsonDecode(tmp);
+    final token = data['token'];
+    final record = RecordModel.fromJson(data['record']);
+
+    pb.authStore.save(token, record);
+  }
+
+  Future<void> _saveUser() {
+    return _storage.write(
+      key: _authDataKey,
+      value: jsonEncode({
+        'token': pb.authStore.token,
+        'record': pb.authStore.model as RecordModel,
+      }),
+    );
   }
 
   /// Both username and email can be null
@@ -31,11 +57,14 @@ class Auth extends ChangeNotifier {
         "passwordConfirm": password,
       });
 
-      user = User.fromRecordModel(record);
+      username = record.data['username'];
+      email = record.data['email'];
 
       await pb
           .collection('users')
-          .authWithPassword(user!.username ?? user!.email!, password);
+          .authWithPassword(username ?? email!, password);
+
+      await _saveUser();
     } on ClientException {
       rethrow;
     }
@@ -45,12 +74,9 @@ class Auth extends ChangeNotifier {
       {required String usernameOrEmail, required String password}) async {
     assert(usernameOrEmail.isNotEmpty && password.isNotEmpty);
     try {
-      final authData = await pb
-          .collection('users')
-          .authWithPassword(usernameOrEmail, password);
-      final record = authData.record!;
+      await pb.collection('users').authWithPassword(usernameOrEmail, password);
 
-      user = User.fromRecordModel(record);
+      await _saveUser();
     } on ClientException {
       rethrow;
     }
@@ -58,15 +84,13 @@ class Auth extends ChangeNotifier {
 
   Future<void> refresh() async {
     try {
-      final authData = await pb.collection('users').authRefresh(
+      await pb.collection('users').authRefresh(
           headers: {HttpHeaders.authorizationHeader: pb.authStore.token});
-      user = User.fromRecordModel(authData.record!);
     } on ClientException {
       // TODO: check if connection error then no logout
 
-      //logout();
-      print('token: ${pb.authStore.token}');
-      rethrow;
+      print('refresh error token: ${pb.authStore.token}');
+      logout();
     }
   }
 
@@ -74,21 +98,20 @@ class Auth extends ChangeNotifier {
       {required String oldPassword,
       required String newPassword,
       required String confirmPassword}) async {
-    if (auth.user == null) {
+    if (!isLogged) {
       throw Exception('Unauthentificated user');
     }
 
     try {
       assert(pb.authStore.isValid);
 
-      final record =
-          await pb.collection('users').update(pb.authStore.model.id, body: {
+      await pb.collection('users').update(id!, body: {
         'oldPassword': oldPassword,
         'password': newPassword,
         'passwordConfirm': confirmPassword,
       });
 
-      user = User.fromRecordModel(record);
+      await login(usernameOrEmail: username ?? email!, password: newPassword);
     } on ClientException {
       rethrow;
     }
@@ -105,6 +128,6 @@ class Auth extends ChangeNotifier {
 
   void logout() {
     pb.authStore.clear();
-    user = null;
+    _storage.delete(key: _authDataKey);
   }
 }
