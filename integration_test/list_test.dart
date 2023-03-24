@@ -430,7 +430,7 @@ void main() {
 
     final lists = await pb
         .collection('memo_lists')
-        .getFullList(filter: 'owner = "${auth.user!.id}"');
+        .getFullList(filter: 'owner = "${auth.id!}"');
 
     for (var e in lists) {
       await pb.collection('memo_lists').delete(e.id);
