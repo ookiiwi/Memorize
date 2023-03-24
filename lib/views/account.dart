@@ -14,7 +14,7 @@ class _AccountPage extends State<AccountPage> {
   Future _delete = Future.value();
 
   Widget buildPage(BuildContext context) {
-    if (auth.user == null) {
+    if (!auth.isLogged) {
       return const SingleChildScrollView(
         child: Padding(
           padding: EdgeInsets.all(20),
@@ -27,15 +27,15 @@ class _AccountPage extends State<AccountPage> {
       children: [
         ListTile(
           title: const Text('ID'),
-          trailing: Text(auth.user!.id),
+          trailing: Text(auth.id!),
         ),
         ListTile(
           title: const Text('Username'),
-          trailing: Text(auth.user!.username ?? 'N/A'),
+          trailing: Text(auth.username ?? 'N/A'),
         ),
         ListTile(
           title: const Text('Email'),
-          trailing: Text(auth.user!.email ?? 'N/A'),
+          trailing: Text(auth.email ?? 'N/A'),
         ),
         ListTile(
           title: const Text('Change password'),

@@ -1258,7 +1258,7 @@ class _UploadPage extends State<UploadPage> {
         child: AnimatedBuilder(
             animation: auth,
             builder: (context, _) {
-              return auth.user == null
+              return !auth.isLogged
                   ? const AuthPage()
                   : ListView(
                       padding: const EdgeInsets.all(10.0),
