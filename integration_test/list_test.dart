@@ -1,9 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dico/flutter_dico.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/list.dart';
 import 'package:memorize/main.dart' as app;
 
 import 'common.dart';
@@ -11,10 +13,77 @@ import 'common.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  final longList = [
+    '愛',
+    '木',
+    '目',
+    '炎',
+    '車',
+    '人',
+    '薬',
+    '森',
+    '金',
+    '刀',
+    '竜',
+    '胸',
+    '花',
+    '火',
+    '日',
+    '血',
+    '地',
+    '針',
+    '千',
+    '乳',
+    '赤',
+    '茶',
+    '青',
+    '緑',
+    '帆',
+    '戸',
+    '世',
+    '実',
+    '美',
+    '詩',
+    '行',
+    '字',
+    '亜',
+    '有',
+    '或',
+    '歩',
+    '里',
+    '回',
+    '程'
+  ];
+
+  void genList(String path, String target, List<String> entries,
+      [Set<String>? targets]) {
+    final list = MemoList('$applicationDocumentDirectory/fe/$path',
+        (targets?..add(target)) ?? {target});
+    list.entries.addAll(entries
+        .map((e) => ListEntry(Reader.dicoidFromKey(e), target))
+        .toList());
+    list.save();
+  }
+
   void expectDicoDownload() {
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.textContaining(RegExp(r'Download dico \(\d/\d\)')),
         findsOneWidget);
+  }
+
+  Future<void> goToSearch(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.search_rounded));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> goToHome(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.home_rounded));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> refreshHome(WidgetTester tester) async {
+    await goToSearch(tester);
+    await goToHome(tester);
   }
 
   Future<void> testEntrySearch(WidgetTester tester, String value,
@@ -94,38 +163,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// end in list (not home)
-  Future<void> genList(
-      WidgetTester tester, String listname, String dicoTarget) async {
-    final parts = dicoTarget.split('-');
-    final src = IsoLanguage.getFullname(parts[0]);
-    final dst = IsoLanguage.getFullname(parts[1]);
-
-    await newList(tester, listname);
-
-    await tester.tap(find.text(listname));
-    await tester.pumpAndSettle();
-
-    // set target
-    await setLanguage(tester, dicoTarget);
-
-    await tester.tap(find.byIcon(Icons.download_rounded));
-    await tester.pumpAndSettle();
-
-    expectDicoDownload();
-
-    await waitForDownload(tester, dicoTarget);
-
-    expect(find.text(src), findsOneWidget);
-    expect(find.text(dst), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.more_vert));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('gen'));
-    await tester.pumpAndSettle();
-  }
-
   Future<void> testNewListSave(WidgetTester tester) async {
     const listname = 'listsave';
     await newList(tester, listname);
@@ -157,7 +194,12 @@ void main() {
 
   Future<void> testNewList(WidgetTester tester, String listname,
       String dicoTarget, String entry) async {
-    await genList(tester, listname, dicoTarget);
+    genList(listname, 'jpn-eng-kanji', longList);
+    await refreshHome(tester);
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await waitForDownload(tester, 'jpn-eng-kanji');
 
     await testEntrySearch(tester, entry, 'KANJI', true);
     //await testEntrySearch(tester, '蝙蝠', 'WORD', true);
@@ -250,7 +292,14 @@ void main() {
     } catch (_) {}
 
     await setDicoServiceStatus(true);
-    await genList(tester, listname, target);
+    genList(listname, 'jpn-eng-kanji', longList,
+        {'jpn-eng'}); // set jpn-eng because takes time too dl
+    await refreshHome(tester);
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await waitForDownload(tester, 'jpn-eng');
+
     checkIconButtonEnabled(tester, Icons.add, true);
 
     await tester.pageBack();
@@ -363,16 +412,6 @@ void main() {
     await triggerBackButton(tester);
   }
 
-  Future<void> goToSearch(WidgetTester tester) async {
-    await tester.tap(find.byIcon(Icons.search_rounded));
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> goToHome(WidgetTester tester) async {
-    await tester.tap(find.byIcon(Icons.home_rounded));
-    await tester.pumpAndSettle();
-  }
-
   Future<void> fetchList(WidgetTester tester, String listname) async {
     await goToSearch(tester);
 
@@ -408,13 +447,18 @@ void main() {
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Upload'));
+      await tester.tap(find.text('Share'));
       await tester.pumpAndSettle();
     }
 
     await auth.signup(username: usr, password: pwd);
 
-    await genList(tester, listname, 'jpn-eng');
+    genList(listname, 'jpn-eng-kanji', longList);
+    await refreshHome(tester);
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await waitForDownload(tester, 'jpn-eng-kanji');
 
     final uploadBtn = find.widgetWithText(MaterialButton, 'Upload');
 
@@ -435,9 +479,19 @@ void main() {
     for (var e in lists) {
       await pb.collection('memo_lists').delete(e.id);
     }
+  }
+
+  tearDownAll(() async {
+    final lists = await pb
+        .collection('memo_lists')
+        .getFullList(filter: 'owner.id = "${auth.id}"');
+
+    for (var list in lists) {
+      await pb.collection('memo_lists').delete(list.id);
+    }
 
     await auth.delete();
-  }
+  });
 
   testWidgets('list', (tester) async {
     const listname = 'mylist';
