@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,69 +12,89 @@ import 'package:path/path.dart' as p;
 import 'package:pocketbase/pocketbase.dart';
 
 class ListPreview extends StatelessWidget {
-  ListPreview({super.key, required this.list});
+  const ListPreview({super.key, required this.list});
 
   final MemoList list;
-  ScaffoldFeatureController? featureController;
 
   void onCollectionChoosen(BuildContext context, FileInfo info) {
     final filename = p.join(info.path, list.name);
+    final recordID = list.recordID!;
 
-    if (File(filename).existsSync()) {
-      featureController?.close();
-      featureController = ScaffoldMessenger.of(context)
+    bool dirContainsId(String id) {
+      return Directory(info.path).listSync().any((e) =>
+          e.path.endsWith('_$id') ||
+          p.basename(e.path) == '${list.name}_${MemoList.dummyRecordID}');
+    }
+
+    if (dirContainsId(recordID)) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('List already exists')));
+
       return;
     }
 
+    // TODO: search if exist locally and if so ask user
+
     list.filename = filename;
+    list.recordID = recordID;
     list.save();
 
-    featureController?.close();
-    Navigator.of(context)
-        .maybePop()
-        .then((value) => Navigator.of(context).maybePop());
+    assert(File(list.filename).existsSync());
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    Navigator.of(context).maybePop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(list.name),
-        centerTitle: true,
-      ),
-      body: Stack(
-        children: [
-          // TODO: check targets are available
-          EntryViewier(list: list),
-          Positioned(
-            right: 20,
-            bottom: kBottomNavigationBarHeight + 5,
-            child: FloatingActionButton(
-              onPressed: () {
-                final adapter = ListExplorerCollectionPicker();
+    return WillPopScope(
+      onWillPop: () async {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).removeCurrentSnackBar();
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          scrolledUnderElevation: 1,
+          title: Text(list.name),
+          centerTitle: true,
+        ),
+        body: Stack(
+          children: [
+            // TODO: check targets are available
 
-                Navigator.of(context, rootNavigator: true).push(
-                  MaterialPageRoute(
-                    builder: (context) => Scaffold(
-                      appBar: AppBar(title: const Text('Collection picker')),
-                      body: ListExplorer(adapter: adapter),
-                      floatingActionButton: FloatingActionButton(
-                        heroTag: 'myhero',
-                        onPressed: () => onCollectionChoosen(
-                          context,
-                          adapter.selectedCollection,
+            EntryViewier(list: list),
+            Positioned(
+              right: 20,
+              bottom: kBottomNavigationBarHeight + 5,
+              child: FloatingActionButton(
+                onPressed: () {
+                  final adapter = ListExplorerCollectionPicker();
+
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (context) => Scaffold(
+                        appBar: AppBar(title: const Text('Collection picker')),
+                        body: ListExplorer(adapter: adapter),
+                        floatingActionButton: FloatingActionButton(
+                          heroTag: 'myhero',
+                          onPressed: () => onCollectionChoosen(
+                            context,
+                            adapter.selectedCollection,
+                          ),
+                          child: const Icon(Icons.check),
                         ),
-                        child: const Icon(Icons.check),
                       ),
                     ),
-                  ),
-                );
-              },
-              child: const Icon(Icons.save_alt_rounded),
-            ),
-          )
-        ],
+                  );
+                },
+                child: const Icon(Icons.save_alt_rounded),
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
@@ -99,26 +120,18 @@ class _SearchPage extends State<SearchPage> {
     }
   }
 
-  String cleanFilename(String src) {
-    final ret = src.split('_')..removeLast();
-
-    ret[0] = ret[0][0].toUpperCase() + ret[0].substring(1);
-
-    return ret.join(' ');
-  }
-
   void openList(RecordModel record, String listname) async {
     final url = pb.getFileUrl(record, listname);
-    final response = await pb.send(url.path);
+    final Map<String, dynamic> response = await pb.send(url.path);
+    final filename = '$temporaryDirectory/${record.data['name']}';
+
+    assert(response.isNotEmpty);
+
+    File(filename).writeAsStringSync(jsonEncode(response));
+
+    final list = MemoList.open(filename)..recordID = record.id;
 
     if (mounted) {
-      final list = MemoList.fromJson(
-        '$temporaryDirectory/${cleanFilename(listname)}',
-        response,
-      );
-
-      list.recordId = record.id;
-
       context.push('/search/preview', extra: list);
     }
   }
@@ -162,7 +175,7 @@ class _SearchPage extends State<SearchPage> {
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final listname = cleanFilename(results[index].data['list']);
+                  final listname = results[index].data['name'];
 
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 30),
