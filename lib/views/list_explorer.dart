@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/selectable.dart';
@@ -104,12 +105,14 @@ class _ListExplorer extends State<ListExplorer> {
     assert(currentDir.startsWith(root));
 
     _dirContent =
-        Directory(currentDir).listSync().fold<List<FileInfo>>([], (p, e) {
-      final name = e.path.split('/').last.trim();
+        Directory(currentDir).listSync().fold<List<FileInfo>>([], (prev, e) {
+      final name = e.statSync().type == FileSystemEntityType.file
+          ? MemoList.extractName(e.path)
+          : p.basename(e.path);
 
-      if (name.startsWith('.')) return p;
+      if (name.startsWith('.')) return prev;
 
-      return p..add(FileInfo(name, e.path, e.statSync().type));
+      return prev..add(FileInfo(name, e.path, e.statSync().type));
     });
   }
 
@@ -366,8 +369,6 @@ class _ListExplorerMenuButton extends State<ListExplorerMenuButton> {
         tooltip: 'Delete item',
         onPressed: () {
           for (var e in selectionController.selection) {
-            // TODO: ask if remove from server
-
             File(e.path).deleteSync(recursive: true);
             ListViewer.unload(e);
 
