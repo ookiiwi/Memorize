@@ -6,7 +6,6 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dico/flutter_dico.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
@@ -18,11 +17,11 @@ import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/opt.dart';
 import 'package:memorize/widgets/mlv.dart';
+import 'package:memorize/widgets/pageview.dart';
 import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
-import 'package:pocketbase/pocketbase.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -107,85 +106,15 @@ class _ListViewer extends State<ListViewer> {
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
   bool? _needDlDico = false;
-  bool _initiateDl = false;
   final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
   String? errorMessage; // critical
+  final _popupPadding = const EdgeInsets.symmetric(horizontal: 12.0);
 
   bool get isListInit =>
       list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
 
   bool get canInteract =>
       isListInit && _needDlDico == false && errorMessage == null;
-
-  late final _popUpMenuItems = {
-    if (kDebugMode)
-      'gen': () {
-        final kanji = {
-          '愛',
-          '木',
-          '目',
-          '炎',
-          '車',
-          '人',
-          '薬',
-          '森',
-          '金',
-          '刀',
-          '竜',
-          '胸',
-          '花',
-          '火',
-          '日',
-          '血',
-          '地',
-          '針',
-          '千',
-          '乳',
-          '赤',
-          '茶',
-          '青',
-          '緑',
-          '帆',
-          '戸',
-          '世',
-          '実',
-          '美',
-          '詩',
-          '行',
-          '字',
-          '亜',
-          '有',
-          '或',
-          '歩',
-          '里',
-          '回',
-          '程'
-        };
-
-        for (var e in kanji) {
-          list?.entries
-              .add(ListEntry(Reader.dicoidFromKey(e), 'jpn-eng-kanji'));
-          list?.save();
-
-          setState(() {});
-        }
-      },
-    'Upload': () {
-      assert(isListInit);
-
-      if (list!.entries.isEmpty) return;
-
-      Navigator.of(context).push(MaterialPageRoute(builder: (context) {
-        return UploadPage(list: list!);
-      }));
-    },
-    'About': () {
-      assert(isListInit);
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (context) => AboutPage(list: list!)),
-      );
-    }
-  };
 
   final _selectionController = SelectionController();
 
@@ -245,6 +174,7 @@ class _ListViewer extends State<ListViewer> {
       if (checkOnly) continue;
 
       futures.add(Dict.download(target));
+      _needDlDico = true;
 
       final info = Dict.getDownloadProgress(target);
 
@@ -563,34 +493,65 @@ class _ListViewer extends State<ListViewer> {
                   icon: const Icon(Icons.add),
                 ),
                 PopupMenuButton(
-                  enabled: canInteract,
-                  position: PopupMenuPosition.under,
-                  color: Theme.of(context).colorScheme.secondary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  onSelected: (void Function() value) => value(),
-                  itemBuilder: (context) => _popUpMenuItems.entries
-                      .map(
-                        (e) => PopupMenuItem(
-                          value: e.value,
-                          child: Text(
-                            e.key,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSecondary,
-                            ),
-                          ),
+                    enabled: canInteract,
+                    position: PopupMenuPosition.under,
+                    color: Theme.of(context).colorScheme.secondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onSelected: (dynamic value) => value(),
+                    itemBuilder: (context) {
+                      return [
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          enabled: list?.recordID != null,
+                          value: () async {
+                            throw UnimplementedError();
+                            //await pb
+                            //    .collection('memo_list')
+                            //    .getOne(list!.recordID!);
+                          },
+                          child: const Text('Sync'),
                         ),
-                      )
-                      .toList(),
-                ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
+
+                            if (list!.entries.isEmpty) return;
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) {
+                                  return UploadPage(list: list!);
+                                },
+                              ),
+                            );
+                          },
+                          child: const Text('Share'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => AboutPage(list: list!),
+                              ),
+                            );
+                          },
+                          child: const Text('About'),
+                        )
+                      ];
+                    }),
               ],
             ),
             body: PageView(children: [
               errorMessage != null && list?.entries.isNotEmpty == true
                   ? Center(child: Text(errorMessage!))
                   : Builder(builder: (context) {
-                      if (_initiateDl &&
+                      if (_needDlDico == true &&
                           snapshot.connectionState != ConnectionState.done) {
                         return buildDicoDownload(context);
                       }
@@ -614,22 +575,20 @@ class _ListViewer extends State<ListViewer> {
                                       onPressed: () {
                                         assert(isListInit);
 
-                                        Navigator.of(context)
-                                            .push(MaterialPageRoute(
-                                          builder: (context) => QuizLauncher(
-                                            entries: list!.entries,
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (context) => QuizLauncher(
+                                              entries: list!.entries,
+                                            ),
                                           ),
-                                        ));
+                                        );
                                       },
                                       child:
                                           const Icon(Icons.play_arrow_rounded),
                                     )
                                   : FloatingActionButton(
                                       onPressed: () => setState(() {
-                                        _initiateDl = true;
-                                        fLoadTargets = loadTargets()
-                                          ..then(
-                                              (value) => _initiateDl = false);
+                                        fLoadTargets = loadTargets();
                                       }),
                                       child: const Icon(Icons.download_rounded),
                                     ),
@@ -977,8 +936,6 @@ class _EntrySearch extends State<EntrySearch> {
 
   late List<String> targets = widget.targets.toList()
     ..sort((a, b) => a.length.compareTo(b.length));
-  final PageController resultAreasCtrl = PageController();
-  final resultAreasIndicatorOffset = ValueNotifier<double>(0.0);
 
   @override
   void initState() {
@@ -990,11 +947,6 @@ class _EntrySearch extends State<EntrySearch> {
       entries[target] = [];
       entriesData[target] = [];
     }
-
-    resultAreasCtrl.addListener(() {
-      resultAreasIndicatorOffset.value =
-          resultAreasCtrl.page ?? resultAreasIndicatorOffset.value;
-    });
   }
 
   Widget buildResultArea(BuildContext context, String target) {
@@ -1035,59 +987,16 @@ class _EntrySearch extends State<EntrySearch> {
   }
 
   Widget buildResultAreas(BuildContext context) {
-    return Column(
-      children: [
-        Column(
-          children: [
-            LayoutBuilder(builder: (context, constraints) {
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: targets.map((e) {
-                  final tar = e.replaceFirst(RegExp(r'^\w{3}-\w{3}-?'), '');
-                  return MaterialButton(
-                    minWidth: constraints.maxWidth / targets.length,
-                    onPressed: () => resultAreasCtrl.animateToPage(
-                        targets.indexOf(e),
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOutCirc),
-                    child: Text(tar.isEmpty ? 'WORD' : tar.toUpperCase()),
-                  );
-                }).toList(),
-              );
-            }),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                return ValueListenableBuilder<double>(
-                    valueListenable: resultAreasIndicatorOffset,
-                    builder: (context, value, _) {
-                      final indicatorWidth =
-                          constraints.maxWidth / targets.length;
+    return LabeledPageView.builder(
+      labels: targets.map((e) {
+        final tar = e.replaceFirst(RegExp(r'^\w{3}-\w{3}-?'), '');
 
-                      return Container(
-                        margin: EdgeInsets.only(
-                          left: indicatorWidth * value,
-                          right: indicatorWidth * (targets.length - value - 1),
-                        ),
-                        height: 4,
-                        color: Theme.of(context).colorScheme.primary,
-                      );
-                    });
-              },
-            )
-          ],
-        ),
-        Expanded(
-          child: PageView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            controller: resultAreasCtrl,
-            itemCount: targets.length,
-            itemBuilder: (context, i) => buildResultArea(
-              context,
-              targets.elementAt(i),
-            ),
-          ),
-        ),
-      ],
+        return tar.isEmpty ? 'WORD' : tar.toUpperCase();
+      }).toList(),
+      itemBuilder: (context, i) => buildResultArea(
+        context,
+        targets.elementAt(i),
+      ),
     );
   }
 
@@ -1185,8 +1094,8 @@ class AboutPage extends StatelessWidget {
           ),
           ListTile(
             title: const Text('Record id'),
-            trailing: Text(list.recordId ?? 'N/A'),
-          )
+            trailing: Text(list.recordID ?? 'N/A'),
+          ),
         ],
       ),
     );
@@ -1203,50 +1112,48 @@ class UploadPage extends StatefulWidget {
 }
 
 class _UploadPage extends State<UploadPage> {
-  bool isPublic = false;
   Future record = Future.value();
   bool _uploading = false;
 
   MemoList get list => widget.list;
 
-  void upload() async {
+  Future<void> upload() async {
     const collection = 'memo_lists';
+    _uploading = true;
+
     final files = [
       http.MultipartFile.fromString(
         'list',
-        jsonEncode(list),
+        jsonEncode(list.toJson()),
         filename: list.name,
-      )
+      ),
     ];
 
-    _uploading = true;
+    try {
+      if (list.recordID == null) {
+        final record = await pb.collection(collection).create(
+          body: {
+            'owner': auth.id,
+            'targets': list.targets.join(';'),
+            'name': list.name,
+            'public': true,
+          },
+          files: files,
+        );
 
-    if (list.recordId == null) {
-      record = pb.collection(collection).create(
-        body: {
-          'owner': pb.authStore.model.id,
-          'targets': list.targets.join(';'),
-          'isPublic': isPublic,
-        },
-        files: files,
-      ).then((value) {
-        list.recordId = value.id;
-        list.save();
-      });
-    } else {
-      record = pb.collection(collection).update(
-            list.recordId!,
-            body: {'isPublic': isPublic},
-            files: files,
-          );
-    }
+        list.recordID = record.id;
+      } else {
+        await pb.collection(collection).update(
+              list.recordID!,
+              body: {'targets': list.targets.join(';')},
+              files: files,
+            );
+      }
 
-    record.then((value) {
-      Navigator.of(context).maybePop();
-    }).catchError((err) {
+      if (mounted) Navigator.of(context).maybePop();
+    } catch (e) {
       print('upload error: $e');
-      setState(() => _uploading = false);
-    }, test: (error) => error is ClientException);
+    }
   }
 
   @override
@@ -1258,23 +1165,30 @@ class _UploadPage extends State<UploadPage> {
         child: AnimatedBuilder(
             animation: auth,
             builder: (context, _) {
-              return !auth.isLogged
-                  ? const AuthPage()
-                  : ListView(
-                      padding: const EdgeInsets.all(10.0),
-                      children: [
-                        SwitchListTile(
-                          title: const Text('Visible to anyone?'),
-                          value: isPublic,
-                          onChanged: (_) =>
-                              setState(() => isPublic = !isPublic),
-                        ),
+              return ListView(
+                padding: const EdgeInsets.all(10.0),
+                children: !auth.isLogged
+                    ? [const AuthPage()]
+                    : [
+                        if (list.recordID != null)
+                          TextField(
+                            decoration: InputDecoration(
+                              label: const Text('Change log'),
+                              border: OutlineInputBorder(
+                                borderSide: BorderSide.none,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            maxLines: null,
+                          ),
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 30.0),
                           child: AspectRatio(
                             aspectRatio: 16 / 2,
                             child: MaterialButton(
-                              onPressed: () => upload(),
+                              onPressed: () => setState(() {
+                                record = upload();
+                              }),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30),
                               ),
@@ -1300,7 +1214,7 @@ class _UploadPage extends State<UploadPage> {
                           ),
                         )
                       ],
-                    );
+              );
             }),
       ),
     );
