@@ -139,8 +139,6 @@ class VersionList<T extends dynamic> extends quiver.DelegatingList<T> {
 
     final versions = Map<String, dynamic>.from(json['versions']);
     final head = _version == null ? json['head'] : null;
-    debugPrint('======\njson: $json');
-    debugPrint('head: $head');
 
     T _reviver(value) {
       if (reviver != null) return reviver(value);
