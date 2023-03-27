@@ -238,9 +238,7 @@ class _Quiz extends State<Quiz> {
     if (answers.isNotEmpty) return;
 
     questions = widget.questions.toList();
-    answers = widget.answers
-        .map((e) => buildCard(context, e, scrollWrap: true))
-        .toList();
+    answers = widget.answers.toList();
 
     if (widget.mode == QuizMode.random) {
       assert(answers.length == questions.length);
@@ -259,8 +257,6 @@ class _Quiz extends State<Quiz> {
         answers[j] = tmpA;
       }
     }
-
-    answers = answers.reversed.toList();
   }
 
   Widget buildCard(BuildContext context, Widget child,
@@ -389,11 +385,18 @@ class _Quiz extends State<Quiz> {
               );
             } else {
               return AppinioSwiper(
-                onEnd: widget.onEnd ?? emptyFunction,
+                cardsCount: answers.length,
+                onEnd: widget.onEnd,
                 controller: _answersCtrl,
                 onSwipe: (i, dir) =>
                     setState(() => page += (page != itemCount - 1 ? 1 : 0)),
-                cards: answers,
+                cardsBuilder: (context, i) {
+                  return buildCard(
+                    context,
+                    answers[i],
+                    scrollWrap: true,
+                  );
+                },
               );
             }
           },
