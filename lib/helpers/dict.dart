@@ -51,13 +51,13 @@ class Dict {
     return Reader(diconame);
   }
 
-  static String get(int id, String target, [String? dicoVersion]) {
+  static String? get(int id, String target, [String? dicoVersion]) {
     final reader = open(target);
     final ret = reader.get(id);
 
     reader.close();
 
-    return utf8.decode(ret);
+    return ret;
   }
 
   static void addUpdateListener(VoidCallback listener) =>
@@ -247,6 +247,7 @@ class Dict {
       final file = File(_targetListFilepath);
 
       if (!file.existsSync()) file.createSync();
+      print('fetched targets: $targets as ${_dio.options.baseUrl}');
 
       file.writeAsStringSync(jsonEncode(targets));
     } on DioError {
@@ -319,10 +320,11 @@ class DicoManager {
   static SendPort? _getAllSendPort;
 
   static List<Ref> find(String target, String key,
-      [int offset = 0, int cnt = 20]) {
+      {int offset = 0, int cnt = 20, bool exactMatch = false}) {
     _checkOpen(target);
 
-    return _readers[target]!.find(key, offset, cnt);
+    return _readers[target]!
+        .find(key, page: offset, count: cnt, exactMatch: exactMatch);
   }
 
   static XmlDocument get(String target, int id) {
@@ -333,8 +335,13 @@ class DicoManager {
     }
 
     _checkOpen(target);
+    final tmp = _readers[target]!.get(id);
 
-    final entry = XmlDocument.parse(utf8.decode(_readers[target]!.get(id)));
+    if (tmp == null) {
+      throw Exception("Cannot retrieve $id");
+    }
+
+    final entry = XmlDocument.parse(tmp);
 
     dicoCache.set(target, id, entry);
 
@@ -416,14 +423,14 @@ class DicoManager {
             throw value;
           }
 
-          assert(value is Map<int, List<int>>);
+          assert(value is Map<int, String>);
 
           for (var e in e.value) {
             final ent = value[e.id];
 
             if (ent == null) continue;
 
-            final data = XmlDocument.parse(utf8.decode(value[e.id]!));
+            final data = XmlDocument.parse(value[e.id]!);
             dicoCache.set(e.target, e.id, data);
             ret.add(e.copyWith(data: data));
           }
@@ -432,7 +439,8 @@ class DicoManager {
     });
 
     return Future.wait(futures).then((value) {
-      print("Got all in ${stopwatch.elapsed}");
+      print(
+          "Got all in ${stopwatch.elapsed} (${(cacheInfo.entriesFromCache + ret).length}/${entries.length})");
 
       return cacheInfo.entriesFromCache + ret;
     });
