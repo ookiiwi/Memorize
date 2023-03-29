@@ -5,7 +5,7 @@ import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
 class EntryEng extends Entry<EntryEngOptions> {
-  EntryEng({required super.xmlDoc, required super.opt});
+  EntryEng({required super.xmlDoc, required super.opt, required super.target});
 
   @override
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
