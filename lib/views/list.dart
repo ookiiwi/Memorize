@@ -22,6 +22,7 @@ import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -130,6 +131,8 @@ class _ListViewer extends State<ListViewer> {
 
     if (list != null) {
       if (list!.targets.isEmpty) {
+        // TODO: get subtargets
+
         final initTarget = getInitTarget();
 
         if (initTarget != null) {
@@ -656,13 +659,15 @@ class _EntryViewier extends State<EntryViewier> {
                           final options = EntryOptions.tryLoad(list.targets);
 
                           return EntryView(
-                            entries: entries,
+                            list: widget.list,
                             entryId: entry.id,
                             entryOpts: options,
                           );
                         },
                       ),
-                    );
+                    ).then((value) {
+                      if (mounted) setState(() {});
+                    });
                   },
                 ),
               ),
@@ -677,12 +682,12 @@ class _EntryViewier extends State<EntryViewier> {
 class EntryView<T> extends StatefulWidget {
   const EntryView(
       {super.key,
-      this.entries = const [],
+      required this.list,
       required this.entryId,
       this.entryOpts = const []});
 
   final T entryId;
-  final Iterable<ListEntry> entries;
+  final MemoList list;
   final Iterable<EntryOptions> entryOpts;
 
   @override
@@ -690,7 +695,7 @@ class EntryView<T> extends StatefulWidget {
 }
 
 class _EntryView extends State<EntryView> {
-  late List<ListEntry> entries = widget.entries.toList();
+  late List<ListEntry> entries = widget.list.entries.toList();
   late final PageController _controller;
 
   @override
@@ -699,7 +704,7 @@ class _EntryView extends State<EntryView> {
 
     _controller = PageController(
         initialPage:
-            widget.entries.toList().indexWhere((e) => e.id == widget.entryId));
+            entries.toList().indexWhere((e) => e.id == widget.entryId));
   }
 
   @override
@@ -720,7 +725,9 @@ class _EntryView extends State<EntryView> {
                       opt: Entry.findOptFor(entry.target, widget.entryOpts)!);
                 },
               ),
-            ).then((value) => setState(() {})),
+            ).then((value) {
+              if (mounted) setState(() {});
+            }),
             icon: const Icon(Icons.info_outline),
           )
         ],
@@ -731,10 +738,10 @@ class _EntryView extends State<EntryView> {
           controller: _controller,
           clipBehavior: Clip.none,
           scrollDirection: Axis.horizontal,
-          itemCount: widget.entries.length,
+          itemCount: entries.length,
           itemBuilder: (context, i) {
             if (entries[i].data == null) {
-              final entry = widget.entries.elementAt(i);
+              final entry = entries.elementAt(i);
               entries[i] = entry.copyWith(
                 data: DicoManager.get(entry.target, entry.id),
               );
@@ -753,12 +760,15 @@ class _EntryView extends State<EntryView> {
                 child: SingleChildScrollView(
                   padding:
                       const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-                  child: EntryRenderer(
-                    mode: DisplayMode.detailed,
-                    entry: Entry.guess(
-                      xmlDoc: entries[i].data!,
-                      target: entries[i].target,
-                      opts: widget.entryOpts,
+                  child: Provider.value(
+                    value: widget.list,
+                    builder: (context, _) => EntryRenderer(
+                      mode: DisplayMode.detailed,
+                      entry: Entry.guess(
+                        xmlDoc: entries[i].data!,
+                        target: entries[i].target,
+                        opts: widget.entryOpts,
+                      ),
                     ),
                   ),
                 ),
@@ -964,11 +974,11 @@ class _EntrySearch extends State<EntrySearch> {
                 return; // Bug in flutter_dico or libdico => segfault
                 if (noMoreEntries) return;
                 print("load more");
-                entriesData[target]!.addAll(
-                    DicoManager.find(target, prevSearch, findOffset[target]!)
-                        .expand((e) => e.ids)
-                        .map((e) => ListEntry(e, target))
-                        .toList());
+                entriesData[target]!.addAll(DicoManager.find(target, prevSearch,
+                        offset: findOffset[target]!)
+                    .expand((e) => e.ids)
+                    .map((e) => ListEntry(e, target))
+                    .toList());
 
                 final offset = entriesData[target]!.length;
 
