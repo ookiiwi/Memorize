@@ -163,8 +163,11 @@ class _MemoListView extends State<MemoListView> {
     final pageContent = DicoManager.getAll(entries.sublist(start, end));
     if (pageContent is Future<List<ListEntry>>) {
       return pageContent.then((value) {
-        entries.setRange(start, end, value);
-        if (mounted) setState(() {});
+        if (mounted) {
+          assert(value.length == end - start);
+          entries.setRange(start, end, value);
+          setState(() {});
+        }
       });
     }
 
