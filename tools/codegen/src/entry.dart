@@ -29,8 +29,8 @@ void genEntry(String dir) {
 
     final guessBody = condition.replaceAll('<body>', '''return Entry$key(
       xmlDoc: xmlDoc,
-      opt: EntryOptions.findIn<Entry${key}Options>(opts) ??
-          Entry${key}Options(),
+      opt: EntryOptions.findIn<Entry${key}Options>(opts) ?? Entry${key}Options(),
+      target: target,
     );''');
 
     final findForBody = condition.replaceAll(
