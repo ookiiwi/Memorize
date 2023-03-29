@@ -7,7 +7,7 @@ import 'src/entry.dart';
 import 'src/opt.dart';
 
 void main(List<String> args) {
-  final genDir = join(scriptDir, '../lib/generated');
+  final genDir = join(scriptDir, '../../lib/generated');
 
   final dir = Directory(genDir);
 
