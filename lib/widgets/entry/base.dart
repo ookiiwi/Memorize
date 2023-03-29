@@ -18,7 +18,7 @@ export 'package:memorize/widgets/entry/jpn.dart';
 enum DisplayMode { preview, detailed, quiz }
 
 abstract class Entry<E extends EntryOptions> {
-  const Entry({required this.xmlDoc, required this.opt});
+  const Entry({required this.xmlDoc, required this.opt, required this.target});
 
   static Entry guess({
     required XmlDocument xmlDoc,
@@ -37,6 +37,7 @@ abstract class Entry<E extends EntryOptions> {
 
   final XmlDocument xmlDoc;
   final E opt;
+  final String target;
 
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
       {double? fontSize});
