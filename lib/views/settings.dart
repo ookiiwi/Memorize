@@ -185,7 +185,7 @@ class DicoGeneralInfoPage extends StatelessWidget {
         children: [
           ListTile(
             title: const Text("libdico version"),
-            trailing: Text(Writer.version),
+            trailing: Text(Reader.getLibdicoVersion()),
           )
         ],
       ),
@@ -195,18 +195,22 @@ class DicoGeneralInfoPage extends StatelessWidget {
 
 class DicoInfoPage extends StatelessWidget {
   DicoInfoPage({super.key, required this.target, required this.fullName}) {
-    final reader = Dict.open(target);
-
-    entryCnt = 0;
-    refCnt = 0;
-
-    reader.close();
+    try {
+      final reader = Dict.open(target);
+      info = reader.getInfo();
+      reader.close();
+    } catch (e) {
+      if (e is DicoUnsupportedVersion) {
+        info = e.version ?? const DicoInfo();
+      } else {
+        rethrow;
+      }
+    }
   }
 
   final String target;
   final String fullName;
-  late final int entryCnt;
-  late final int refCnt;
+  late final DicoInfo info;
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +218,15 @@ class DicoInfoPage extends StatelessWidget {
       appBar: AppBar(
         title: Text('$fullName info'),
       ),
-      body: Column(children: []),
+      body: ListView(
+        children: [
+          ListTile(
+            title: const Text('Libdico version'),
+            trailing: Text(
+                "${info.majorVersion}.${info.minorVersion}.${info.patchVersion}"),
+          )
+        ],
+      ),
     );
   }
 }
