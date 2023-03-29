@@ -81,7 +81,7 @@ void main() {
     }
 
     for (var e in kanji) {
-      final id = Reader.dicoidFromKey(e);
+      final id = e.runes.first;
       list.entries.add(
         ListEntry(
           id,

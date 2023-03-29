@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dico/flutter_dico.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:memorize/app_constants.dart';
@@ -59,9 +58,8 @@ void main() {
       [Set<String>? targets]) {
     final list = MemoList('$applicationDocumentDirectory/fe/$path',
         (targets?..add(target)) ?? {target});
-    list.entries.addAll(entries
-        .map((e) => ListEntry(Reader.dicoidFromKey(e), target))
-        .toList());
+    list.entries
+        .addAll(entries.map((e) => ListEntry(e.runes.first, target)).toList());
     list.save();
   }
 
@@ -201,8 +199,7 @@ void main() {
 
     await waitForDownload(tester, 'jpn-eng-kanji');
 
-    await testEntrySearch(tester, entry, 'KANJI', true);
-    //await testEntrySearch(tester, '蝙蝠', 'WORD', true);
+    await testEntrySearch(tester, entry, null, true);
 
     // scroll and expect keys
     await findEntry(tester, entry);
@@ -299,6 +296,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await waitForDownload(tester, 'jpn-eng');
+    await waitForDownload(tester, 'jpn-eng-kanji');
 
     checkIconButtonEnabled(tester, Icons.add, true);
 
