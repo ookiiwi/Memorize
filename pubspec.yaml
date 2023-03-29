@@ -67,6 +67,7 @@ dependencies:
   collection: ^1.17.1
   diffutil_dart: ^3.0.0
   quiver: ^3.2.1
+  provider: ^6.0.5
 
 dev_dependencies:
   integration_test:
