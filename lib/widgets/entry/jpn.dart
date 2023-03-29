@@ -1,7 +1,11 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
+import 'package:memorize/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/opt.dart';
+import 'package:provider/provider.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
@@ -9,6 +13,7 @@ class EntryJpn extends Entry<EntryJpnOptions> {
   EntryJpn({
     required super.xmlDoc,
     required super.opt,
+    required super.target,
   });
 
   List<Widget> buildWords(
@@ -104,14 +109,74 @@ class EntryJpn extends Entry<EntryJpnOptions> {
     return ret;
   }
 
-  String formatRef(dynamic node) {
-    final ref = node.queryXPath("./ref").node?.text;
+  TextSpan? formatRef(BuildContext context, dynamic node) {
+    final String? ref = node.queryXPath("./ref").node?.text;
 
     if (ref != null) {
-      return '   (See $ref)';
+      final String cleanRef = ref.replaceFirst(RegExp(r'・\d+$'), '').trim();
+      return TextSpan(
+        children: [
+          TextSpan(
+              text: '   (See ', style: Theme.of(context).textTheme.bodyMedium),
+          TextSpan(
+            text: '$cleanRef)',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(decoration: TextDecoration.underline),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                final findRes = DicoManager.find(
+                  target,
+                  cleanRef,
+                  exactMatch: true,
+                );
+
+                if (findRes.isEmpty) return;
+
+                final id = findRes.first.ids.first;
+                final list = Provider.of<MemoList?>(context, listen: false);
+
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) {
+                    return SafeArea(
+                      child: Scaffold(
+                        appBar: AppBar(title: const Text('Cross reference')),
+                        body: Provider.value(
+                          value: list,
+                          builder: (context, _) => EntryRenderer(
+                            mode: DisplayMode.detailed,
+                            entry: EntryJpn(
+                              target: target,
+                              opt: opt,
+                              xmlDoc: DicoManager.get(target, id),
+                            ),
+                          ),
+                        ),
+                        floatingActionButton: list != null
+                            ? FloatingActionButton(
+                                onPressed: () {
+                                  list.entries.add(ListEntry(id, target));
+                                  list.save();
+
+                                  Navigator.of(context).maybePop();
+                                },
+                                child: const Icon(Icons.add),
+                              )
+                            : null,
+                        floatingActionButtonLocation:
+                            FloatingActionButtonLocation.endFloat,
+                      ),
+                    );
+                  }),
+                );
+              },
+          )
+        ],
+      );
     }
 
-    return '';
+    return null;
   }
 
   String formatDomain(dynamic node) {
@@ -152,6 +217,8 @@ class EntryJpn extends Entry<EntryJpnOptions> {
 
   @override
   List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
+    int i = 0;
+
     return xmlDoc.queryXPath('.//sense').nodes.map(
       (e) {
         final pos = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
@@ -179,6 +246,7 @@ class EntryJpn extends Entry<EntryJpnOptions> {
                 text: TextSpan(
                   style: DefaultTextStyle.of(context).style,
                   children: [
+                    TextSpan(text: '${++i}.   '),
                     TextSpan(
                       text: formatDomain(e),
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -193,13 +261,10 @@ class EntryJpn extends Entry<EntryJpnOptions> {
                           ),
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
-                    TextSpan(
-                      text: formatRef(e),
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
+                    formatRef(context, e) ?? const TextSpan()
                   ],
                 ),
-              )
+              ),
             ],
           ),
         );
@@ -235,6 +300,7 @@ class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
   const EntryJpnKanji({
     required super.xmlDoc,
     required super.opt,
+    required super.target,
   });
 
   Widget buildReadings(BuildContext context) {
