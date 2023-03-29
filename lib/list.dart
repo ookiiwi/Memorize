@@ -104,7 +104,8 @@ class MemoList {
   void rename(String newName) {
     final file = File(filename);
 
-    filename = join(dirname(filename), '${newName}_$recordID');
+    filename =
+        join(dirname(filename), '${newName}_${recordID ?? dummyRecordID}');
 
     if (file.existsSync()) {
       file.renameSync(filename);
