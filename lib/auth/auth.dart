@@ -118,8 +118,10 @@ class Auth extends ChangeNotifier {
   }
 
   Future<void> delete() async {
+    if (!isLogged) return;
+
     try {
-      await pb.collection('users').delete(pb.authStore.model.id);
+      await pb.collection('users').delete(id!);
       logout();
     } on ClientException {
       rethrow;
