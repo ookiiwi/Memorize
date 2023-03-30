@@ -6,6 +6,7 @@ import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/main.dart' as app;
+import 'package:ruby_text/ruby_text.dart';
 
 import 'common.dart';
 
@@ -84,6 +85,17 @@ void main() {
     await goToHome(tester);
   }
 
+  Finder findRuby(String text, [String? ruby]) {
+    return find.byWidgetPredicate((widget) {
+      if (widget is! RubyText) return false;
+
+      List<String> parts = widget.data.fold<List<String>>(
+          ['', ''], (p, e) => [(p[0] + e.text), p[1] + (e.ruby ?? '')]);
+
+      return parts[0] == text && (ruby == null || parts[1] == ruby);
+    });
+  }
+
   Future<void> testEntrySearch(WidgetTester tester, String value,
       [String? target, bool addEntry = false]) async {
     await tester.tap(find.byIcon(Icons.add));
@@ -130,17 +142,23 @@ void main() {
     await tester.pump();
   }
 
-  Future<void> findEntry(WidgetTester tester, String entry) async {
+  Future<void> findEntry(WidgetTester tester, Finder finder,
+      {int maxIteration = 50, double step = 100}) async {
+    final listview = find.byWidgetPredicate((Widget widget) =>
+        widget is ListView &&
+        widget.physics != const NeverScrollableScrollPhysics());
+
     await tester.dragUntilVisible(
-      find.text(entry),
-      find.byType(ListView),
-      const Offset(0, -100),
+      finder,
+      listview,
+      Offset(0, -step),
+      maxIteration: maxIteration,
     );
 
-    await tester.drag(find.byType(ListView), const Offset(0, -50));
+    await tester.drag(listview, const Offset(0, -50));
     await tester.pumpAndSettle();
 
-    expect(find.text(entry), findsOneWidget);
+    expect(finder, findsOneWidget);
   }
 
   Future<void> setLanguage(WidgetTester tester, String target) async {
@@ -159,6 +177,65 @@ void main() {
 
     await tester.tap(find.text(dst).last);
     await tester.pumpAndSettle();
+  }
+
+  Future<void> testRemoveDicoAndOpen(WidgetTester tester, String listname,
+      String dicoTarget, String entry) async {
+    Dict.remove(dicoTarget);
+
+    // open list
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await waitForDownload(tester, dicoTarget);
+
+    await findEntry(tester, find.text(entry));
+  }
+
+  Future<void> testRemoveEntry(WidgetTester tester, String entry) async {
+    await findEntry(tester, find.text(entry));
+
+    final text = find.text(entry);
+
+    await tester.longPress(text);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('delete ${entry.runes.first}'));
+    await tester.pump();
+
+    expect(text, findsNothing);
+  }
+
+  Future<void> testListEntryOptions(
+      WidgetTester tester, String listname) async {
+    bool hideOkurigana = false;
+
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    for (var e in ['愛', '目']) {
+      await tester.tap(find.text(e));
+      await tester.pumpAndSettle();
+
+      if (hideOkurigana) {
+        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsNothing);
+      } else {
+        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsWidgets);
+      }
+
+      await tester.tap(find.byIcon(Icons.info_outline));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      hideOkurigana = !hideOkurigana;
+
+      await triggerBackButton(tester);
+      await triggerBackButton(tester);
+    }
+
+    await triggerBackButton(tester);
   }
 
   Future<void> testNewListSave(WidgetTester tester) async {
@@ -202,41 +279,19 @@ void main() {
     await testEntrySearch(tester, entry, null, true);
 
     // scroll and expect keys
-    await findEntry(tester, entry);
+    await findEntry(tester, find.text(entry));
 
     // go back home
     await tester.pageBack();
     await tester.pumpAndSettle();
-  }
 
-  Future<void> testRemoveDicoAndOpen(WidgetTester tester, String listname,
-      String dicoTarget, String entry) async {
-    Dict.remove(dicoTarget);
-
-    // open list
-    await tester.tap(find.text(listname));
-    await tester.pumpAndSettle();
-
-    await waitForDownload(tester, dicoTarget);
-
-    await findEntry(tester, entry);
-  }
-
-  Future<void> testRemoveEntry(WidgetTester tester, String entry) async {
-    await findEntry(tester, entry);
-
-    final text = find.text(entry);
-
-    await tester.longPress(text);
-    await tester.pump();
-
-    final textOffset = tester.getCenter(text);
-
-    await tester.tapAt(Offset(
-        tester.getSize(find.byType(ListView)).width - 50, textOffset.dy));
-    await tester.pump();
-
-    expect(text, findsNothing);
+    await testListEntryOptions(tester, listname);
+    await testRemoveDicoAndOpen(tester, listname, 'jpn-eng-kanji', entry);
+    await testRemoveEntry(tester, entry);
+    await testQuizLaunch(tester);
+    await triggerBackButton(tester);
+    await triggerBackButton(tester);
+    await deleteList(tester, listname);
   }
 
   Future<void> setDicoServiceStatus([bool open = true]) async {
@@ -378,38 +433,6 @@ void main() {
     await deleteList(tester, listname);
   }
 
-  Future<void> testListEntryOptions(
-      WidgetTester tester, String listname) async {
-    bool hideOkurigana = false;
-
-    await tester.tap(find.text(listname));
-    await tester.pumpAndSettle();
-
-    for (var e in ['愛', '目']) {
-      await tester.tap(find.text(e));
-      await tester.pumpAndSettle();
-
-      if (hideOkurigana) {
-        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsNothing);
-      } else {
-        expect(find.textContaining(RegExp(r'^.*(-|\.).*$')), findsWidgets);
-      }
-
-      await tester.tap(find.byIcon(Icons.info_outline));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-
-      hideOkurigana = !hideOkurigana;
-
-      await triggerBackButton(tester);
-      await triggerBackButton(tester);
-    }
-
-    await triggerBackButton(tester);
-  }
-
   Future<void> fetchList(WidgetTester tester, String listname) async {
     await goToSearch(tester);
 
@@ -479,6 +502,32 @@ void main() {
     }
   }
 
+  Future<void> testSearchPagination(WidgetTester tester) async {
+    const listname = 'searchList';
+
+    genList(listname, 'jpn-eng-kanji', ['鳥'], {'jpn-eng'});
+
+    await refreshHome(tester);
+    await tester.tap(find.text(listname));
+    await tester.pumpAndSettle();
+
+    await waitForDownload(tester, 'jpn-eng');
+
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '愛');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    await findEntry(tester, findRuby('愛鳥週間'), maxIteration: 200, step: 500);
+
+    await triggerBackButton(tester);
+    await triggerBackButton(tester);
+
+    await deleteList(tester, listname);
+  }
+
   tearDownAll(() async {
     final lists = await pb
         .collection('memo_lists')
@@ -503,13 +552,7 @@ void main() {
 
     await testNewListSave(tester);
     await testNewList(tester, listname, dicoTarget, kanji);
-    await testListEntryOptions(tester, listname);
-    await testRemoveDicoAndOpen(tester, listname, 'jpn-eng-kanji', kanji);
-    await testRemoveEntry(tester, '馬');
-    await testQuizLaunch(tester);
-    await triggerBackButton(tester);
-    await triggerBackButton(tester);
-    await deleteList(tester, listname);
+    await testSearchPagination(tester);
 
     await testNoInternetWhileDl(tester);
     await testInEmptyListNoInternet(tester);
