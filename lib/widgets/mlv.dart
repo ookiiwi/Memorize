@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:memorize/generated/entry.g.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
@@ -111,7 +112,7 @@ class _MemoListView extends State<MemoListView> {
                   heightFactor: 1,
                   child: EntryRenderer(
                     mode: DisplayMode.preview,
-                    entry: Entry.guess(
+                    entry: guessEntry(
                       xmlDoc:
                           entry.data ?? DicoManager.get(entry.target, entry.id),
                       target: entry.target,
