@@ -5,21 +5,75 @@ import 'package:path/path.dart';
 final scriptDir = dirname(Platform.script.path);
 final importRe = RegExp(r"import '.*';\s*");
 
-class ProcessedTemplate {
-  const ProcessedTemplate(this.template, this.imports);
+class TargetMatcher {
+  TargetMatcher(this.target) {
+    String laMatch = '[A-Z][a-z]{2}';
 
-  final String template;
-  final Set<String> imports;
+    la1 = RegExp('^$laMatch').firstMatch(target)![0]!;
+    la2 = RegExp('(?<=^$laMatch)$laMatch\$').firstMatch(target)?[0];
+    sub =
+        RegExp('(?<=^$laMatch($laMatch)?)[A-Z][a-z]+\$').firstMatch(target)?[0];
+
+    if (sub != null) {
+      la2 ??= RegExp('(?<=^$laMatch)$laMatch(?=$sub\$)').firstMatch(target)?[0];
+    }
+  }
+
+  final String target;
+  late String la1;
+  late String? la2;
+  late String? sub;
+
+  @override
+  String toString() => [la1, la2, sub].toString();
 }
 
-ProcessedTemplate processTemplate(String filename) {
-  final template =
-      File(join(scriptDir, 'templates', filename)).readAsStringSync();
-  final imports = <String>{};
+String genCondStatements(List<TargetMatcher> matchers,
+    String Function(TargetMatcher value) returnString) {
+  String ifStatements = '';
 
-  importRe.allMatches(template).forEach((e) {
-    imports.add(e.group(0)!.trim());
-  });
+  matchers.sort((a, b) => b.target.compareTo(a.target));
 
-  return ProcessedTemplate(template.replaceAll(importRe, ''), imports);
+  for (int i = 0; i < matchers.length; ++i) {
+    TargetMatcher e = matchers.elementAt(i);
+
+    ifStatements += "if (target.startsWith('${e.la1.toLowerCase()}')) {";
+
+    for (; i < matchers.length; ++i) {
+      final ee = matchers.elementAt(i);
+
+      if (ee.la1 != e.la1) {
+        --i;
+        e = matchers.elementAt(i);
+        break;
+      }
+
+      String end = '';
+
+      if (ee.la2 != null) {
+        end += ee.la2!.toLowerCase();
+      }
+
+      if (ee.sub != null) {
+        end += (end.isNotEmpty ? '-' : '') + ee.sub!.toLowerCase();
+      }
+
+      final sub = end.isEmpty
+          ? ''
+          : '''
+        if (target.endsWith('$end')) {
+          ${returnString(ee)}
+        }
+
+      ''';
+
+      ifStatements += sub;
+    }
+
+    ifStatements += "${returnString(e)} }\n\n";
+  }
+
+  ifStatements = ifStatements.replaceFirst('else', '');
+
+  return ifStatements;
 }

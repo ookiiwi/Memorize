@@ -5,49 +5,63 @@ import 'package:path/path.dart';
 
 import 'common.dart';
 
-void genEntry(String dir) {
-  final Map<String, dynamic> opts = jsonDecode(
-      File(join(scriptDir, 'assets/entry_opt.json')).readAsStringSync());
+void genEntry(String dir) async {
+  final entryScriptsDir = join(scriptDir, '../../lib/widgets/entry/');
 
-  final outBuf = StringBuffer('// GENERATED - DO NOT EDIT\n\n');
-  final guessBodyBuf = StringBuffer();
-  final findForBodyBuf = StringBuffer();
+  final entryExp = RegExp(r'(?<=class Entry)[A-Z]\w+(?= extends Entry {)');
 
-  final tmp = processTemplate('entry/guess.txt');
-  String template = tmp.template;
+  final entries = <String>[];
 
-  for (var import in tmp.imports) {
-    outBuf.writeln(import);
+  for (var e in ['eng', 'jpn']) {
+    await File(join(entryScriptsDir, '$e.dart'))
+        .openRead()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .forEach((e) {
+      final entry = entryExp.firstMatch(e);
+
+      if (entry != null) {
+        entries.add(entry[0]!);
+      }
+    });
   }
 
-  outBuf.writeln();
+  final entryBuf = StringBuffer();
+  final entryImports = [
+    "package:memorize/widgets/entry/base.dart",
+    "package:xml/xml.dart",
+  ].map((e) => "import '$e';");
 
-  opts.forEach((key, value) {
-    final scope = value['scope'];
+  final matchers = entries.map((e) => TargetMatcher(e)).toList();
 
-    final condition = "if (RegExp(r'$scope').hasMatch(target)) {<body>}";
+  entryBuf.writeAll(entryImports);
 
-    final guessBody = condition.replaceAll('<body>', '''return Entry$key(
+  entryBuf.write(genEntryGuess(matchers));
+
+  File(join(dir, 'entry.g.dart')).writeAsStringSync(entryBuf.toString());
+}
+
+String makeEntry(TargetMatcher matcher) {
+  return '''
+    Entry${matcher.target}(
       xmlDoc: xmlDoc,
-      opt: EntryOptions.findIn<Entry${key}Options>(opts) ?? Entry${key}Options(),
       target: target,
-    );''');
+    )
+  ''';
+}
 
-    final findForBody = condition.replaceAll(
-        '<body>', "\treturn EntryOptions.findIn<Entry${key}Options>(opts);");
+String genEntryGuess(List<TargetMatcher> matchers) {
+  String ifStatements =
+      genCondStatements(matchers, (value) => 'return ${makeEntry(value)};');
 
-    guessBodyBuf.writeln(guessBody);
-    findForBodyBuf.writeln(findForBody);
-  });
+  return '''
+    Entry guessEntry({
+      required XmlDocument xmlDoc,
+      required String target,
+    }) {
+      $ifStatements
 
-  template = template.replaceAll('<guessBody>', guessBodyBuf.toString().trim());
-  template =
-      template.replaceAll('<findForBody>', findForBodyBuf.toString().trim());
-  outBuf.writeln(template);
-
-  final file = File(join(dir, 'entry.g.dart'));
-
-  if (!file.existsSync()) file.createSync();
-
-  file.writeAsString(outBuf.toString());
+      throw Exception();
+    }
+  ''';
 }
