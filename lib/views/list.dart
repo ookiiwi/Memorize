@@ -9,13 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
+import 'package:memorize/generated/entry.g.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/auth.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
-import 'package:memorize/widgets/entry/opt.dart';
+import 'package:memorize/widgets/entry/options.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pageview.dart';
 import 'package:memorize/widgets/pair_selector.dart';
@@ -23,6 +24,7 @@ import 'package:memorize/widgets/selectable.dart';
 import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:xml/xml.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -656,12 +658,9 @@ class _EntryViewier extends State<EntryViewier> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) {
-                          final options = EntryOptions.tryLoad(list.targets);
-
                           return EntryView(
                             list: widget.list,
                             entryId: entry.id,
-                            entryOpts: options,
                           );
                         },
                       ),
@@ -721,8 +720,14 @@ class _EntryView extends State<EntryView> {
                   final entry = entries[_controller.page!.toInt()];
 
                   return EntryViewInfo(
-                      entry: entry,
-                      opt: Entry.findOptFor(entry.target, widget.entryOpts)!);
+                    entry: entry,
+                    opt: EntryOptions.load(
+                      guessEntry(
+                        xmlDoc: XmlDocument(),
+                        target: entry.target,
+                      ),
+                    ),
+                  );
                 },
               ),
             ).then((value) {
@@ -764,10 +769,9 @@ class _EntryView extends State<EntryView> {
                     value: widget.list,
                     builder: (context, _) => EntryRenderer(
                       mode: DisplayMode.detailed,
-                      entry: Entry.guess(
+                      entry: guessEntry(
                         xmlDoc: entries[i].data!,
                         target: entries[i].target,
-                        opts: widget.entryOpts,
                       ),
                     ),
                   ),
@@ -806,7 +810,7 @@ class _EntryViewInfo extends State<EntryViewInfo> {
               title: const Text('Entry id'),
               trailing: Text('${widget.entry.id}'),
             ),
-          EntryOptionsWidget(opt: widget.opt)
+          EntryOptionsWidget(options: widget.opt),
         ]),
       ),
     );
