@@ -4,15 +4,15 @@ import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/widgets/entry/base.dart';
-import 'package:memorize/widgets/entry/opt.dart';
 import 'package:provider/provider.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
-class EntryJpn extends Entry<EntryJpnOptions> {
+class EntryJpn extends Entry {
+  Map<String, dynamic> optionsModel = {'hideFurigana': false};
+
   EntryJpn({
     required super.xmlDoc,
-    required super.opt,
     required super.target,
   });
 
@@ -21,8 +21,7 @@ class EntryJpn extends Entry<EntryJpnOptions> {
       int? cnt,
       double? fontSize,
       bool noRuby = false,
-      bool includeRestr = false,
-      bool? enableReading}) {
+      bool includeRestr = false}) {
     final k = xmlDoc
         .queryXPath(".//form[@type='k_ele']/orth")
         .nodes
@@ -68,7 +67,10 @@ class EntryJpn extends Entry<EntryJpnOptions> {
     }
 
     Widget wrapWord(String word, String reading) {
-      if (!(enableReading ?? !opt.hideFurigana)) {
+      print('hideFurigana: ${options['hideFurigana']}');
+      print('wordOnly: ${options.wordOnly}');
+
+      if (options['hideFurigana'] ?? options.wordOnly) {
         return Text(
           word,
           style: TextStyle(fontSize: fontSize),
@@ -146,9 +148,9 @@ class EntryJpn extends Entry<EntryJpnOptions> {
                           value: list,
                           builder: (context, _) => EntryRenderer(
                             mode: DisplayMode.detailed,
+                            options: options,
                             entry: EntryJpn(
                               target: target,
-                              opt: opt,
                               xmlDoc: DicoManager.get(target, id),
                             ),
                           ),
@@ -203,7 +205,7 @@ class EntryJpn extends Entry<EntryJpnOptions> {
 
   @override
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      {double? fontSize}) {
+      [double? fontSize]) {
     return buildWords(cnt: 1, fontSize: fontSize).first;
   }
 
@@ -296,10 +298,11 @@ class EntryJpn extends Entry<EntryJpnOptions> {
   }
 }
 
-class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
-  const EntryJpnKanji({
+class EntryJpnKanji extends Entry {
+  Map<String, dynamic> optionsModel = {'hideOkurigana': false};
+
+  EntryJpnKanji({
     required super.xmlDoc,
-    required super.opt,
     required super.target,
   });
 
@@ -320,8 +323,7 @@ class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
       );
     }
 
-    print('hide: ${opt.hideOkurigana}');
-    if (opt.hideOkurigana) {
+    if (options['hideOkurigana'] == true) {
       final exp = RegExp(r'.*(\..*|-.*)$');
 
       r_kun.removeWhere((e) => exp.hasMatch(e.text!));
@@ -349,7 +351,7 @@ class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
 
   @override
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      {double? fontSize}) {
+      [double? fontSize]) {
     final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!;
 
     return Text(
@@ -380,3 +382,37 @@ class EntryJpnKanji extends Entry<EntryJpnKanjiOptions> {
   @override
   List<Widget> buildNotes(BuildContext context, [double? fontSize]) => [];
 }
+
+/*
+class EntryJpnOptions extends EntryOptions {
+  EntryJpnOptions();
+  EntryJpnOptions.fromJson(Map<String, dynamic> json) {
+    _members.addAll(json);
+  }
+
+  final Map<String, dynamic> _members = {
+    'hideFurigana': false,
+  };
+
+  bool get hideFurigana => _members['hidePronunciation'];
+
+  @override
+  Map<String, dynamic> get members => _members;
+}
+
+class EntryJpnKanjiOptions extends EntryOptions {
+  EntryJpnKanjiOptions();
+  EntryJpnKanjiOptions.fromJson(Map<String, dynamic> json) {
+    _members.addAll(json);
+  }
+
+  final Map<String, dynamic> _members = {
+    'hideOkurigana': false,
+  };
+
+  bool get hideOkurigana => _members['hidePronunciation'];
+
+  @override
+  Map<String, dynamic> get members => _members;
+}
+*/

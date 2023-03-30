@@ -1,24 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:memorize/widgets/entry/base.dart';
-import 'package:memorize/widgets/entry/opt.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 
-class EntryEng extends Entry<EntryEngOptions> {
-  EntryEng({required super.xmlDoc, required super.opt, required super.target});
+class EntryEng extends Entry {
+  final Map<String, dynamic> optionsModel = {'hidePronunciation': false};
+
+  EntryEng({required super.xmlDoc, required super.target});
 
   @override
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      {double? fontSize}) {
+      [double? fontSize]) {
     final text = xmlDoc.queryXPath('.//form/orth').node?.text ?? 'ERROR';
-    final pron = !opt.hidePronunciation
+    final pron = !options['hidePronunciation']
         ? xmlDoc.queryXPath('.//form/pron').node?.text
         : null;
     final style = TextStyle(fontSize: fontSize);
 
     return (displayMode == DisplayMode.preview
                 ? false
-                : !opt.hidePronunciation) &&
+                : !options['hidePronunciation']) &&
             pron != null
         ? RubyText([RubyTextData(text, ruby: '[$pron]')], style: style)
         : Text(text, style: style);
@@ -57,3 +58,20 @@ class EntryEng extends Entry<EntryEngOptions> {
     return [];
   }
 }
+/*
+class EntryEngOptions extends EntryOptions {
+  EntryEngOptions();
+  EntryEngOptions.fromJson(Map<String, dynamic> json) {
+    _members.addAll(json);
+  }
+
+  final Map<String, dynamic> _members = {
+    'hidePronunciation': false,
+  };
+
+  bool get hidePronunciation => _members['hidePronunciation'];
+
+  @override
+  Map<String, dynamic> get members => _members;
+}
+*/

@@ -7,8 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
-import 'package:memorize/generated/entry.g.dart' as entry;
-import 'package:memorize/widgets/entry/opt.dart';
+import 'package:memorize/widgets/entry/options.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
@@ -17,30 +16,16 @@ export 'package:memorize/widgets/entry/jpn.dart';
 
 enum DisplayMode { preview, detailed, quiz }
 
-abstract class Entry<E extends EntryOptions> {
-  const Entry({required this.xmlDoc, required this.opt, required this.target});
-
-  static Entry guess({
-    required XmlDocument xmlDoc,
-    required String target,
-    bool showReading = true,
-
-    /// Used if opts is empty
-    Iterable<EntryOptions> opts = const [],
-  }) {
-    return entry.guessEntry(xmlDoc: xmlDoc, target: target, opts: opts);
-  }
-
-  static EntryOptions? findOptFor(String target, Iterable<EntryOptions?> opts) {
-    return entry.findOptFor(target, opts);
-  }
+abstract class Entry {
+  Entry({required this.xmlDoc, required this.target});
 
   final XmlDocument xmlDoc;
-  final E opt;
   final String target;
 
+  EntryOptions options = EntryOptions();
+
   Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      {double? fontSize});
+      [double? fontSize]);
   List<Widget> buildOtherForms(BuildContext context, [double? fontSize]);
   List<Widget> buildSenses(BuildContext context, [double? fontSize]);
   List<Widget> buildNotes(BuildContext context, [double? fontSize]);
@@ -79,7 +64,13 @@ abstract class Entry<E extends EntryOptions> {
 }
 
 class EntryRenderer extends StatelessWidget {
-  const EntryRenderer({super.key, required this.mode, required this.entry});
+  EntryRenderer(
+      {super.key,
+      required this.mode,
+      required this.entry,
+      EntryOptions? options}) {
+    entry.options = options ?? EntryOptions.load(entry);
+  }
 
   final DisplayMode mode;
   final Entry entry;
@@ -112,7 +103,7 @@ class EntryRenderer extends StatelessWidget {
                         child: entry.buildMainForm(
                           context,
                           mode,
-                          fontSize: mainFontSize,
+                          mainFontSize,
                         ),
                       ),
                     ),
