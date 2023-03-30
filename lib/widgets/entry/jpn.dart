@@ -67,9 +67,6 @@ class EntryJpn extends Entry {
     }
 
     Widget wrapWord(String word, String reading) {
-      print('hideFurigana: ${options['hideFurigana']}');
-      print('wordOnly: ${options.wordOnly}');
-
       if (options['hideFurigana'] ?? options.wordOnly) {
         return Text(
           word,
@@ -382,37 +379,3 @@ class EntryJpnKanji extends Entry {
   @override
   List<Widget> buildNotes(BuildContext context, [double? fontSize]) => [];
 }
-
-/*
-class EntryJpnOptions extends EntryOptions {
-  EntryJpnOptions();
-  EntryJpnOptions.fromJson(Map<String, dynamic> json) {
-    _members.addAll(json);
-  }
-
-  final Map<String, dynamic> _members = {
-    'hideFurigana': false,
-  };
-
-  bool get hideFurigana => _members['hidePronunciation'];
-
-  @override
-  Map<String, dynamic> get members => _members;
-}
-
-class EntryJpnKanjiOptions extends EntryOptions {
-  EntryJpnKanjiOptions();
-  EntryJpnKanjiOptions.fromJson(Map<String, dynamic> json) {
-    _members.addAll(json);
-  }
-
-  final Map<String, dynamic> _members = {
-    'hideOkurigana': false,
-  };
-
-  bool get hideOkurigana => _members['hidePronunciation'];
-
-  @override
-  Map<String, dynamic> get members => _members;
-}
-*/
