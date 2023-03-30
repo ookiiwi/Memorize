@@ -942,11 +942,11 @@ class EntrySearch extends StatefulWidget {
 class _EntrySearch extends State<EntrySearch> {
   Map<String, List<Widget>> entries = {};
   Map<String, List<ListEntry>> entriesData = {};
-  Map<String, int> findOffset = {};
   Map<String, Key> targetKey = {};
   int selectedTarget = 0;
   String prevSearch = '';
   bool noMoreEntries = false;
+  int lastLoadedPage = 0;
 
   late List<String> targets = widget.targets.toList()
     ..sort((a, b) => a.length.compareTo(b.length));
@@ -974,27 +974,34 @@ class _EntrySearch extends State<EntrySearch> {
               onTap: widget.onItemSelected != null
                   ? (entry) => widget.onItemSelected!(entry)
                   : null,
-              onLoad: () {
-                return; // Bug in flutter_dico or libdico => segfault
-                if (noMoreEntries) return;
-                print("load more");
-                entriesData[target]!.addAll(DicoManager.find(target, prevSearch,
-                        offset: findOffset[target]!)
+              onLoad: (page, cnt) {
+                print('load $page $lastLoadedPage $noMoreEntries');
+                if (noMoreEntries || page + 1 <= lastLoadedPage) return;
+
+                lastLoadedPage = page + 1;
+
+                final findRet = DicoManager.find(
+                  target,
+                  prevSearch,
+                  offset: lastLoadedPage,
+                  cnt: cnt,
+                )
                     .expand((e) => e.ids)
                     .map((e) => ListEntry(e, target))
-                    .toList());
+                    .toList();
 
-                final offset = entriesData[target]!.length;
+                entriesData[target]!.addAll(findRet);
 
-                if (offset < 20) {
+                final offset = findRet.length;
+                if (offset < cnt) {
                   noMoreEntries = true;
 
                   if (offset == 0) return;
                 }
 
-                findOffset[target] = findOffset[target]! + offset;
-
-                setState(() {});
+                Future.delayed(Duration.zero, () {
+                  if (mounted) setState(() {});
+                });
               },
             ),
     );
@@ -1019,10 +1026,6 @@ class _EntrySearch extends State<EntrySearch> {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0.0,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
         actions: [
           AbsorbPointer(
             child: IconButton(
@@ -1044,15 +1047,12 @@ class _EntrySearch extends State<EntrySearch> {
           ),
           onChanged: (value) {
             for (var target in entriesData.keys) {
-              findOffset[target] = 0;
               targetKey[target] = UniqueKey();
               entries[target]?.clear();
               entriesData[target] = DicoManager.find(target, value)
                   .expand((e) => e.ids)
                   .map((e) => ListEntry(e, target))
                   .toList();
-
-              findOffset[target] = entriesData[target]!.length;
             }
 
             prevSearch = value;
