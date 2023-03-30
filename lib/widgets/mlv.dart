@@ -34,7 +34,7 @@ class MemoListView extends StatefulWidget {
   final double itemExtent;
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
-  final VoidCallback? onLoad;
+  final void Function(int page, int cnt)? onLoad;
   final void Function(ListEntry entry)? onDelete;
 
   @override
@@ -48,10 +48,11 @@ class _MemoListView extends State<MemoListView> {
 
   final scrollController = ScrollController();
 
-  int pageCnt = 10;
-  int prevPage = -1;
+  int itemsPerPage = 10;
   int currentPage = 0;
-  int nextPage = 1;
+  int get prevPage => currentPage - 1;
+  int get nextPage => currentPage + 1;
+  final _loadList = <int, FutureOr<void>>{};
 
   @override
   void initState() {
@@ -63,7 +64,7 @@ class _MemoListView extends State<MemoListView> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    pageCnt = (MediaQuery.of(context).size.height * 0.6) ~/ itemExtent;
+    itemsPerPage = MediaQuery.of(context).size.height ~/ itemExtent;
   }
 
   void _controllerListener() {
@@ -74,16 +75,6 @@ class _MemoListView extends State<MemoListView> {
   void dispose() {
     controller?.removeListener(_controllerListener);
     super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant MemoListView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // reload current page
-    _loadPage(prevPage);
-    _loadPage(currentPage);
-    _loadPage(nextPage);
   }
 
   Widget buildEntry(BuildContext context, ListEntry entry) {
@@ -129,6 +120,7 @@ class _MemoListView extends State<MemoListView> {
           top: 0,
           right: 0,
           child: IconButton(
+            tooltip: "delete ${entry.id}",
             onPressed: () {
               setState(() {
                 entries.remove(entry);
@@ -146,98 +138,102 @@ class _MemoListView extends State<MemoListView> {
   }
 
   void _unloadPage(int page) {
-    final start = (page * pageCnt).clamp(0, entries.length);
-    final end = (start + pageCnt).clamp(0, entries.length);
+    final start = (page * itemsPerPage).clamp(0, entries.length);
+    final end = (start + itemsPerPage).clamp(0, entries.length);
 
     for (int i = 0; i < end; ++i) {
-      entries[i] = entries[i].copyWith();
+      entries[i] = ListEntry(entries[i].id, entries[i].target);
     }
+
+    _loadList.remove(page);
   }
 
   /// setState on resolve
   FutureOr<void> _loadPage(int page) {
-    final start = (page * pageCnt).clamp(0, entries.length);
-    final end = (start + pageCnt).clamp(0, entries.length);
+    final start = (page * itemsPerPage).clamp(0, entries.length);
+    final end = (start + itemsPerPage).clamp(0, entries.length);
+    FutureOr<void> ret = Future.value();
 
-    if (start == end) return Future.value();
+    if (start == end) return ret;
 
     final pageContent = DicoManager.getAll(entries.sublist(start, end));
     if (pageContent is Future<List<ListEntry>>) {
-      return pageContent.then((value) {
+      ret = pageContent.then((value) {
         if (mounted) {
           assert(value.length == end - start);
           entries.setRange(start, end, value);
           setState(() {});
         }
       });
+    } else {
+      entries.setRange(start, end, pageContent);
+      setState(() {});
     }
 
-    entries.setRange(start, end, pageContent);
-    setState(() {});
+    _loadList[page] = ret;
   }
 
-  bool isCenterOfPage(int i) {
-    int page = i ~/ pageCnt;
-    int index = i - pageCnt * page;
-
-    return index == pageCnt ~/ 2;
-  }
-
-  void _onVisibilityChanged(VisibilityInfo info, int index) {
-    if (info.visibleFraction != 1) return;
-
-    final page = index ~/ pageCnt;
-
-    print('page: $page');
-
-    if (page == nextPage) {
-      print("next unload $prevPage load ${nextPage + 1}");
-
-      if (prevPage >= 0) _unloadPage(prevPage);
-
-      ++prevPage;
-      ++currentPage;
-      ++nextPage;
-
-      if (nextPage * pageCnt < entries.length) {
-        _loadPage(nextPage);
-      }
-    } else if (page == prevPage) {
-      print("prev unload $nextPage load ${prevPage - 1}");
-
-      if (nextPage * pageCnt < entries.length) {
-        _unloadPage(nextPage);
-      }
-
-      --prevPage;
-      --currentPage;
-      --nextPage;
-
-      _loadPage(prevPage);
-    }
-  }
+  bool mustLoadPage(int page) =>
+      page == prevPage || page == currentPage || page == nextPage;
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      controller: scrollController,
-      shrinkWrap: true,
-      padding: const EdgeInsets.only(
-          left: 10, right: 10, bottom: kBottomNavigationBarHeight + 56 + 10),
-      separatorBuilder: (context, index) => Divider(
-        indent: 8,
-        endIndent: 8,
-        thickness: 0.2,
-        color: Theme.of(context).colorScheme.outline,
-      ),
-      itemCount: entries.length,
-      itemBuilder: (context, i) => isCenterOfPage(i)
-          ? VisibilityDetector(
-              key: ValueKey(i),
-              onVisibilityChanged: (info) => _onVisibilityChanged(info, i),
-              child: buildEntry(context, entries[i]),
-            )
-          : buildEntry(context, entries[i]),
-    );
+    final pageCnt = (entries.length / itemsPerPage).ceil();
+
+    return ListView.builder(
+        padding: const EdgeInsets.only(
+          left: 10,
+          right: 10,
+          bottom: kBottomNavigationBarHeight + 56 + 10,
+        ),
+        itemCount: pageCnt,
+        itemBuilder: (context, page) {
+          return VisibilityDetector(
+            key: ValueKey(page),
+            onVisibilityChanged: (info) {
+              if (info.visibleFraction >= 0.5) {
+                currentPage = page;
+
+                _loadPage(prevPage);
+                _loadPage(currentPage);
+                _loadPage(nextPage);
+              }
+
+              final unload = _loadList.keys
+                  .toSet()
+                  .difference({prevPage, currentPage, nextPage});
+
+              for (var e in unload) {
+                _unloadPage(e);
+              }
+
+              if (widget.onLoad != null) {
+                widget.onLoad!(page, itemsPerPage);
+              }
+
+              assert(_loadList.length <= 3);
+            },
+            child: ListView.separated(
+              controller: scrollController,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(),
+              separatorBuilder: (context, index) => Divider(
+                indent: 8,
+                endIndent: 8,
+                thickness: 0.2,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+              itemCount: itemsPerPage,
+              itemBuilder: (context, index) {
+                final i = page * itemsPerPage + index;
+
+                if (i >= entries.length) return null;
+
+                return buildEntry(context, entries[i]);
+              },
+            ),
+          );
+        });
   }
 }
