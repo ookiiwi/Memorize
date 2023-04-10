@@ -177,6 +177,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  ctq:
+    dependency: transitive
+    description:
+      path: "../ctq4d/packages/ctq"
+      relative: true
+    source: path
+    version: "1.0.0"
   cupertino_icons:
     dependency: "direct main"
     description:
@@ -193,13 +200,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.5"
-  dico:
-    dependency: transitive
-    description:
-      path: "../dico4d/packages/dico"
-      relative: true
-    source: path
-    version: "0.0.2"
   diffutil_dart:
     dependency: "direct main"
     description:
@@ -285,13 +285,13 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  flutter_dico:
+  flutter_ctq:
     dependency: "direct main"
     description:
-      path: "../dico4d/packages/flutter_dico"
+      path: "../ctq4d/packages/flutter_ctq"
       relative: true
     source: path
-    version: "0.0.2"
+    version: "0.0.1"
   flutter_dotenv:
     dependency: "direct main"
     description:
@@ -1115,5 +1115,5 @@ packages:
     source: hosted
     version: "3.1.1"
 sdks:
-  dart: ">=2.19.0 <3.0.0"
+  dart: ">=2.19.2 <3.0.0"
   flutter: ">=3.7.0"

@@ -52,8 +52,8 @@ dependencies:
   mrx_charts: ^0.1.3
   intl: ^0.18.0
   flex_color_scheme: ^6.1.1
-  flutter_dico:
-    path: ../dico4d/packages/flutter_dico
+  flutter_ctq:
+    path: ../ctq4d/packages/flutter_ctq
   scroll_to_index: ^3.0.1
   kana_kit: ^2.0.0
   ruby_text: ^3.0.1
