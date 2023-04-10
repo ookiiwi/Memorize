@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:memorize/generated/entry.g.dart';
-import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 class MemoListViewController extends ChangeNotifier {
   bool _isSelectionEnabled = false;
@@ -25,7 +22,7 @@ class MemoListView extends StatefulWidget {
       this.entries = const [],
       this.controller,
       this.onTap,
-      this.onLoad,
+      //this.onLoad,
       this.onDelete,
       this.itemExtent = 50});
 
@@ -34,7 +31,7 @@ class MemoListView extends StatefulWidget {
   final double itemExtent;
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
-  final void Function(int page, int cnt)? onLoad;
+  //final void Function(int page, int cnt)? onLoad;
   final void Function(ListEntry entry)? onDelete;
 
   @override
@@ -48,23 +45,13 @@ class _MemoListView extends State<MemoListView> {
 
   final scrollController = ScrollController();
 
-  int itemsPerPage = 10;
-  int currentPage = 0;
-  int get prevPage => currentPage - 1;
-  int get nextPage => currentPage + 1;
-  final _loadList = <int, FutureOr<void>>{};
+  final pageSize = 20;
 
   @override
   void initState() {
     super.initState();
 
     controller?.addListener(_controllerListener);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    itemsPerPage = MediaQuery.of(context).size.height ~/ itemExtent;
   }
 
   void _controllerListener() {
@@ -104,8 +91,7 @@ class _MemoListView extends State<MemoListView> {
                   child: EntryRenderer(
                     mode: DisplayMode.preview,
                     entry: guessEntry(
-                      xmlDoc:
-                          entry.data ?? DicoManager.get(entry.target, entry.id),
+                      xmlDoc: entry.data!,
                       target: entry.target,
                     ),
                   ),
@@ -137,103 +123,35 @@ class _MemoListView extends State<MemoListView> {
     ]);
   }
 
-  void _unloadPage(int page) {
-    final start = (page * itemsPerPage).clamp(0, entries.length);
-    final end = (start + itemsPerPage).clamp(0, entries.length);
-
-    for (int i = 0; i < end; ++i) {
-      entries[i] = ListEntry(entries[i].id, entries[i].target);
-    }
-
-    _loadList.remove(page);
-  }
-
-  /// setState on resolve
-  FutureOr<void> _loadPage(int page) {
-    final start = (page * itemsPerPage).clamp(0, entries.length);
-    final end = (start + itemsPerPage).clamp(0, entries.length);
-    FutureOr<void> ret = Future.value();
-
-    if (start == end) return ret;
-
-    final pageContent = DicoManager.getAll(entries.sublist(start, end));
-    if (pageContent is Future<List<ListEntry>>) {
-      ret = pageContent.then((value) {
-        if (mounted) {
-          assert(value.length == end - start);
-          entries.setRange(start, end, value);
-          setState(() {});
-        }
-      });
-    } else {
-      entries.setRange(start, end, pageContent);
-      setState(() {});
-    }
-
-    _loadList[page] = ret;
-  }
-
-  bool mustLoadPage(int page) =>
-      page == prevPage || page == currentPage || page == nextPage;
-
   @override
   Widget build(BuildContext context) {
-    final pageCnt = (entries.length / itemsPerPage).ceil();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ListView.builder(
+          itemCount: (entries.length ~/ pageSize) +
+              (entries.length % pageSize != 0 ? 1 : 0),
+          itemBuilder: (context, index) {
+            int start = (index * pageSize).clamp(0, entries.length);
+            int end = (start + pageSize).clamp(0, entries.length);
 
-    return ListView.builder(
-        padding: const EdgeInsets.only(
-          left: 10,
-          right: 10,
-          bottom: kBottomNavigationBarHeight + 56 + 10,
-        ),
-        itemCount: pageCnt,
-        itemBuilder: (context, page) {
-          return VisibilityDetector(
-            key: ValueKey(page),
-            onVisibilityChanged: (info) {
-              if (info.visibleFraction >= 0.5) {
-                currentPage = page;
-
-                _loadPage(prevPage);
-                _loadPage(currentPage);
-                _loadPage(nextPage);
-              }
-
-              final unload = _loadList.keys
-                  .toSet()
-                  .difference({prevPage, currentPage, nextPage});
-
-              for (var e in unload) {
-                _unloadPage(e);
-              }
-
-              if (widget.onLoad != null) {
-                widget.onLoad!(page, itemsPerPage);
-              }
-
-              assert(_loadList.length <= 3);
-            },
-            child: ListView.separated(
-              controller: scrollController,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(),
-              separatorBuilder: (context, index) => Divider(
-                indent: 8,
-                endIndent: 8,
-                thickness: 0.2,
-                color: Theme.of(context).colorScheme.outline,
+            return ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: index == 0 ? constraints.maxHeight : 0.0,
               ),
-              itemCount: itemsPerPage,
-              itemBuilder: (context, index) {
-                final i = page * itemsPerPage + index;
+              child: DicoGetListViewBuilder(
+                entries: entries.getRange(start, end).toList(),
+                builder: (context, doc, j) {
+                  int i = start + j;
 
-                if (i >= entries.length) return null;
+                  entries[i] = entries[i].copyWith(data: doc);
 
-                return buildEntry(context, entries[i]);
-              },
-            ),
-          );
-        });
+                  return buildEntry(context, entries[i]);
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }
