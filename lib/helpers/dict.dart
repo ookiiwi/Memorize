@@ -7,8 +7,7 @@ import 'package:async/async.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:flutter_dico/flutter_dico.dart';
-import 'package:memorize/list.dart';
+import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
@@ -32,14 +31,14 @@ class Dict {
   static final _updatableTargets = <String>{};
   static final _updatableListeners = <VoidCallback>[];
   static const _fileExtension = 'dico';
-  static final _dio =
-      Dio(BaseOptions(baseUrl: 'http://$host:8080/${Writer.version}'));
+  static final _dio = Dio(BaseOptions(
+      baseUrl: 'http://$host:8080/${FlutterCTQReader.maxSupportedVersion}'));
   static final _targetListFilepath =
       '$applicationDocumentDirectory/targets.json';
 
   static Set<String> get updatableTargets => Set.from(_updatableTargets);
 
-  static Reader open(String target, [String? version]) {
+  static FlutterCTQReader open(String target, [String? version]) {
     final diconame = version != null
         ? '$applicationDocumentDirectory/dict/$target/$target-$version.$_fileExtension'
         : _getLatestDico(target);
@@ -48,11 +47,11 @@ class Dict {
       throw Exception("Cannot get version for $target");
     }
 
-    return Reader(diconame);
+    return FlutterCTQReader(diconame);
   }
 
   static String? get(int id, String target, [String? dicoVersion]) {
-    final reader = open(target);
+    final reader = open(target, dicoVersion);
     final ret = reader.get(id);
 
     reader.close();
@@ -212,6 +211,7 @@ class Dict {
     dir.deleteSync(recursive: true);
   }
 
+  /// List locally installed targets
   static Iterable<String> listTargets() {
     final dir = Directory('$applicationDocumentDirectory/dict/');
 
@@ -228,6 +228,7 @@ class Dict {
     });
   }
 
+  /// List all available targets from server
   static List<String> listAllTargets() {
     final file = File(_targetListFilepath);
 
@@ -257,19 +258,48 @@ class Dict {
 }
 
 class DicoCache {
-  DicoCache() : _cache = {};
-  DicoCache.fromJson(Map<String, Map<int, String>> json)
-      : _cache = json.map((key, value) => MapEntry(
-            key,
-            value
-                .map((key, value) => MapEntry(key, XmlDocument.parse(value)))));
+  DicoCache();
+  DicoCache.fromJson(Map<String, Map<int, String>> json) {
+    json.forEach(
+      (key, value) => value.forEach(
+        (id, value) => set(
+          key,
+          id,
+          XmlDocument.parse(value),
+        ),
+      ),
+    );
+  }
 
-  final Map<String, Map<int, XmlDocument>> _cache;
+  final Map<String, Map<int, XmlDocument>> _cache = {};
+  final List<MapEntry<String, int>> _history = [];
 
-  XmlDocument? get(String target, int id) => _cache[target]?[id];
+  void _releaseResources([int releaseCnt = 10]) {
+    if (_history.length < 50) return;
+
+    _history.removeRange(0, releaseCnt);
+  }
+
+  XmlDocument? get(String target, int id) {
+    final ret = _cache[target]?[id];
+
+    if (ret != null) {
+      final hist = MapEntry(target, id);
+
+      _history.remove(hist);
+      _history.add(hist);
+    }
+
+    return ret;
+  }
 
   void set(String target, int id, XmlDocument entry) {
-    // TODO: remove old entries
+    final hist = MapEntry(target, id);
+
+    _history.remove(hist);
+    _history.add(hist);
+
+    _releaseResources(1);
 
     if (!_cache.containsKey(target)) {
       _cache[target] = {id: entry};
@@ -290,197 +320,61 @@ class DicoCache {
   bool get isNotEmpty => _cache.isNotEmpty;
 }
 
-class _DicoGetAllCacheInfo {
-  final List<ListEntry> entriesFromCache = [];
-  final Map<String, List<ListEntry>> entriesByTarget = {};
-}
-
-class _DicoGetAllEntryPointArgs {
-  const _DicoGetAllEntryPointArgs(this.target, this.ids);
-
-  final String target;
-  final Iterable<int> ids;
-}
-
-class _DicoGetAllEntryPointsSpawnArgs {
-  const _DicoGetAllEntryPointsSpawnArgs(this.appDir, this.port);
-
-  final String appDir;
-  final SendPort port;
-}
-
 class DicoManager {
-  static final Map<String, Reader> _readers = {};
+  static const int _maxReaderCnt = 4;
+
+  static ReceivePort? _receivePort;
+  static StreamQueue? _events;
+  static SendPort? _sendPort;
+  static final Map<String, FlutterCTQReader> _readers = {};
   static final List<String> _targetHistory = [];
   static Iterable<String> get targets => _targetHistory;
   static final dicoCache = DicoCache();
 
-  static ReceivePort? _getAllReceivePort;
-  static StreamQueue? _getAllEvents;
-  static SendPort? _getAllSendPort;
+  static Future<void> open() {
+    _receivePort = ReceivePort();
+    _events = StreamQueue(_receivePort!);
 
-  static List<Ref> find(String target, String key,
-      {int offset = 0, int cnt = 20, bool exactMatch = false}) {
-    _checkOpen(target);
-
-    return _readers[target]!
-        .find(key, page: offset, count: cnt, exactMatch: exactMatch);
+    return Isolate.spawn(
+        _entryPoint,
+        _DicoIsolateOpenArgs(
+          applicationDocumentDirectory,
+          _receivePort!.sendPort,
+        )).then((value) => _events!.next.then(
+          (value) => _sendPort = value,
+        ));
   }
 
-  static XmlDocument get(String target, int id) {
-    final cachedEntry = dicoCache.get(target, id);
+  static Future<List<MapEntry<String, List<int>>>> find(
+    String target,
+    String key, {
+    int page = 0,
+    int cnt = 20,
+    bool exactMatch = false,
+  }) {
+    _sendPort!.send(_DicoIsolateFindArgs(
+      target,
+      key,
+      offset: page * cnt,
+      cnt: cnt,
+      exactMatch: exactMatch,
+    ));
 
-    if (cachedEntry != null) {
-      return cachedEntry;
-    }
-
-    _checkOpen(target);
-    final tmp = _readers[target]!.get(id);
-
-    if (tmp == null) {
-      throw Exception("Cannot retrieve $id");
-    }
-
-    final entry = XmlDocument.parse(tmp);
-
-    dicoCache.set(target, id, entry);
-
-    return entry;
-  }
-
-  static _DicoGetAllCacheInfo _getAllFromCache(List<ListEntry> entries) {
-    final ret = _DicoGetAllCacheInfo();
-
-    for (var e in entries) {
-      final entry = dicoCache.get(e.target, e.id);
-
-      if (entry == null) {
-        if (ret.entriesByTarget.containsKey(e.target)) {
-          ret.entriesByTarget[e.target]?.add(e);
-        } else {
-          ret.entriesByTarget[e.target] = [e];
-        }
-        continue;
-      }
-
-      ret.entriesFromCache.add(e.copyWith(data: entry));
-    }
-
-    return ret;
-  }
-
-  static void _getAllEntryPoint(_DicoGetAllEntryPointsSpawnArgs args) async {
-    final commandPort = ReceivePort();
-    final p = args.port;
-    p.send(commandPort.sendPort);
-
-    applicationDocumentDirectory = args.appDir;
-
-    await for (final message in commandPort) {
-      if (message is _DicoGetAllEntryPointArgs) {
-        ensureLibdicoInitialized();
-
-        final target = message.target;
-
-        try {
-          _checkOpen(target);
-
-          final ret = _readers[target]!.getAll(message.ids);
-          p.send(ret);
-        } catch (e) {
-          p.send(e);
-        }
-      } else if (message == null) {
-        break;
-      }
-    }
-
-    print("Exit isolate");
-    Isolate.exit();
-  }
-
-  static FutureOr<List<ListEntry>> getAll(List<ListEntry> entries) {
-    final cacheInfo = _getAllFromCache(entries);
-    final ret = <ListEntry>[];
-
-    if (cacheInfo.entriesFromCache.length == entries.length) {
-      return cacheInfo.entriesFromCache;
-    }
-
-    final stopwatch = Stopwatch()..start();
-
-    assert(_getAllReceivePort != null);
-    assert(_getAllEvents != null);
-    assert(_getAllSendPort != null);
-
-    final futures = cacheInfo.entriesByTarget.entries.map((e) {
-      final args = _DicoGetAllEntryPointArgs(e.key, e.value.map((e) => e.id));
-      _getAllSendPort!.send(args);
-
-      return _getAllEvents!.next.then(
-        (value) {
-          if (value is Exception) {
-            throw value;
-          }
-
-          assert(value is Map<int, String>);
-
-          for (var e in e.value) {
-            final ent = value[e.id];
-
-            if (ent == null) continue;
-
-            final data = XmlDocument.parse(value[e.id]!);
-            dicoCache.set(e.target, e.id, data);
-            ret.add(e.copyWith(data: data));
-          }
-        },
-      );
-    });
-
-    return Future.wait(futures).then((value) {
-      print(
-          "Got all in ${stopwatch.elapsed} (${(cacheInfo.entriesFromCache + ret).length}/${entries.length})");
-
-      return cacheInfo.entriesFromCache + ret;
+    return _events!.next.then((value) {
+      return value;
     });
   }
 
-  static FutureOr<void> open() {
-    if (_getAllSendPort == null) {
-      _getAllReceivePort = ReceivePort();
-      _getAllEvents = StreamQueue(_getAllReceivePort!);
+  static FutureOr<void> load(Iterable<String> targets,
+      {bool loadSubTargets = false}) {
+    _sendPort!.send(_DicoIsolateLoadArgs(targets, loadSubTargets));
 
-      final args = _DicoGetAllEntryPointsSpawnArgs(
-          applicationDocumentDirectory, _getAllReceivePort!.sendPort);
-
-      return Isolate.spawn(_getAllEntryPoint, args).then((value) =>
-          _getAllEvents!.next.then((value) => _getAllSendPort = value));
-    }
+    return _events!.next.then((value) {});
   }
 
-  static void close() {
-    print("close");
-    for (var reader in _readers.values) {
-      reader.close();
-    }
-
-    _readers.clear();
-    _targetHistory.clear();
-
-    _getAllSendPort?.send(null);
-    _getAllSendPort = null;
-    _getAllEvents?.cancel(immediate: true);
-    _getAllEvents = null;
-    _getAllReceivePort = null;
-  }
-
-  static void load(Iterable<String> targets, {bool loadSubTargets = false}) {
+  static FutureOr<void> _load(Iterable<String> targets,
+      {bool loadSubTargets = false}) {
     print("load $targets");
-
-    if (_getAllSendPort == null) {
-      throw Exception("open must be called prior");
-    }
 
     for (var target in targets) {
       _checkOpen(target);
@@ -493,6 +387,17 @@ class DicoManager {
           _checkOpen(sub);
         }
       }
+    }
+
+    // release readers
+    if (_targetHistory.length > _maxReaderCnt) {
+      final end = _targetHistory.length - _maxReaderCnt;
+
+      for (var e in _targetHistory.sublist(0, end)) {
+        _readers.remove(e)?.close();
+      }
+
+      _targetHistory.removeRange(0, end);
     }
   }
 
@@ -512,6 +417,118 @@ class DicoManager {
 
     _targetHistory.add(target);
     _readers[target] = Dict.open(target);
-    print("open");
+    print(
+        "open $target ${_readers[target]!.readerVersion} ${_readers[target]!.writerVersion}");
   }
+
+  static void _find(_DicoIsolateFindArgs arg, SendPort p) {
+    try {
+      _checkOpen(arg.target);
+
+      final ret = _readers[arg.target]!.find(
+        arg.key,
+        exactMatch: arg.exactMatch,
+        offset: arg.offset,
+        count: arg.cnt,
+      );
+
+      p.send(ret);
+    } catch (e) {
+      p.send(e);
+    }
+  }
+
+  static Future<XmlDocument> get(String target, int id) {
+    _sendPort!.send(_DicoIsolateGetArg(target, id));
+
+    return _events!.next.then((value) => value);
+  }
+
+  static void close() {
+    _sendPort!.send(null);
+    _events!.cancel(immediate: true);
+    _receivePort!.close();
+
+    _sendPort = null;
+    _events = null;
+    _receivePort = null;
+  }
+
+  static void _get(_DicoIsolateGetArg arg, SendPort p) {
+    FlutterCTQReader.ensureInitialized();
+
+    final target = arg.target;
+
+    _checkOpen(target);
+
+    final cache = dicoCache.get(target, arg.id);
+    final ret = cache ?? XmlDocument.parse(_readers[target]!.get(arg.id));
+
+    if (cache == null) {
+      dicoCache.set(target, arg.id, ret);
+      print('got ${arg.id}');
+    }
+
+    p.send(ret);
+  }
+
+  static void _entryPoint(_DicoIsolateOpenArgs args) async {
+    final commandPort = ReceivePort();
+    final p = args.port;
+    p.send(commandPort.sendPort);
+
+    applicationDocumentDirectory = args.appDir;
+
+    await for (final message in commandPort) {
+      if (message is _DicoIsolateGetArg) {
+        _get(message, p);
+      } else if (message is _DicoIsolateFindArgs) {
+        _find(message, p);
+      } else if (message is _DicoIsolateLoadArgs) {
+        p.send(_load(targets));
+      } else if (message == null) {
+        break;
+      }
+    }
+
+    print("Exit isolate");
+    Isolate.exit();
+  }
+}
+
+class _DicoIsolateOpenArgs {
+  const _DicoIsolateOpenArgs(this.appDir, this.port);
+
+  final String appDir;
+  final SendPort port;
+}
+
+class _DicoIsolateLoadArgs {
+  const _DicoIsolateLoadArgs(this.targets, [this.loadSubTargets = false]);
+
+  final Iterable<String> targets;
+  final bool loadSubTargets;
+}
+
+class _DicoIsolateGetArg {
+  const _DicoIsolateGetArg(this.target, this.id);
+
+  final String target;
+  final int id;
+}
+
+class _DicoIsolateFindArgs {
+  const _DicoIsolateFindArgs(
+    this.target,
+    this.key, {
+    this.offset = 0,
+    this.cnt = 20,
+    this.exactMatch = false,
+  });
+
+  final String target;
+  final String key;
+  final int offset;
+  final int cnt;
+  final bool exactMatch;
 }
