@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
+import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
@@ -12,9 +13,20 @@ import 'package:path/path.dart' as p;
 import 'package:pocketbase/pocketbase.dart';
 
 class ListPreview extends StatelessWidget {
-  const ListPreview({super.key, required this.list});
+  ListPreview({super.key, required this.list}) {
+    final futures = <Future>[];
+
+    for (var e in list.targets) {
+      if (!Dict.exists(e)) {
+        futures.add(Dict.download(e));
+      }
+    }
+
+    _dlDico = Future.wait(futures);
+  }
 
   final MemoList list;
+  late final Future _dlDico;
 
   void onCollectionChoosen(BuildContext context, FileInfo info) {
     final filename = p.join(info.path, list.name);
@@ -61,39 +73,49 @@ class ListPreview extends StatelessWidget {
           title: Text(list.name),
           centerTitle: true,
         ),
-        body: Stack(
-          children: [
-            // TODO: check targets are available
+        body: FutureBuilder(
+          future: _dlDico,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-            EntryViewier(list: list),
-            Positioned(
-              right: 20,
-              bottom: kBottomNavigationBarHeight + 5,
-              child: FloatingActionButton(
-                onPressed: () {
-                  final adapter = ListExplorerCollectionPicker();
+            return Stack(
+              children: [
+                // TODO: check targets are available
 
-                  Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute(
-                      builder: (context) => Scaffold(
-                        appBar: AppBar(title: const Text('Collection picker')),
-                        body: ListExplorer(adapter: adapter),
-                        floatingActionButton: FloatingActionButton(
-                          heroTag: 'myhero',
-                          onPressed: () => onCollectionChoosen(
-                            context,
-                            adapter.selectedCollection,
+                EntryViewier(list: list),
+                Positioned(
+                  right: 20,
+                  bottom: kBottomNavigationBarHeight + 5,
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      final adapter = ListExplorerCollectionPicker();
+
+                      Navigator.of(context, rootNavigator: true).push(
+                        MaterialPageRoute(
+                          builder: (context) => Scaffold(
+                            appBar:
+                                AppBar(title: const Text('Collection picker')),
+                            body: ListExplorer(adapter: adapter),
+                            floatingActionButton: FloatingActionButton(
+                              heroTag: 'myhero',
+                              onPressed: () => onCollectionChoosen(
+                                context,
+                                adapter.selectedCollection,
+                              ),
+                              child: const Icon(Icons.check),
+                            ),
                           ),
-                          child: const Icon(Icons.check),
                         ),
-                      ),
-                    ),
-                  );
-                },
-                child: const Icon(Icons.save_alt_rounded),
-              ),
-            )
-          ],
+                      );
+                    },
+                    child: const Icon(Icons.save_alt_rounded),
+                  ),
+                )
+              ],
+            );
+          },
         ),
       ),
     );
@@ -186,7 +208,10 @@ class _SearchPage extends State<SearchPage> {
                 },
                 childCount: results.length,
               ),
-            )
+            ),
+            const SliverPadding(
+                padding:
+                    EdgeInsets.only(bottom: kBottomNavigationBarHeight + 10))
           ],
         ),
       ),
