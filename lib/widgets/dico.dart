@@ -42,7 +42,7 @@ class DicoGetBuilder extends StatefulWidget {
   const DicoGetBuilder(
       {super.key, required this.getResult, required this.builder});
 
-  final Future<XmlDocument> getResult;
+  final FutureOr<XmlDocument> getResult;
   final Widget Function(BuildContext, XmlDocument) builder;
 
   @override
@@ -50,18 +50,26 @@ class DicoGetBuilder extends StatefulWidget {
 }
 
 class _DicoGetBuilder extends State<DicoGetBuilder> {
+  XmlDocument? doc;
+
   @override
   Widget build(BuildContext context) {
+    if (widget.getResult is XmlDocument) {
+      doc = widget.getResult as XmlDocument;
+    }
+
     return FutureBuilder<dynamic>(
-      future: Future.value(widget.getResult),
+      future: doc == null
+          ? widget.getResult as Future<XmlDocument>
+          : Future.value(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        assert(snapshot.data != null);
+        doc ??= snapshot.data!;
 
-        return widget.builder(context, snapshot.data!);
+        return widget.builder(context, doc!);
       },
     );
   }
@@ -84,21 +92,34 @@ class DicoGetListViewBuilder extends StatefulWidget {
 }
 
 class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
-  List<Future<XmlDocument>> results = [];
+  Future<List<XmlDocument>> fResults = Future.value([]);
+  List<XmlDocument> results = [];
 
   @override
   void initState() {
     super.initState();
 
+    List<Future<XmlDocument>> fRes = [];
+
     for (var e in widget.entries) {
-      results.add(DicoManager.get(e.target, e.id));
+      final entry = DicoManager.get(e.target, e.id);
+
+      if (entry is Future<XmlDocument>) {
+        fRes.add(entry);
+      } else {
+        results.add(entry);
+      }
+    }
+
+    if (fRes.isNotEmpty) {
+      fResults = Future.wait(fRes);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<XmlDocument>>(
-      future: Future.wait(results),
+      future: fResults,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -107,7 +128,7 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
         assert(snapshot.data != null);
 
         final List<XmlDocument> entries =
-            List<XmlDocument>.from(snapshot.data!);
+            results + List<XmlDocument>.from(snapshot.data!);
 
         return ListView.builder(
           physics: const NeverScrollableScrollPhysics(),
