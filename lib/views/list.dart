@@ -14,6 +14,7 @@ import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/auth.dart';
 import 'package:memorize/widgets/dialog.dart';
+import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -80,7 +81,15 @@ class ListViewer extends StatefulWidget {
   static FutureOr<MemoList> _preload(MemoList list) {
     try {
       final cnt = 20.clamp(0, list.entries.length);
-      final page = DicoManager.getAll(list.entries.sublist(0, cnt));
+      final page = Future.wait(
+        list.entries.sublist(0, cnt).map(
+          (e) {
+            final doc = DicoManager.get(e.target, e.id);
+
+            return Future.value(doc).then((value) => e.copyWith(data: value));
+          },
+        ),
+      );
 
       MemoList setEntries(List<ListEntry> entries) {
         list.entries.setRange(0, cnt, entries);
@@ -89,7 +98,7 @@ class ListViewer extends StatefulWidget {
       }
 
       if (page is List<ListEntry>) {
-        return setEntries(page);
+        return setEntries(page as List<ListEntry>);
       }
 
       return page.then((value) => setEntries(value)).catchError((err) {
@@ -745,15 +754,6 @@ class _EntryView extends State<EntryView> {
           scrollDirection: Axis.horizontal,
           itemCount: entries.length,
           itemBuilder: (context, i) {
-            if (entries[i].data == null) {
-              final entry = entries.elementAt(i);
-              entries[i] = entry.copyWith(
-                data: DicoManager.get(entry.target, entry.id),
-              );
-            }
-
-            assert(entries[i].data != null);
-
             return LayoutBuilder(
               builder: (context, constraints) => ConstrainedBox(
                 constraints: BoxConstraints(
@@ -767,12 +767,20 @@ class _EntryView extends State<EntryView> {
                       const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
                   child: Provider.value(
                     value: widget.list,
-                    builder: (context, _) => EntryRenderer(
-                      mode: DisplayMode.detailed,
-                      entry: guessEntry(
-                        xmlDoc: entries[i].data!,
-                        target: entries[i].target,
-                      ),
+                    builder: (context, _) => DicoGetBuilder(
+                      getResult: entries[i].data != null
+                          ? Future.value(entries[i].data)
+                          : DicoManager.get(entries[i].target, entries[i].id),
+                      builder: (context, doc) {
+                        entries[i] = entries[i].copyWith(data: doc);
+                        return EntryRenderer(
+                          mode: DisplayMode.detailed,
+                          entry: guessEntry(
+                            xmlDoc: doc,
+                            target: entries[i].target,
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -941,7 +949,7 @@ class EntrySearch extends StatefulWidget {
 
 class _EntrySearch extends State<EntrySearch> {
   Map<String, List<Widget>> entries = {};
-  Map<String, List<ListEntry>> entriesData = {};
+  Map<String, Future<List<MapEntry<String, List<int>>>>> entriesData = {};
   Map<String, Key> targetKey = {};
   int selectedTarget = 0;
   String prevSearch = '';
@@ -959,34 +967,40 @@ class _EntrySearch extends State<EntrySearch> {
 
     for (var target in targets) {
       entries[target] = [];
-      entriesData[target] = [];
+      entriesData[target] = Future.value([]);
     }
   }
 
   Widget buildResultArea(BuildContext context, String target) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: entriesData[target]!.isEmpty == true
-          ? const Center(child: Text("No result >_<"))
-          : MemoListView(
-              key: targetKey[target], // change key if new search
-              entries: entriesData[target]!,
-              onTap: widget.onItemSelected != null
-                  ? (entry) => widget.onItemSelected!(entry)
-                  : null,
+      child: DicoFindBuilder(
+        findResult: entriesData[target]!,
+        builder: (context, res) {
+          if (res.isEmpty) {
+            return const Center(child: Text("No result >_<"));
+          }
+          return MemoListView(
+            key: targetKey[target], // change key if new search
+            entries: res.map((e) => ListEntry(e.key, target)).toList(),
+            onTap: widget.onItemSelected != null
+                ? (entry) => widget.onItemSelected!(entry)
+                : null,
+            /*
               onLoad: (page, cnt) {
                 print('load $page $lastLoadedPage $noMoreEntries');
                 if (noMoreEntries || page + 1 <= lastLoadedPage) return;
 
                 lastLoadedPage = page + 1;
 
-                final findRet = DicoManager.find(
-                  target,
-                  prevSearch,
-                  offset: lastLoadedPage,
-                  cnt: cnt,
-                )
-                    .expand((e) => e.ids)
+                final findRet = DicoManager
+                    .find(
+                      target,
+                      prevSearch,
+                      page: lastLoadedPage,
+                      cnt: cnt,
+                    )
+                    .expand((e) => e.value)
                     .map((e) => ListEntry(e, target))
                     .toList();
 
@@ -1003,7 +1017,10 @@ class _EntrySearch extends State<EntrySearch> {
                   if (mounted) setState(() {});
                 });
               },
-            ),
+              */
+          );
+        },
+      ),
     );
   }
 
@@ -1049,10 +1066,7 @@ class _EntrySearch extends State<EntrySearch> {
             for (var target in entriesData.keys) {
               targetKey[target] = UniqueKey();
               entries[target]?.clear();
-              entriesData[target] = DicoManager.find(target, value)
-                  .expand((e) => e.ids)
-                  .map((e) => ListEntry(e, target))
-                  .toList();
+              entriesData[target] = DicoManager.find(target, value);
             }
 
             prevSearch = value;
