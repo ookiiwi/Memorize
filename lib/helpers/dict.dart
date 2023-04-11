@@ -438,10 +438,20 @@ class DicoManager {
     }
   }
 
-  static Future<XmlDocument> get(String target, int id) {
+  static FutureOr<XmlDocument> get(String target, int id) {
+    final cache = dicoCache.get(target, id);
+
+    if (cache != null) {
+      return cache;
+    }
+
     _sendPort!.send(_DicoIsolateGetArg(target, id));
 
-    return _events!.next.then((value) => value);
+    return _events!.next.then((value) {
+      dicoCache.set(target, id, value);
+      print('got $id');
+      return value;
+    });
   }
 
   static void close() {
@@ -461,13 +471,7 @@ class DicoManager {
 
     _checkOpen(target);
 
-    final cache = dicoCache.get(target, arg.id);
-    final ret = cache ?? XmlDocument.parse(_readers[target]!.get(arg.id));
-
-    if (cache == null) {
-      dicoCache.set(target, arg.id, ret);
-      print('got ${arg.id}');
-    }
+    final ret = XmlDocument.parse(_readers[target]!.get(arg.id));
 
     p.send(ret);
   }
