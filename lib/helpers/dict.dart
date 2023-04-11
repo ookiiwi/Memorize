@@ -330,8 +330,14 @@ class DicoManager {
   static final List<String> _targetHistory = [];
   static Iterable<String> get targets => _targetHistory;
   static final dicoCache = DicoCache();
+  static Isolate? _isolate;
 
   static Future<void> open() {
+    assert(_receivePort == null);
+    assert(_sendPort == null);
+    assert(_events == null);
+    assert(_isolate == null);
+
     _receivePort = ReceivePort();
     _events = StreamQueue(_receivePort!);
 
@@ -340,9 +346,13 @@ class DicoManager {
         _DicoIsolateOpenArgs(
           applicationDocumentDirectory,
           _receivePort!.sendPort,
-        )).then((value) => _events!.next.then(
-          (value) => _sendPort = value,
-        ));
+        )).then((value) {
+      _isolate = value;
+
+      return _events!.next.then(
+        (value) => _sendPort = value,
+      );
+    });
   }
 
   static Future<List<MapEntry<String, List<int>>>> find(
@@ -455,10 +465,12 @@ class DicoManager {
   }
 
   static void close() {
-    _sendPort!.send(null);
-    _events!.cancel(immediate: true);
-    _receivePort!.close();
+    _sendPort?.send(null);
+    _events?.cancel(immediate: true);
+    _receivePort?.close();
+    _isolate?.kill(priority: Isolate.immediate);
 
+    _isolate = null;
     _sendPort = null;
     _events = null;
     _receivePort = null;
