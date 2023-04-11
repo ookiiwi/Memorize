@@ -1,15 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dico/flutter_dico.dart';
-import 'package:memorize/app_constants.dart';
+import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
 import 'package:memorize/views/splash_screen.dart';
-import 'package:universal_io/io.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:memorize/file_system.dart';
@@ -155,7 +152,7 @@ class HomePage extends StatelessWidget {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  ensureLibdicoInitialized();
+  FlutterCTQReader.ensureInitialized();
 
   runApp(LifecycleWatcher(child: MyApp()));
 }
@@ -266,7 +263,6 @@ class LifecycleWatcher extends StatefulWidget {
 
 class _LifecycleWatcher extends State<LifecycleWatcher>
     with WidgetsBindingObserver {
-  Iterable<String>? _dicoTargets;
   AppLifecycleState? _oldState;
   Future<void> _open = Future.value();
 
@@ -289,32 +285,13 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    if (state != AppLifecycleState.resumed &&
-        _oldState != AppLifecycleState.resumed) {
-      _dicoTargets ??= DicoManager.targets;
+    if (state == _oldState) return;
 
-      final tmpFile = File("$temporaryDirectory/dicoTargets");
-
-      if (!tmpFile.existsSync()) tmpFile.createSync(recursive: true);
-      tmpFile.writeAsStringSync(jsonEncode(_dicoTargets));
-
-      DicoManager.close();
+    if (state == AppLifecycleState.resumed) {
+      _open = DicoManager.open();
+      setState(() {});
     } else {
-      final tmpFile = File("$temporaryDirectory/dicoTargets");
-
-      if (tmpFile.existsSync()) {
-        _dicoTargets = List.from(jsonDecode(tmpFile.readAsStringSync()));
-
-        final openRet = DicoManager.open();
-
-        if (openRet is Future) {
-          _open = openRet.then((value) => DicoManager.load(_dicoTargets ?? []));
-        } else {
-          DicoManager.load(_dicoTargets ?? []);
-        }
-      }
-
-      _dicoTargets = null;
+      DicoManager.close();
     }
 
     _oldState = state;
