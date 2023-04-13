@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
@@ -152,7 +151,6 @@ class HomePage extends StatelessWidget {
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  FlutterCTQReader.ensureInitialized();
 
   runApp(LifecycleWatcher(child: MyApp()));
 }
@@ -288,7 +286,8 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
     if (state == _oldState) return;
 
     if (state == AppLifecycleState.resumed) {
-      _open = DicoManager.open();
+      _open = DicoManager.open()
+          .then((value) => DicoManager.tryLoadCachedTargets());
       setState(() {});
     } else {
       DicoManager.close();
