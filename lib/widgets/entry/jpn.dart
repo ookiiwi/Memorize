@@ -1,20 +1,44 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:memorize/widgets/entry/options.dart';
 import 'package:provider/provider.dart';
 import 'package:ruby_text/ruby_text.dart';
+import 'package:xml/xml.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
+import 'package:collection/collection.dart';
 
-class EntryJpn extends Entry {
-  Map<String, dynamic> optionsModel = {'hideFurigana': false};
+class EntryJpn extends StatelessWidget {
+  EntryJpn(
+      {super.key,
+      required this.xmlDoc,
+      required this.target,
+      this.mode = DisplayMode.preview})
+      : options = EntryOptions.load(
+          label: 'jpn${quizSuffix(mode)}',
+          display: [
+            'word',
+            'sense',
+            'part-of-speech',
+            'notes',
+            'furigana',
+            'otherForms'
+          ],
+          quiz: {
+            QuizMode.choice: ['word → sense', 'sense → word']
+          },
+        );
 
-  EntryJpn({
-    required super.xmlDoc,
-    required super.target,
-  });
+  final XmlDocument xmlDoc;
+  final String target;
+  final DisplayMode mode;
+  final EntryOptions options;
 
   List<Widget> buildWords(
       {int offset = 0,
@@ -67,7 +91,7 @@ class EntryJpn extends Entry {
     }
 
     Widget wrapWord(String word, String reading) {
-      if (options['hideFurigana'] ?? options.wordOnly) {
+      if (!options.display['furigana']!) {
         return Text(
           word,
           style: TextStyle(fontSize: fontSize),
@@ -108,11 +132,30 @@ class EntryJpn extends Entry {
     return ret;
   }
 
+  FutureOr<XmlDocument> getCrossRef(String key, String? info,
+      {void Function(int id)? onIdFound}) {
+    final findRes = DicoManager.find(
+      target,
+      key,
+      exactMatch: true,
+    );
+
+    return findRes.then((value) {
+      final id = value.first.value.first;
+      if (onIdFound != null) onIdFound(id);
+
+      return DicoManager.get(target, id);
+    });
+  }
+
   TextSpan? formatRef(BuildContext context, dynamic node) {
     final String? ref = node.queryXPath("./ref").node?.text;
 
     if (ref != null) {
-      final String cleanRef = ref.replaceFirst(RegExp(r'・\d+$'), '').trim();
+      final tmp = ref.split('・');
+      final String cleanRef = tmp.first.trim();
+      final String? xrefInfo = tmp.length > 1 ? tmp.last.trim() : null;
+
       return TextSpan(
         children: [
           TextSpan(
@@ -125,48 +168,53 @@ class EntryJpn extends Entry {
                 ?.copyWith(decoration: TextDecoration.underline),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
-                final findRes = DicoManager.find(
-                  target,
-                  cleanRef,
-                  exactMatch: true,
-                );
-
-                if (findRes.isEmpty) return;
-
-                final id = findRes.first.ids.first;
                 final list = Provider.of<MemoList?>(context, listen: false);
 
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (context) {
-                    return SafeArea(
-                      child: Scaffold(
-                        appBar: AppBar(title: const Text('Cross reference')),
-                        body: Provider.value(
-                          value: list,
-                          builder: (context, _) => EntryRenderer(
-                            mode: DisplayMode.detailed,
-                            options: options,
-                            entry: EntryJpn(
-                              target: target,
-                              xmlDoc: DicoManager.get(target, id),
-                            ),
-                          ),
-                        ),
-                        floatingActionButton: list != null
-                            ? FloatingActionButton(
-                                onPressed: () {
-                                  list.entries.add(ListEntry(id, target));
-                                  list.save();
+                    int id = 0;
+                    final xref = getCrossRef(cleanRef, xrefInfo,
+                        onIdFound: (value) => id = value);
 
-                                  Navigator.of(context).maybePop();
+                    return FutureBuilder(
+                        future: Future.value(xref),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+
+                          return SafeArea(
+                            child: Scaffold(
+                              appBar:
+                                  AppBar(title: const Text('Cross reference')),
+                              body: Provider.value(
+                                value: list,
+                                builder: (context, _) {
+                                  return EntryJpn(
+                                    target: target,
+                                    xmlDoc: snapshot.data as XmlDocument,
+                                    mode: DisplayMode.details,
+                                  );
                                 },
-                                child: const Icon(Icons.add),
-                              )
-                            : null,
-                        floatingActionButtonLocation:
-                            FloatingActionButtonLocation.endFloat,
-                      ),
-                    );
+                              ),
+                              floatingActionButton: list != null
+                                  ? FloatingActionButton(
+                                      onPressed: () {
+                                        list.entries.add(ListEntry(id, target));
+                                        list.save();
+
+                                        Navigator.of(context).maybePop();
+                                      },
+                                      child: const Icon(Icons.add),
+                                    )
+                                  : null,
+                              floatingActionButtonLocation:
+                                  FloatingActionButtonLocation.endFloat,
+                            ),
+                          );
+                        });
                   }),
                 );
               },
@@ -188,6 +236,12 @@ class EntryJpn extends Entry {
     return '';
   }
 
+  String formatNote(dynamic node) {
+    final List note = node.queryXPath("./note").nodes;
+
+    return note.firstWhereOrNull((e) => e.attributes.isEmpty)?.text ?? '';
+  }
+
   String formatStagk(dynamic node) {
     return '';
   }
@@ -200,13 +254,10 @@ class EntryJpn extends Entry {
     return '';
   }
 
-  @override
-  Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      [double? fontSize]) {
+  Widget buildMainForm(BuildContext context, [double? fontSize]) {
     return buildWords(cnt: 1, fontSize: fontSize).first;
   }
 
-  @override
   List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
     final words = buildWords(
         offset: 1, noRuby: true, includeRestr: true, fontSize: fontSize);
@@ -214,13 +265,19 @@ class EntryJpn extends Entry {
     return words;
   }
 
-  @override
-  List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
+  List<Widget> buildSenses(BuildContext context,
+      {double? fontSize,
+      bool pos = true,
+      bool domain = true,
+      bool note = true,
+      bool ref = true}) {
     int i = 0;
 
-    return xmlDoc.queryXPath('.//sense').nodes.map(
+    final nodes = xmlDoc.queryXPath('.//sense').nodes;
+
+    return nodes.map(
       (e) {
-        final pos = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
+        final posStr = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
           '',
           (p, c) {
             final tmp = c.text!.replaceAll(RegExp(r'\(\w+\)'), '').trim();
@@ -235,21 +292,25 @@ class EntryJpn extends Entry {
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (pos.isNotEmpty)
+              if (posStr.isNotEmpty && pos)
                 Text(
-                  pos,
+                  posStr,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               RichText(
                 text: TextSpan(
-                  style: DefaultTextStyle.of(context).style,
+                  style: DefaultTextStyle.of(context)
+                      .style
+                      .copyWith(fontSize: fontSize),
                   children: [
-                    TextSpan(text: '${++i}.   '),
-                    TextSpan(
-                      text: formatDomain(e),
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
+                    if (nodes.length > 1) TextSpan(text: '${++i}.   '),
+                    if (domain)
+                      TextSpan(
+                        text: formatDomain(e),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     TextSpan(
                       text: e
                           .queryXPath("./cit[@type='trans']/quote")
@@ -258,9 +319,17 @@ class EntryJpn extends Entry {
                             '',
                             (p, c) => '$p${p.isEmpty ? '' : ', '}${c.text}',
                           ),
-                      style: Theme.of(context).textTheme.bodyLarge,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyLarge
+                          ?.copyWith(fontSize: fontSize),
                     ),
-                    formatRef(context, e) ?? const TextSpan()
+                    if (note)
+                      TextSpan(
+                        text: '   ${formatNote(e)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    if (ref) formatRef(context, e) ?? const TextSpan()
                   ],
                 ),
               ),
@@ -271,7 +340,6 @@ class EntryJpn extends Entry {
     ).toList();
   }
 
-  @override
   List<Widget> buildNotes(BuildContext context, [double? fontSize]) {
     final notes = xmlDoc.queryXPath(".//form").nodes
       ..retainWhere((e) => e.children
@@ -293,23 +361,131 @@ class EntryJpn extends Entry {
     }).toList()
       ..removeWhere((e) => e == null)) as List<Widget>;
   }
+
+  Widget buildDetails(BuildContext context) {
+    return compose(context);
+  }
+
+  Widget buildQuizFlashcard(BuildContext context) {
+    return compose(context, centered: true, senseRef: false);
+  }
+
+  Widget buildQuizChoice(BuildContext context) {
+    return Container();
+  }
+
+  Widget buildQuiz(BuildContext context) {
+    final mode = Provider.of<QuizMode>(context, listen: false);
+
+    switch (mode) {
+      case QuizMode.flashCard:
+        return buildQuizFlashcard(context);
+      case QuizMode.choice:
+        return buildQuizChoice(context);
+      default:
+        throw Exception();
+    }
+  }
+
+  Widget buildDetailsOptions(BuildContext context) {
+    return EntryOptionsWidget(options: options);
+  }
+
+  Widget buildQuizOptions(BuildContext context) {
+    final mode = Provider.of<QuizMode>(context, listen: false);
+
+    return EntryOptionsWidget(
+      options: options,
+      quizMode: mode,
+      oneOfMandatoryDisplay:
+          mode == QuizMode.flashCard ? {'word', 'sense'} : {},
+    );
+  }
+
+  Widget compose(
+    BuildContext context, {
+    bool? word,
+    bool? sense,
+    bool? pos,
+    bool? notes,
+    bool? furigana,
+    bool? otherForms,
+    bool senseRef = true,
+    bool centered = false,
+  }) {
+    word ??= options.display['word']!;
+    sense ??= options.display['sense']!;
+    notes ??= options.display['notes']!;
+    otherForms ??= options.display['otherForms']!;
+    pos ??= options.display['part-of-speech']!;
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment:
+            centered ? MainAxisAlignment.center : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (word) Center(child: buildMainForm(context, 40)),
+          if (sense)
+            ...buildSenses(context, pos: pos, note: notes, ref: senseRef),
+          if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
+          if (otherForms)
+            buildDetailsField(context, 'Other forms', buildOtherForms(context))
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    switch (mode) {
+      case DisplayMode.preview:
+        return buildMainForm(context);
+      case DisplayMode.details:
+        return buildDetails(context);
+      case DisplayMode.quiz:
+        return buildQuiz(context);
+      case DisplayMode.detailsOptions:
+        return buildDetailsOptions(context);
+      case DisplayMode.quizOptions:
+        return buildQuizOptions(context);
+    }
+  }
 }
 
-class EntryJpnKanji extends Entry {
-  Map<String, dynamic> optionsModel = {'hideOkurigana': false};
+class EntryJpnKanji extends StatelessWidget {
+  EntryJpnKanji(
+      {super.key,
+      required this.xmlDoc,
+      required this.target,
+      this.mode = DisplayMode.preview})
+      : options = EntryOptions.load(
+          label: 'jpn-kanji${quizSuffix(mode)}',
+          display: ['kanji', 'reading', 'sense', 'nanori', 'okurigana'],
+          quiz: {
+            QuizMode.choice: [
+              'kanji → sense',
+              'kanji → reading',
+              'sense → kanji',
+              'reading → kanji'
+            ]
+          },
+        );
 
-  EntryJpnKanji({
-    required super.xmlDoc,
-    required super.target,
-  });
+  final XmlDocument xmlDoc;
+  final String target;
+  final DisplayMode mode;
+  final EntryOptions options;
 
   Widget buildReadings(BuildContext context) {
-    final r_on =
-        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='ja_on']").nodes;
-    final r_kun =
-        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='ja_kun']").nodes;
-    final r_nanori =
-        xmlDoc.queryXPath(".//form[@type='r_ele']/orth[@type='nanori']").nodes;
+    const formExp = ".//form[@type='r_ele']";
+    final on = xmlDoc.queryXPath("$formExp/orth[@type='ja_on']").nodes;
+    final kun = xmlDoc.queryXPath("$formExp/orth[@type='ja_kun']").nodes;
+    final nanori = options.display['nanori'] == false
+        ? []
+        : xmlDoc.queryXPath("$formExp/orth[@type='nanori']").nodes;
 
     Widget decodeText(String text, Color color) {
       return Container(
@@ -320,25 +496,31 @@ class EntryJpnKanji extends Entry {
       );
     }
 
-    if (options['hideOkurigana'] == true) {
+    if (options.display['okurigana'] == false) {
       final exp = RegExp(r'.*(\..*|-.*)$');
 
-      r_kun.removeWhere((e) => exp.hasMatch(e.text!));
-      r_on.removeWhere((e) => exp.hasMatch(e.text!));
-      r_nanori.removeWhere((e) => exp.hasMatch(e.text!));
+      kun.removeWhere((e) => exp.hasMatch(e.text!));
+      on.removeWhere((e) => exp.hasMatch(e.text!));
+      nanori.removeWhere((e) => exp.hasMatch(e.text!));
     }
 
-    return Wrap(
-      children: List.from(
-        [
-          [r_kun, Colors.blue.shade300],
-          [r_on, Colors.red.shade300],
-          [r_nanori, Colors.green.shade300]
-        ].expand(
-          (item) => (item[0] as List).map(
-            (e) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-              child: decodeText(e.text!, item[1] as Color),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Wrap(
+        children: List.from(
+          [
+            [kun, Colors.blue.shade300],
+            [on, Colors.red.shade300],
+            [nanori, Colors.green.shade300]
+          ].expand(
+            (item) => (item[0] as List).map(
+              (e) => Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 2,
+                  vertical: 10,
+                ),
+                child: decodeText(e.text!, item[1] as Color),
+              ),
             ),
           ),
         ),
@@ -346,9 +528,7 @@ class EntryJpnKanji extends Entry {
     );
   }
 
-  @override
-  Widget buildMainForm(BuildContext context, DisplayMode displayMode,
-      [double? fontSize]) {
+  Widget buildMainForm(BuildContext context, [double? fontSize]) {
     final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!;
 
     return Text(
@@ -357,25 +537,98 @@ class EntryJpnKanji extends Entry {
     );
   }
 
-  @override
   List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) => [];
 
-  @override
   List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
-    final r_kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
+    final kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
 
     return [
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: buildReadings(context),
-      ),
       Text(
-        r_kun.map((e) => e.text!).join(", "),
+        kun.map((e) => e.text!).join(", "),
         style: TextStyle(fontSize: fontSize),
       )
     ];
   }
 
+  Widget buildDetails(BuildContext context) {
+    return compose(context);
+  }
+
+  Widget buildQuizFlashcard(BuildContext context) {
+    return compose(context, centered: true);
+  }
+
+  Widget buildQuizChoice(BuildContext context) {
+    return Container();
+  }
+
+  Widget buildQuiz(BuildContext context) {
+    final mode = Provider.of<QuizMode>(context, listen: false);
+
+    switch (mode) {
+      case QuizMode.flashCard:
+        return buildQuizFlashcard(context);
+      case QuizMode.choice:
+        return buildQuizChoice(context);
+    }
+  }
+
+  Widget buildDetailsOption(BuildContext context) {
+    return EntryOptionsWidget(options: options);
+  }
+
+  Widget buildQuizOptions(BuildContext context, QuizMode mode) {
+    final mode = Provider.of<QuizMode>(context, listen: true);
+
+    return EntryOptionsWidget(
+      options: options,
+      quizMode: mode,
+      oneOfMandatoryDisplay:
+          mode == QuizMode.flashCard ? {'kanji', 'sense', 'reading'} : {},
+    );
+  }
+
+  Widget compose(
+    BuildContext context, {
+    bool? kanji,
+    bool? sense,
+    bool? reading,
+    bool centered = false,
+  }) {
+    kanji ??= options.display['kanji']!;
+    sense ??= options.display['sense']!;
+    reading ??= options.display['reading']!;
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment:
+            centered ? MainAxisAlignment.center : MainAxisAlignment.start,
+        crossAxisAlignment:
+            centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          if (kanji) Center(child: buildMainForm(context, 40)),
+          if (reading) Center(child: buildReadings(context)),
+          if (sense) ...buildSenses(context, 20),
+        ],
+      ),
+    );
+  }
+
   @override
-  List<Widget> buildNotes(BuildContext context, [double? fontSize]) => [];
+  Widget build(BuildContext context) {
+    switch (mode) {
+      case DisplayMode.preview:
+        return buildMainForm(context);
+      case DisplayMode.details:
+        return buildDetails(context);
+      case DisplayMode.quiz:
+        return buildQuiz(context);
+      case DisplayMode.detailsOptions:
+        return buildDetailsOption(context);
+      case DisplayMode.quizOptions:
+        return buildQuizOptions(context, QuizMode.flashCard);
+    }
+  }
 }
