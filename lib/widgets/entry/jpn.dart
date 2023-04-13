@@ -255,7 +255,9 @@ class EntryJpn extends StatelessWidget {
   }
 
   Widget buildMainForm(BuildContext context, [double? fontSize]) {
-    return buildWords(cnt: 1, fontSize: fontSize).first;
+    return FittedBox(
+        fit: BoxFit.fitWidth,
+        child: buildWords(cnt: 1, fontSize: fontSize).first);
   }
 
   List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
@@ -427,7 +429,10 @@ class EntryJpn extends StatelessWidget {
             centered ? MainAxisAlignment.center : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (word) Center(child: buildMainForm(context, 40)),
+          if (word)
+            mode == DisplayMode.preview
+                ? buildMainForm(context)
+                : Center(child: buildMainForm(context, 40)),
           if (sense)
             ...buildSenses(context, pos: pos, note: notes, ref: senseRef),
           if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
