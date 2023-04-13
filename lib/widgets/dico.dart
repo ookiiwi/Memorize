@@ -22,17 +22,19 @@ class _DicoFindBuilder extends State<DicoFindBuilder> {
     return FutureBuilder<dynamic>(
       future: widget.findResult,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasData) {
+          assert(snapshot.data != null);
+          final List<MapEntry<int, String>> res =
+              List<MapEntry<String, List<int>>>.from(snapshot.data!)
+                  .expand((e) => e.value.map((i) => MapEntry(i, e.key)))
+                  .toList();
+
+          return widget.builder(context, res);
+        } else if (snapshot.hasError) {
+          return const Center(child: Text('Error in DicoFindBuilder'));
         }
 
-        assert(snapshot.data != null);
-        final List<MapEntry<int, String>> res =
-            List<MapEntry<String, List<int>>>.from(snapshot.data!)
-                .expand((e) => e.value.map((i) => MapEntry(i, e.key)))
-                .toList();
-
-        return widget.builder(context, res);
+        return const Center(child: CircularProgressIndicator());
       },
     );
   }
@@ -62,13 +64,15 @@ class _DicoGetBuilder extends State<DicoGetBuilder> {
       initialData: doc,
       future: doc == null ? widget.getResult as Future<XmlDocument> : null,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasData) {
+          doc ??= snapshot.data!;
+
+          return widget.builder(context, doc!);
+        } else if (snapshot.hasError) {
+          return const Center(child: Text('Error in DicoGetBuilder'));
         }
 
-        doc ??= snapshot.data!;
-
-        return widget.builder(context, doc!);
+        return const Center(child: CircularProgressIndicator());
       },
     );
   }
@@ -79,11 +83,9 @@ class DicoGetListViewBuilder extends StatefulWidget {
     super.key,
     this.entries = const [],
     required this.builder,
-    this.itemExtent = 100,
   });
 
   final List<ListEntry> entries;
-  final double itemExtent;
   final Widget Function(BuildContext, XmlDocument, int) builder;
 
   @override
@@ -92,6 +94,7 @@ class DicoGetListViewBuilder extends StatefulWidget {
 
 class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
   Future<List<XmlDocument>> fResults = Future.value([]);
+  bool isFutureSet = false;
   List<XmlDocument> results = [];
 
   @override
@@ -112,34 +115,38 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
 
     if (fRes.isNotEmpty) {
       fResults = Future.wait(fRes);
+      isFutureSet = true;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<XmlDocument>>(
-      future: fResults,
+      initialData: isFutureSet ? null : [],
+      future: isFutureSet ? fResults : null,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasData) {
+          assert(snapshot.data != null);
+          isFutureSet = false;
+
+          final List<XmlDocument> entries =
+              results + List<XmlDocument>.from(snapshot.data!);
+
+          return ListView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            shrinkWrap: true,
+            itemCount: entries.length,
+            itemBuilder: (context, i) => widget.builder(
+              context,
+              entries[i],
+              i,
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return const Center(child: Text('Error in DicoGetListViewBuilder'));
         }
 
-        assert(snapshot.data != null);
-
-        final List<XmlDocument> entries =
-            results + List<XmlDocument>.from(snapshot.data!);
-
-        return ListView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          shrinkWrap: true,
-          //itemExtent: widget.itemExtent,
-          itemCount: entries.length,
-          itemBuilder: (context, i) => widget.builder(
-            context,
-            entries[i],
-            i,
-          ),
-        );
+        return const Center(child: CircularProgressIndicator());
       },
     );
   }
