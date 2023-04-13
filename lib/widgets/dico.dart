@@ -59,11 +59,10 @@ class _DicoGetBuilder extends State<DicoGetBuilder> {
     }
 
     return FutureBuilder<dynamic>(
-      future: doc == null
-          ? widget.getResult as Future<XmlDocument>
-          : Future.value(),
+      initialData: doc,
+      future: doc == null ? widget.getResult as Future<XmlDocument> : null,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
