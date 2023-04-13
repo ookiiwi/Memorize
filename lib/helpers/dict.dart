@@ -323,14 +323,10 @@ class DicoCache {
 }
 
 class DicoManager {
-  static const int _maxReaderCnt = 4;
-
   static ReceivePort? _receivePort;
   static StreamQueue? _events;
   static SendPort? _sendPort;
-  static final Map<String, FlutterCTQReader> _readers = {};
-  static final List<String> _targetHistory = [];
-  static Iterable<String> get targets => _targetHistory;
+
   static final dicoCache = DicoCache();
   static Isolate? _isolate;
 
@@ -344,7 +340,7 @@ class DicoManager {
     _events = StreamQueue(_receivePort!);
 
     return Isolate.spawn(
-        _entryPoint,
+        _DicoManagerIsolate.entryPoint,
         _DicoIsolateOpenArgs(
           applicationDocumentDirectory,
           _receivePort!.sendPort,
@@ -373,6 +369,10 @@ class DicoManager {
     ));
 
     return _events!.next.then((value) {
+      if (value is Exception) {
+        throw value;
+      }
+
       return value;
     });
   }
@@ -382,72 +382,6 @@ class DicoManager {
     _sendPort!.send(_DicoIsolateLoadArgs(targets, loadSubTargets));
 
     return _events!.next.then((value) {});
-  }
-
-  static FutureOr<void> _load(Iterable<String> targets,
-      {bool loadSubTargets = false}) {
-    print("load $targets");
-
-    for (var target in targets) {
-      _checkOpen(target);
-
-      if (loadSubTargets) {
-        final subTargets =
-            Dict.listTargets().where((e) => e.startsWith(target));
-
-        for (var sub in subTargets) {
-          _checkOpen(sub);
-        }
-      }
-    }
-
-    // release readers
-    if (_targetHistory.length > _maxReaderCnt) {
-      final end = _targetHistory.length - _maxReaderCnt;
-
-      for (var e in _targetHistory.sublist(0, end)) {
-        _readers.remove(e)?.close();
-      }
-
-      _targetHistory.removeRange(0, end);
-    }
-  }
-
-  static void _checkOpen(String target) {
-    if (_readers.containsKey(target)) return;
-
-    if (!Dict.exists(target)) {
-      throw Exception("Unknown target: $target");
-    }
-
-    if (_targetHistory.length > 3) {
-      final rmTar = _targetHistory.removeLast();
-
-      _readers[rmTar]!.close();
-      _readers.remove(rmTar);
-    }
-
-    _targetHistory.add(target);
-    _readers[target] = Dict.open(target);
-    print(
-        "open $target ${_readers[target]!.readerVersion} ${_readers[target]!.writerVersion}");
-  }
-
-  static void _find(_DicoIsolateFindArgs arg, SendPort p) {
-    try {
-      _checkOpen(arg.target);
-
-      final ret = _readers[arg.target]!.find(
-        arg.key,
-        exactMatch: arg.exactMatch,
-        offset: arg.offset,
-        count: arg.cnt,
-      );
-
-      p.send(ret);
-    } catch (e) {
-      p.send(e);
-    }
   }
 
   static FutureOr<XmlDocument> get(String target, int id) {
@@ -460,6 +394,10 @@ class DicoManager {
     _sendPort!.send(_DicoIsolateGetArg(target, id));
 
     return _events!.next.then((value) {
+      if (value is Exception) {
+        throw value;
+      }
+
       dicoCache.set(target, id, value);
       return value;
     });
@@ -476,20 +414,93 @@ class DicoManager {
     _events = null;
     _receivePort = null;
   }
+}
 
-  static void _get(_DicoIsolateGetArg arg, SendPort p) {
-    FlutterCTQReader.ensureInitialized();
+class _DicoManagerIsolate {
+  static const int _maxReaderCnt = 4;
 
-    final target = arg.target;
+  static final Map<String, FlutterCTQReader> _readers = {};
+  static final List<String> _targetHistory = [];
+  static Iterable<String> get targets => _targetHistory;
 
-    _checkOpen(target);
+  static FutureOr<Iterable<String>> load(Iterable<String> targets,
+      {bool loadSubTargets = false}) {
+    print("load $targets");
 
-    final ret = XmlDocument.parse(_readers[target]!.get(arg.id));
+    for (var target in targets) {
+      _checkOpen(target);
 
-    p.send(ret);
+      if (loadSubTargets) {
+        final subTargets =
+            Dict.listTargets().where((e) => e.startsWith(target));
+
+        for (var sub in subTargets) {
+          _checkOpen(sub);
+        }
+      }
+    }
+
+    return _readers.keys;
   }
 
-  static void _entryPoint(_DicoIsolateOpenArgs args) async {
+  static void _checkOpen(String target) {
+    if (_readers.containsKey(target)) return;
+
+    if (!Dict.exists(target)) {
+      throw Exception("Unknown target: $target");
+    }
+
+    // release readers
+    if (_targetHistory.length > _maxReaderCnt) {
+      final end = _targetHistory.length - _maxReaderCnt;
+
+      for (var e in _targetHistory.sublist(0, end)) {
+        _readers.remove(e)?.close();
+      }
+
+      _targetHistory.removeRange(0, end);
+    }
+
+    _targetHistory.add(target);
+    _readers[target] = Dict.open(target);
+    print(
+        "open $target ${_readers[target]!.readerVersion} ${_readers[target]!.writerVersion}");
+  }
+
+  static void find(_DicoIsolateFindArgs arg, SendPort p) {
+    try {
+      _checkOpen(arg.target);
+
+      final ret = _readers[arg.target]!.find(
+        arg.key,
+        exactMatch: arg.exactMatch,
+        offset: arg.offset,
+        count: arg.cnt,
+      );
+
+      p.send(ret);
+    } catch (e) {
+      p.send(e);
+    }
+  }
+
+  static void get(_DicoIsolateGetArg arg, SendPort p) {
+    try {
+      FlutterCTQReader.ensureInitialized();
+
+      final target = arg.target;
+
+      _checkOpen(target);
+
+      final ret = XmlDocument.parse(_readers[target]!.get(arg.id));
+
+      p.send(ret);
+    } catch (e) {
+      p.send(e);
+    }
+  }
+
+  static void entryPoint(_DicoIsolateOpenArgs args) async {
     final commandPort = ReceivePort();
     final p = args.port;
     p.send(commandPort.sendPort);
@@ -498,12 +509,16 @@ class DicoManager {
 
     await for (final message in commandPort) {
       if (message is _DicoIsolateGetArg) {
-        _get(message, p);
+        get(message, p);
       } else if (message is _DicoIsolateFindArgs) {
-        _find(message, p);
+        find(message, p);
       } else if (message is _DicoIsolateLoadArgs) {
-        p.send(_load(targets));
+        p.send(load(targets));
       } else if (message == null) {
+        for (var e in _readers.values) {
+          e.close();
+        }
+
         break;
       }
     }
