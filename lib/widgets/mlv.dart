@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:memorize/generated/entry.g.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
@@ -88,12 +87,10 @@ class _MemoListView extends State<MemoListView> {
                 child: Center(
                   widthFactor: 1,
                   heightFactor: 1,
-                  child: EntryRenderer(
+                  child: getDetails(entry.target)!(
+                    xmlDoc: entry.data!,
+                    target: entry.target,
                     mode: DisplayMode.preview,
-                    entry: guessEntry(
-                      xmlDoc: entry.data!,
-                      target: entry.target,
-                    ),
                   ),
                 ),
               ),
