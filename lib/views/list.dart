@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
-import 'package:memorize/generated/entry.g.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/auth.dart';
@@ -591,9 +590,8 @@ class _ListViewer extends State<ListViewer> {
 
                                         Navigator.of(context).push(
                                           MaterialPageRoute(
-                                            builder: (context) => QuizLauncher(
-                                              entries: list!.entries,
-                                            ),
+                                            builder: (context) =>
+                                                QuizLauncher(list: list!),
                                           ),
                                         );
                                       },
@@ -730,12 +728,6 @@ class _EntryView extends State<EntryView> {
 
                   return EntryViewInfo(
                     entry: entry,
-                    opt: EntryOptions.load(
-                      guessEntry(
-                        xmlDoc: XmlDocument(),
-                        target: entry.target,
-                      ),
-                    ),
                   );
                 },
               ),
@@ -773,12 +765,11 @@ class _EntryView extends State<EntryView> {
                           : DicoManager.get(entries[i].target, entries[i].id),
                       builder: (context, doc) {
                         entries[i] = entries[i].copyWith(data: doc);
-                        return EntryRenderer(
-                          mode: DisplayMode.detailed,
-                          entry: guessEntry(
-                            xmlDoc: doc,
-                            target: entries[i].target,
-                          ),
+
+                        return getDetails(entries[i].target)!(
+                          xmlDoc: doc,
+                          target: entries[i].target,
+                          mode: DisplayMode.details,
                         );
                       },
                     ),
@@ -794,10 +785,9 @@ class _EntryView extends State<EntryView> {
 }
 
 class EntryViewInfo extends StatefulWidget {
-  const EntryViewInfo({super.key, required this.entry, required this.opt});
+  const EntryViewInfo({super.key, required this.entry});
 
   final ListEntry entry;
-  final EntryOptions opt;
 
   @override
   State<StatefulWidget> createState() => _EntryViewInfo();
@@ -818,7 +808,11 @@ class _EntryViewInfo extends State<EntryViewInfo> {
               title: const Text('Entry id'),
               trailing: Text('${widget.entry.id}'),
             ),
-          EntryOptionsWidget(options: widget.opt),
+          getDetails(widget.entry.target)!(
+            xmlDoc: XmlDocument(),
+            target: widget.entry.target,
+            mode: DisplayMode.detailsOptions,
+          ),
         ]),
       ),
     );
