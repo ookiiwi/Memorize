@@ -343,6 +343,7 @@ class DicoManager {
         _DicoManagerIsolate.entryPoint,
         _DicoIsolateOpenArgs(
           applicationDocumentDirectory,
+          temporaryDirectory,
           _receivePort!.sendPort,
         )).then((value) {
       _isolate = value;
@@ -380,6 +381,12 @@ class DicoManager {
   static FutureOr<void> load(Iterable<String> targets,
       {bool loadSubTargets = false}) {
     _sendPort!.send(_DicoIsolateLoadArgs(targets, loadSubTargets));
+
+    return _events!.next.then((value) {});
+  }
+
+  static FutureOr<void> tryLoadCachedTargets() {
+    _sendPort!.send(_DicoIsolateTryLoadArgs());
 
     return _events!.next.then((value) {});
   }
@@ -423,8 +430,7 @@ class _DicoManagerIsolate {
   static final List<String> _targetHistory = [];
   static Iterable<String> get targets => _targetHistory;
 
-  static FutureOr<Iterable<String>> load(Iterable<String> targets,
-      {bool loadSubTargets = false}) {
+  static int load(Iterable<String> targets, {bool loadSubTargets = false}) {
     print("load $targets");
 
     for (var target in targets) {
@@ -440,7 +446,22 @@ class _DicoManagerIsolate {
       }
     }
 
-    return _readers.keys;
+    return 0;
+  }
+
+  static int tryLoadCachedTargets() {
+    final file = File('$temporaryDirectory/loadedTargetList');
+
+    if (!file.existsSync()) return 0;
+
+    List<String> targets =
+        List<String>.from(jsonDecode(file.readAsStringSync()));
+
+    for (var e in targets) {
+      _checkOpen(e);
+    }
+
+    return 0;
   }
 
   static void _checkOpen(String target) {
@@ -465,6 +486,11 @@ class _DicoManagerIsolate {
     _readers[target] = Dict.open(target);
     print(
         "open $target ${_readers[target]!.readerVersion} ${_readers[target]!.writerVersion}");
+
+    {
+      final file = File('$temporaryDirectory/loadedTargetList');
+      file.writeAsStringSync(jsonEncode(_readers.keys.toList()));
+    }
   }
 
   static void find(_DicoIsolateFindArgs arg, SendPort p) {
@@ -486,8 +512,6 @@ class _DicoManagerIsolate {
 
   static void get(_DicoIsolateGetArg arg, SendPort p) {
     try {
-      FlutterCTQReader.ensureInitialized();
-
       final target = arg.target;
 
       _checkOpen(target);
@@ -506,6 +530,9 @@ class _DicoManagerIsolate {
     p.send(commandPort.sendPort);
 
     applicationDocumentDirectory = args.appDir;
+    temporaryDirectory = args.tmpDir;
+
+    FlutterCTQReader.ensureInitialized();
 
     await for (final message in commandPort) {
       if (message is _DicoIsolateGetArg) {
@@ -514,10 +541,14 @@ class _DicoManagerIsolate {
         find(message, p);
       } else if (message is _DicoIsolateLoadArgs) {
         p.send(load(targets));
+      } else if (message is _DicoIsolateTryLoadArgs) {
+        p.send(tryLoadCachedTargets());
       } else if (message == null) {
         for (var e in _readers.values) {
           e.close();
         }
+
+        _readers.clear();
 
         break;
       }
@@ -529,9 +560,10 @@ class _DicoManagerIsolate {
 }
 
 class _DicoIsolateOpenArgs {
-  const _DicoIsolateOpenArgs(this.appDir, this.port);
+  const _DicoIsolateOpenArgs(this.appDir, this.tmpDir, this.port);
 
   final String appDir;
+  final String tmpDir;
   final SendPort port;
 }
 
@@ -541,6 +573,8 @@ class _DicoIsolateLoadArgs {
   final Iterable<String> targets;
   final bool loadSubTargets;
 }
+
+class _DicoIsolateTryLoadArgs {}
 
 class _DicoIsolateGetArg {
   const _DicoIsolateGetArg(this.target, this.id);
