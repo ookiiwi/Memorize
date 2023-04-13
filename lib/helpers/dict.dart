@@ -258,6 +258,8 @@ class Dict {
 }
 
 class DicoCache {
+  static const _maxEntries = 100;
+
   DicoCache();
   DicoCache.fromJson(Map<String, Map<int, String>> json) {
     json.forEach(
@@ -275,7 +277,7 @@ class DicoCache {
   final List<MapEntry<String, int>> _history = [];
 
   void _releaseResources([int releaseCnt = 10]) {
-    if (_history.length < 50) return;
+    if (_history.length < _maxEntries) return;
 
     _history.removeRange(0, releaseCnt);
   }
@@ -459,7 +461,6 @@ class DicoManager {
 
     return _events!.next.then((value) {
       dicoCache.set(target, id, value);
-      print('got $id');
       return value;
     });
   }
