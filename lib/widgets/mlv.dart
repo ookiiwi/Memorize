@@ -105,14 +105,14 @@ class _MemoListView extends State<MemoListView> {
           child: IconButton(
             tooltip: "delete ${entry.id}",
             onPressed: () {
+              if (widget.onDelete != null) {
+                widget.onDelete!(entry);
+              }
+
               setState(() {
                 entries.remove(entry);
                 widget.list?.save();
               });
-
-              if (widget.onDelete != null) {
-                widget.onDelete!(entry);
-              }
             },
             icon: const Icon(Icons.cancel_outlined),
           ),
@@ -136,6 +136,7 @@ class _MemoListView extends State<MemoListView> {
                 minHeight: index == 0 ? constraints.maxHeight : 0.0,
               ),
               child: DicoGetListViewBuilder(
+                key: ValueKey(entries.length),
                 entries: entries.getRange(start, end).toList(),
                 builder: (context, doc, j) {
                   int i = start + j;
