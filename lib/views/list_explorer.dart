@@ -4,19 +4,17 @@ import 'package:memorize/app_constants.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/dialog.dart';
-import 'package:memorize/widgets/selectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 enum Filter { asc, dsc, rct }
 
 class ListExplorer extends StatefulWidget {
-  const ListExplorer({Key? key, this.adapter}) : super(key: key);
+  const ListExplorer({Key? key, this.buildScaffold = true}) : super(key: key);
 
-  final ListExplorerAdapter? adapter;
+  final bool buildScaffold;
 
   @override
   State<ListExplorer> createState() => _ListExplorer();
@@ -27,8 +25,6 @@ class _ListExplorer extends State<ListExplorer> {
   final double globalPadding = 10;
   Filter filter = Filter.asc;
   List<FileInfo> _dirContent = [];
-  late final ListExplorerController controller;
-  late final ListExplorerAdapter adapter;
 
   ModalRoute? _route;
   String collectionHistory = '';
@@ -37,6 +33,12 @@ class _ListExplorer extends State<ListExplorer> {
   static final root = '$applicationDocumentDirectory/fe';
   late String currentDir = root;
   String get currentCollection => currentDir.replaceFirst(RegExp('^$root'), '');
+  bool get buildScaffold => widget.buildScaffold;
+
+  late final _popupbuttonValues = {
+    'New list': () => context.push('/list', extra: {'dir': currentDir}),
+    'New collection': () => addNewCollection(context),
+  };
 
   @override
   void initState() {
@@ -44,23 +46,6 @@ class _ListExplorer extends State<ListExplorer> {
 
     final dir = Directory(root);
     if (!dir.existsSync()) dir.createSync();
-
-    controller = ListExplorerController(
-      updateData: _updateData,
-      onDelete: _onDeleteItem,
-      selectionController: SelectionController(),
-      getCurrentDir: () => currentDir,
-      refresh: () {
-        if (mounted) setState(() {});
-      },
-      changeCollection: _changeCollection,
-    );
-
-    if (widget.adapter == null) {
-      adapter = const ListExplorerAdapter();
-    } else {
-      adapter = widget.adapter!;
-    }
 
     _updateData();
   }
@@ -172,7 +157,7 @@ class _ListExplorer extends State<ListExplorer> {
         break;
     }
   }
-
+  /*
   Widget buildHeader() {
     final primaryColor = Theme.of(context).colorScheme.secondaryContainer;
     final onPrimaryColor = Theme.of(context).colorScheme.onSecondaryContainer;
@@ -238,301 +223,129 @@ class _ListExplorer extends State<ListExplorer> {
       ),
     );
   }
+  */
+
+  void addNewCollection(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+
+        return TextFieldDialog(
+          controller: controller,
+          hintText: 'Collection name',
+          hasConfirmed: (value) {
+            if (value && controller.text.isNotEmpty) {
+              final dir = Directory(p.join(currentDir, controller.text));
+
+              if (dir.existsSync()) {
+                return '${controller.text} already exists';
+              }
+
+              dir.createSync();
+              _updateData();
+            }
+
+            setState(() {});
+
+            return null;
+          },
+        );
+      },
+    );
+  }
+
+  Widget buildBody(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: globalPadding),
+      child: ListExplorerItems(
+        items: _dirContent,
+        onItemTap: (info) {
+          if (info.type == FileSystemEntityType.directory) {
+            setState(() => _changeCollection(info.path));
+          } else {
+            context.push('/list', extra: {'fileinfo': info});
+          }
+        },
+        onItemLongPress: (info) {
+          showDialog(
+              context: context,
+              builder: (context) {
+                return Dialog(
+                  child: ListView(shrinkWrap: true, children: [
+                    ListTile(
+                      leading: const Icon(Icons.abc),
+                      title: const Text('Dummy'),
+                      onTap: () => Navigator.of(context).maybePop(),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.delete),
+                      title: const Text('Delete'),
+                      splashColor: Colors.transparent,
+                      onTap: () {
+                        final file = File(info.path);
+
+                        if (info.type == FileSystemEntityType.file) {
+                          ListViewer.unload(info);
+                        }
+
+                        // recursive to handle directories
+                        file.deleteSync(recursive: true);
+
+                        setState(() => _updateData());
+
+                        Navigator.of(context).maybePop();
+                      },
+                    )
+                  ]),
+                );
+              });
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext ctx) {
     _sortItems(_dirContent);
 
-    return Stack(children: [
-      Padding(
-        padding: EdgeInsets.only(
-          top: globalPadding,
-          left: globalPadding,
-          right: globalPadding,
-        ),
-        child: Column(
-          children: [
-            buildHeader(),
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.only(top: 20),
-                decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: Theme.of(context).colorScheme.background),
-                child: Container(
-                  color: Colors.transparent,
-                  child: ListExplorerItems(
-                    selectionController: controller.selectionController,
-                    items: _dirContent,
-                    onItemTap: (info) =>
-                        adapter.onItemTap(context, controller, info),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      adapter.buildFab(context, controller) ?? const SizedBox()
-    ]);
-  }
-}
-
-class ListExplorerMenuButton extends StatefulWidget {
-  const ListExplorerMenuButton({super.key, required this.controller});
-
-  final ListExplorerController controller;
-
-  @override
-  State<StatefulWidget> createState() => _ListExplorerMenuButton();
-}
-
-class _ListExplorerMenuButton extends State<ListExplorerMenuButton> {
-  final _menuBtnCtrl = MenuButtonController();
-  List<Widget> Function()? _menuBuilder;
-  double _addBtnTurns = 0.0;
-  final _controller = TextEditingController();
-  ListExplorerController get controller => widget.controller;
-  SelectionController get selectionController => controller.selectionController;
-  String get currentDir => controller.getCurrentDir();
-
-  @override
-  void initState() {
-    super.initState();
-
-    selectionController.addListener(() {
-      bool isEnabled = selectionController.isEnabled;
-
-      if (isEnabled) {
-        _menuBuilder = buildSelectionButtons;
-      }
-
-      isEnabled ? _openMenu() : _closeMenu();
-    });
-  }
-
-  static void addNewCollection(BuildContext context,
-      ListExplorerController controller, TextEditingController txtController) {
-    showDialog(
-      context: context,
-      builder: (ctx) => TextFieldDialog(
-        controller: txtController,
-        hintText: 'Collection name',
-        hasConfirmed: (value) {
-          if (value && txtController.text.isNotEmpty) {
-            final dir = Directory(
-                p.join(controller.getCurrentDir(), txtController.text));
-
-            if (dir.existsSync()) {
-              return '${txtController.text} already exists';
-            }
-
-            dir.createSync();
-            controller.updateData();
-          }
-
-          controller.refresh();
-
-          return null;
-        },
-      ),
-    );
-  }
-
-  List<Widget> buildAddButtons() {
-    return [
-      FloatingActionButton(
-        heroTag: "dirAddBtn",
-        tooltip: "New collection",
-        onPressed: () {
-          _closeMenu();
-
-          addNewCollection(context, controller, _controller);
-        },
-        child: const Icon(Icons.folder),
-      ),
-      FloatingActionButton(
-        tooltip: "New list",
-        onPressed: () {
-          _closeMenu();
-
-          context.push('/list', extra: {'dir': currentDir});
-        },
-        child: const Icon(Icons.list),
-      )
-    ];
-  }
-
-  List<Widget> buildSelectionButtons() {
-    return [
-      FloatingActionButton(
-        tooltip: 'Delete item',
-        onPressed: () {
-          for (var e in selectionController.selection) {
-            File(e.path).deleteSync(recursive: true);
-            ListViewer.unload(e);
-
-            controller.onDelete(e);
-          }
-
-          controller.updateData();
-          controller.refresh();
-
-          _closeMenu();
-        },
-        child: const Icon(Icons.delete),
-      ),
-    ];
-  }
-
-  void _openMenu() {
-    _addBtnTurns = 0.0;
-    _addBtnTurns += 3.0 / 8.0;
-    _menuBtnCtrl.open();
-
-    setState(() {});
-  }
-
-  void _closeMenu() {
-    _addBtnTurns = 0.0;
-    _menuBtnCtrl.close();
-    selectionController.isEnabled = false;
-    selectionController.selection.clear();
-    _menuBuilder = null; // release widgets
-
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MenuButton(
-      controller: _menuBtnCtrl,
-      button: FloatingActionButton(
-        heroTag: "listMenuBtn",
-        tooltip: "Open add menu",
-        onPressed: () {
-          if (selectionController.isEnabled) {
-            selectionController.isEnabled = false;
-            _closeMenu();
-            return;
-          }
-
-          _menuBuilder = buildAddButtons;
-          _menuBtnCtrl.isOpened ? _closeMenu() : _openMenu();
-        },
-        child: AnimatedRotation(
-          turns: _addBtnTurns,
-          duration: const Duration(milliseconds: 200),
-          child: const Icon(Icons.add),
-        ),
-      ),
-      menuButtons: _menuBuilder != null ? _menuBuilder!() : [],
-    );
-  }
-}
-
-class ListExplorerController {
-  const ListExplorerController(
-      {required this.updateData,
-      required this.onDelete,
-      required this.selectionController,
-      required this.getCurrentDir,
-      required this.refresh,
-      required this.changeCollection});
-
-  final VoidCallback updateData;
-  final void Function(FileInfo info) onDelete;
-  final SelectionController selectionController;
-  final String Function() getCurrentDir;
-  final VoidCallback refresh;
-  final void Function(String path) changeCollection;
-}
-
-class ListExplorerAdapter {
-  const ListExplorerAdapter();
-
-  Widget? buildFab(BuildContext context, ListExplorerController controller) {
-    return Positioned(
-      right: 20.0,
-      bottom: kBottomNavigationBarHeight + 5.0,
-      child: ListExplorerMenuButton(controller: controller),
-    );
-  }
-
-  List<Widget> buildHeaderTrailing(
-      BuildContext context, ListExplorerController controller) {
-    return [];
-  }
-
-  void onItemTap(
-      BuildContext context, ListExplorerController controller, FileInfo info) {
-    if (info.type == FileSystemEntityType.directory) {
-      controller.changeCollection(info.path);
-      controller.refresh();
-    } else {
-      context.push('/list', extra: {'fileinfo': info});
+    if (!buildScaffold) {
+      return buildBody(context);
     }
-  }
-}
 
-class ListExplorerCollectionPicker extends ListExplorerAdapter {
-  ListExplorerCollectionPicker({this.onValidate});
-
-  FileInfo selectedCollection = FileInfo(
-    'home',
-    _ListExplorer.root,
-    FileSystemEntityType.directory,
-  );
-
-  final void Function(FileInfo info)? onValidate;
-
-  @override
-  List<Widget> buildHeaderTrailing(
-      BuildContext context, ListExplorerController controller) {
-    final txtController = TextEditingController();
-
-    return [
-      IconButton(
-        onPressed: () {
-          _ListExplorerMenuButton.addNewCollection(
-            context,
-            controller,
-            txtController,
-          );
-        },
-        icon: const Icon(Icons.add),
-      )
-    ];
-  }
-
-  @override
-  Widget? buildFab(BuildContext context, ListExplorerController controller) {
-    return null;
-  }
-
-  @override
-  void onItemTap(
-      BuildContext context, ListExplorerController controller, FileInfo info) {
-    if (info.type != FileSystemEntityType.directory) return;
-
-    selectedCollection = info;
-    controller.changeCollection(info.path);
-    controller.refresh();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('List explorer'),
+        centerTitle: true,
+        actions: [
+          PopupMenuButton(
+            position: PopupMenuPosition.under,
+            offset: const Offset(0, 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            itemBuilder: (context) => _popupbuttonValues.entries
+                .map((e) => PopupMenuItem(onTap: e.value, child: Text(e.key)))
+                .toList(),
+          )
+        ],
+      ),
+      body: buildBody(context),
+    );
   }
 }
 
 class ListExplorerItems<T> extends StatefulWidget {
-  const ListExplorerItems(
-      {super.key,
-      this.items = const [],
-      this.onItemTap,
-      this.selectionController,
-      this.onSelectionToggled});
+  const ListExplorerItems({
+    super.key,
+    this.items = const [],
+    this.onItemTap,
+    this.onItemLongPress,
+  });
 
   final List<FileInfo> items;
-  final SelectionController? selectionController;
-  final void Function(bool value)? onSelectionToggled;
   final void Function(FileInfo info)? onItemTap;
+  final void Function(FileInfo info)? onItemLongPress;
 
   @override
   State createState() => _ListExplorerItems();
@@ -541,81 +354,69 @@ class ListExplorerItems<T> extends StatefulWidget {
 class _ListExplorerItems extends State<ListExplorerItems> {
   List<FileInfo> get items => widget.items;
 
-  late final selectionController =
-      widget.selectionController ?? SelectionController();
-
   Widget buildItem(FileInfo item) {
-    return GestureDetector(
+    return ListTile(
+      title: Text(item.name),
       onTap: () {
         if (widget.onItemTap != null) {
           widget.onItemTap!(item);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: Theme.of(context).colorScheme.primaryContainer,
-        ),
-        child: Center(
-          child: Text(
-            item.name,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-          ),
-        ),
-      ),
+      onLongPress: () {
+        if (widget.onItemLongPress != null) {
+          widget.onItemLongPress!(item);
+        }
+      },
+      trailing: item.type == FileSystemEntityType.file
+          ? IconButton(
+              onPressed: () => context.push(
+                '/quiz_launcher',
+                extra: MemoList.open(item.path),
+              ),
+              icon: const Icon(
+                Icons.play_arrow_outlined,
+                size: 36,
+              ),
+            )
+          : null,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        if (!selectionController.isEnabled) return;
-        selectionController.isEnabled = false;
-      },
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          checkboxTheme: CheckboxThemeData(
-            fillColor: MaterialStateProperty.all(
-                Theme.of(context).colorScheme.surfaceVariant),
-            checkColor: MaterialStateProperty.all(
-                Theme.of(context).colorScheme.onSurfaceVariant),
-          ),
-        ),
-        child: AnimatedBuilder(
-          animation: selectionController,
-          builder: (context, _) => GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10.0,
-              crossAxisSpacing: 10.0,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, i) {
-              final item = items[i];
+    final colorScheme = Theme.of(context).colorScheme;
 
-              return VisibilityDetector(
-                key: ValueKey(item.path),
-                onVisibilityChanged: item.type == FileSystemEntityType.directory
-                    ? null
-                    : (_) {
-                        if (File(item.path).existsSync()) {
-                          ListViewer.preload(item);
-                        }
-                      },
-                child: Selectable(
-                  value: item,
-                  controller: selectionController,
-                  child: buildItem(item),
-                ),
-              );
-            },
-          ),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        checkboxTheme: CheckboxThemeData(
+          fillColor: MaterialStateProperty.all(colorScheme.surfaceVariant),
+          checkColor: MaterialStateProperty.all(colorScheme.onSurfaceVariant),
         ),
+      ),
+      child: ListView.separated(
+        padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight * 2),
+        separatorBuilder: (context, i) {
+          return Divider(
+            indent: 16,
+            endIndent: 16,
+            thickness: 0.3,
+            color: colorScheme.primary.withOpacity(0.3),
+          );
+        },
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+
+          if (item.type != FileSystemEntityType.directory &&
+              File(item.path).existsSync()) {
+            ListViewer.preload(item);
+          }
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: buildItem(item),
+          );
+        },
       ),
     );
   }
