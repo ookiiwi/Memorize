@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
+import 'package:memorize/views/quiz.dart';
 import 'package:memorize/views/splash_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,8 +19,9 @@ import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final _routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['home', 'search', 'settings'];
+const _routes = ['home', 'lists', 'search', 'settings'];
 const _appBarIconSize = 36.0;
+final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 
 final router = GoRouter(initialLocation: '/splash', routes: [
   GoRoute(
@@ -43,10 +47,15 @@ final router = GoRouter(initialLocation: '/splash', routes: [
               GoRouter.of(context).refresh();
             }
 
+            final file = File(lastRootLocationFilename);
+            file.writeAsStringSync(location);
+
             context.go(location);
           },
           items: [
             Icon(Icons.home_rounded,
+                color: appBarIconColor, size: _appBarIconSize),
+            Icon(Icons.list_rounded,
                 color: appBarIconColor, size: _appBarIconSize),
             Icon(Icons.search_rounded,
                 color: appBarIconColor, size: _appBarIconSize),
@@ -60,6 +69,11 @@ final router = GoRouter(initialLocation: '/splash', routes: [
         path: '/home',
         pageBuilder: (context, state) =>
             const NoTransitionPage(child: HomePage()),
+      ),
+      GoRoute(
+        path: '/lists',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: ListExplorer()),
       ),
       GoRoute(
           path: '/list',
@@ -81,6 +95,12 @@ final router = GoRouter(initialLocation: '/splash', routes: [
 
             throw Exception('Invalid list arguments');
           }),
+      GoRoute(
+        path: '/quiz_launcher',
+        pageBuilder: (context, state) => NoTransitionPage(
+          child: QuizLauncher(list: state.extra as MemoList),
+        ),
+      ),
       GoRoute(
           path: '/search',
           pageBuilder: (context, state) =>
@@ -144,7 +164,12 @@ class HomePage extends StatelessWidget {
           style: GoogleFonts.zenMaruGothic(fontWeight: FontWeight.bold),
         ),
       ),
-      body: const SafeArea(bottom: false, child: ListExplorer()),
+      body: SafeArea(
+        bottom: false,
+        child: Container(
+          color: Colors.amber,
+        ),
+      ),
     );
   }
 }
