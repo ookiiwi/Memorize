@@ -12,9 +12,16 @@ import 'package:memorize/file_system.dart';
 enum Filter { asc, dsc, rct }
 
 class ListExplorer extends StatefulWidget {
-  const ListExplorer({Key? key, this.buildScaffold = true}) : super(key: key);
+  const ListExplorer(
+      {Key? key,
+      this.buildScaffold = true,
+      this.onListTap,
+      this.onCollectionTap})
+      : super(key: key);
 
   final bool buildScaffold;
+  final bool Function(String path)? onCollectionTap;
+  final bool Function(FileInfo info)? onListTap;
 
   @override
   State<ListExplorer> createState() => _ListExplorer();
@@ -48,6 +55,10 @@ class _ListExplorer extends State<ListExplorer> {
     if (!dir.existsSync()) dir.createSync();
 
     _updateData();
+
+    if (widget.onCollectionTap != null) {
+      widget.onCollectionTap!(currentDir);
+    }
   }
 
   @override
@@ -157,6 +168,7 @@ class _ListExplorer extends State<ListExplorer> {
         break;
     }
   }
+
   /*
   Widget buildHeader() {
     final primaryColor = Theme.of(context).colorScheme.secondaryContainer;
@@ -262,9 +274,16 @@ class _ListExplorer extends State<ListExplorer> {
         items: _dirContent,
         onItemTap: (info) {
           if (info.type == FileSystemEntityType.directory) {
-            setState(() => _changeCollection(info.path));
+            setState(() {
+              if (widget.onCollectionTap == null ||
+                  widget.onCollectionTap!(info.path)) {
+                _changeCollection(info.path);
+              }
+            });
           } else {
-            context.push('/list', extra: {'fileinfo': info});
+            if (widget.onListTap == null || widget.onListTap!(info)) {
+              context.push('/list', extra: {'fileinfo': info});
+            }
           }
         },
         onItemLongPress: (info) {
