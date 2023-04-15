@@ -103,19 +103,21 @@ class _QuizLauncher extends State<QuizLauncher> {
             random: _random,
             itemCount: list.entries.length,
             questionBuilder: (context, i) {
-              return DicoGetBuilder(
-                  getResult: entries[i].data != null
-                      ? entries[i].data!
-                      : DicoManager.get(entries[i].target, entries[i].id),
-                  builder: (context, doc) {
-                    entries[i] = entries[i].copyWith(data: doc);
+              return SingleChildScrollView(
+                child: DicoGetBuilder(
+                    getResult: entries[i].data != null
+                        ? entries[i].data!
+                        : DicoManager.get(entries[i].target, entries[i].id),
+                    builder: (context, doc) {
+                      entries[i] = entries[i].copyWith(data: doc);
 
-                    return getDetails(entries[i].target)!(
-                      xmlDoc: entries[i].data!,
-                      target: entries[i].target,
-                      mode: DisplayMode.quiz,
-                    );
-                  });
+                      return getDetails(entries[i].target)!(
+                        xmlDoc: entries[i].data!,
+                        target: entries[i].target,
+                        mode: DisplayMode.quiz,
+                      );
+                    }),
+              );
             },
             answerBuilder: (context, i) {
               return DicoGetBuilder(
