@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/file_system.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
@@ -27,13 +26,16 @@ class ListPreview extends StatelessWidget {
 
   final MemoList list;
   late final Future _dlDico;
+  String? _collectionPath;
 
-  void onCollectionChoosen(BuildContext context, FileInfo info) {
-    final filename = p.join(info.path, list.name);
+  void onCollectionChoosen(BuildContext context) {
+    if (_collectionPath == null) return;
+
+    final filename = p.join(_collectionPath!, list.name);
     final recordID = list.recordID!;
 
     bool dirContainsId(String id) {
-      return Directory(info.path).listSync().any((e) =>
+      return Directory(_collectionPath!).listSync().any((e) =>
           e.path.endsWith('_$id') ||
           p.basename(e.path) == '${list.name}_${MemoList.dummyRecordID}');
     }
@@ -90,20 +92,22 @@ class ListPreview extends StatelessWidget {
                   bottom: kBottomNavigationBarHeight + 5,
                   child: FloatingActionButton(
                     onPressed: () {
-                      final adapter = ListExplorerCollectionPicker();
-
                       Navigator.of(context, rootNavigator: true).push(
                         MaterialPageRoute(
                           builder: (context) => Scaffold(
                             appBar:
                                 AppBar(title: const Text('Collection picker')),
-                            body: ListExplorer(adapter: adapter),
+                            body: ListExplorer(
+                              buildScaffold: false,
+                              onCollectionTap: (path) {
+                                _collectionPath = path;
+                                return true;
+                              },
+                              onListTap: (_) => false,
+                            ),
                             floatingActionButton: FloatingActionButton(
                               heroTag: 'myhero',
-                              onPressed: () => onCollectionChoosen(
-                                context,
-                                adapter.selectedCollection,
-                              ),
+                              onPressed: () => onCollectionChoosen(context),
                               child: const Icon(Icons.check),
                             ),
                           ),
