@@ -15,7 +15,6 @@ import 'package:memorize/views/auth.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
-import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pageview.dart';
@@ -113,11 +112,12 @@ class ListViewer extends StatefulWidget {
 
 class _ListViewer extends State<ListViewer> {
   MemoList? list;
+  final mlvController = MemoListViewController();
   List<String> availableTargets = Dict.listAllTargets()..sort();
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
   bool? _needDlDico = false;
-  final mainLangExp = RegExp(r'^\w{3}-\w{3}$');
+  final mainLangExp = RegExp(r'^\w{3}-\w{3}');
   String? errorMessage; // critical
   final _popupPadding = const EdgeInsets.symmetric(horizontal: 12.0);
 
@@ -141,12 +141,10 @@ class _ListViewer extends State<ListViewer> {
 
     if (list != null) {
       if (list!.targets.isEmpty) {
-        // TODO: get subtargets
+        final initTargets = getInitTarget();
 
-        final initTarget = getInitTarget();
-
-        if (initTarget != null) {
-          list!.targets.add(initTarget);
+        for (var target in initTargets) {
+          list!.targets.add(target);
         }
       }
 
@@ -210,18 +208,15 @@ class _ListViewer extends State<ListViewer> {
     );
   }
 
-  String? getInitTarget() {
-    String? target = list?.targets
-        .firstWhere((e) => mainLangExp.hasMatch(e), orElse: () => '');
+  List<String> getInitTarget() {
+    Iterable<String> target =
+        list?.targets.where((e) => mainLangExp.hasMatch(e)) ?? [];
 
-    if (target?.isEmpty != false) {
-      target = availableTargets.firstWhere(
-        (e) => mainLangExp.hasMatch(e),
-        orElse: () => '',
-      );
+    if (target.isEmpty != false) {
+      target = availableTargets.where((e) => mainLangExp.hasMatch(e));
     }
 
-    return target!.isEmpty ? null : target;
+    return target.toList();
   }
 
   void openSearchPage() {
@@ -335,16 +330,16 @@ class _ListViewer extends State<ListViewer> {
     }
 
     Pair<String>? pairFromListTarget() {
-      final target = getInitTarget();
+      final target = getInitTarget()..sort();
 
-      if (target == null) return null;
+      if (target.isEmpty) return null;
 
-      final parts = target.split('-');
+      final parts = target.first.split('-');
 
       return Pair(
         IsoLanguage.getFullname(parts[0]),
         IsoLanguage.getFullname(parts[1]),
-        value: target,
+        value: target.first,
       );
     }
 
@@ -379,6 +374,7 @@ class _ListViewer extends State<ListViewer> {
 
   void showRenameDialog(BuildContext mainContext) {
     showDialog(
+        barrierDismissible: list?.name.isNotEmpty == true,
         context: context,
         builder: (context) {
           final controller = TextEditingController(text: list?.name);
@@ -427,10 +423,10 @@ class _ListViewer extends State<ListViewer> {
               }
 
               if (list!.targets.isEmpty) {
-                final initTarget = getInitTarget();
+                final initTargets = getInitTarget();
 
-                if (initTarget != null) {
-                  list!.targets.add(initTarget);
+                for (var target in initTargets) {
+                  list!.targets.add(target);
                 }
 
                 fLoadTargets = loadTargets(checkOnly: true);
@@ -494,10 +490,21 @@ class _ListViewer extends State<ListViewer> {
 
           return Scaffold(
             appBar: AppBar(
-              title: TextButton(
-                onPressed: () => showRenameDialog(context),
-                child:
-                    Text(list?.name.isEmpty == false ? list!.name : 'noname'),
+              title: Row(
+                children: [
+                  const IconButton(onPressed: null, icon: SizedBox()),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => showRenameDialog(context),
+                      child: Center(
+                        child: Text(
+                          list?.name.isEmpty == false ? list!.name : 'noname',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               centerTitle: true,
               actions: [
@@ -505,59 +512,78 @@ class _ListViewer extends State<ListViewer> {
                   onPressed: canInteract ? openSearchPage : null,
                   icon: const Icon(Icons.add),
                 ),
-                PopupMenuButton(
-                    enabled: canInteract,
-                    position: PopupMenuPosition.under,
-                    color: Theme.of(context).colorScheme.secondary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                AnimatedCrossFade(
+                  crossFadeState: mlvController.isReorderEnable
+                      ? CrossFadeState.showFirst
+                      : CrossFadeState.showSecond,
+                  duration: const Duration(milliseconds: 200),
+                  firstChild: IconButton(
+                    onPressed: () => setState(
+                      () => mlvController.disableReorder(),
                     ),
-                    onSelected: (dynamic value) => value(),
-                    itemBuilder: (context) {
-                      return [
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          enabled: list?.recordID != null,
-                          value: () async {
-                            throw UnimplementedError();
-                            //await pb
-                            //    .collection('memo_list')
-                            //    .getOne(list!.recordID!);
-                          },
-                          child: const Text('Sync'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
+                    icon: const Icon(Icons.cancel),
+                  ),
+                  secondChild: PopupMenuButton(
+                      enabled: canInteract,
+                      position: PopupMenuPosition.under,
+                      color: Theme.of(context).colorScheme.secondary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      onSelected: (dynamic value) => value(),
+                      itemBuilder: (context) {
+                        return [
+                          PopupMenuItem(
+                            padding: _popupPadding,
+                            enabled: list?.recordID != null,
+                            value: () async {
+                              throw UnimplementedError();
+                              //await pb
+                              //    .collection('memo_list')
+                              //    .getOne(list!.recordID!);
+                            },
+                            child: const Text('Sync'),
+                          ),
+                          PopupMenuItem(
+                            padding: _popupPadding,
+                            value: () {
+                              assert(isListInit);
 
-                            if (list!.entries.isEmpty) return;
+                              if (list!.entries.isEmpty) return;
 
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) {
-                                  return UploadPage(list: list!);
-                                },
-                              ),
-                            );
-                          },
-                          child: const Text('Share'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) {
+                                    return UploadPage(list: list!);
+                                  },
+                                ),
+                              );
+                            },
+                            child: const Text('Share'),
+                          ),
+                          PopupMenuItem(
+                            padding: _popupPadding,
+                            value: () => setState(
+                              () => mlvController.enableReorder(),
+                            ),
+                            child: const Text('Order'),
+                          ),
+                          PopupMenuItem(
+                            padding: _popupPadding,
+                            value: () {
+                              assert(isListInit);
 
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => AboutPage(list: list!),
-                              ),
-                            );
-                          },
-                          child: const Text('About'),
-                        )
-                      ];
-                    }),
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => AboutPage(list: list!),
+                                ),
+                              );
+                            },
+                            child: const Text('About'),
+                          )
+                        ];
+                      }),
+                ),
               ],
             ),
             body: PageView(children: [
@@ -567,46 +593,16 @@ class _ListViewer extends State<ListViewer> {
                       if (_needDlDico == true &&
                           snapshot.connectionState != ConnectionState.done) {
                         return buildDicoDownload(context);
+                      } else if (isListInit && list!.entries.isNotEmpty) {
+                        return EntryViewier(
+                          list: list!,
+                          selectionController: _selectionController,
+                          onDeleteEntry: (_) => setState(() {}),
+                          mlvController: mlvController,
+                        );
                       }
 
-                      return Stack(
-                        children: [
-                          isListInit && list!.entries.isNotEmpty
-                              ? EntryViewier(
-                                  list: list!,
-                                  selectionController: _selectionController,
-                                  onDeleteEntry: (_) => setState(() {}),
-                                )
-                              : buildTargetDropDown(context),
-                          if (list?.entries.isNotEmpty == true ||
-                              _needDlDico == true)
-                            Positioned(
-                              bottom: kBottomNavigationBarHeight + 10,
-                              right: 20,
-                              child: (list?.entries.isNotEmpty == true)
-                                  ? FloatingActionButton(
-                                      onPressed: () {
-                                        assert(isListInit);
-
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                QuizLauncher(list: list!),
-                                          ),
-                                        );
-                                      },
-                                      child:
-                                          const Icon(Icons.play_arrow_rounded),
-                                    )
-                                  : FloatingActionButton(
-                                      onPressed: () => setState(() {
-                                        fLoadTargets = loadTargets();
-                                      }),
-                                      child: const Icon(Icons.download_rounded),
-                                    ),
-                            ),
-                        ],
-                      );
+                      return buildTargetDropDown(context);
                     }),
               buildStats(context)
             ]),
@@ -620,11 +616,13 @@ class EntryViewier extends StatefulWidget {
       {super.key,
       required this.list,
       this.selectionController,
-      this.onDeleteEntry});
+      this.onDeleteEntry,
+      this.mlvController});
 
   final MemoList list;
   final SelectionController? selectionController;
   final void Function(ListEntry entry)? onDeleteEntry;
+  final MemoListViewController? mlvController;
 
   @override
   State<StatefulWidget> createState() => _EntryViewier();
@@ -633,7 +631,7 @@ class EntryViewier extends StatefulWidget {
 class _EntryViewier extends State<EntryViewier> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
-  final mlvController = MemoListViewController();
+  late final mlvController = widget.mlvController ?? MemoListViewController();
 
   List<ListEntry> get entries => widget.list.entries;
 
@@ -662,6 +660,8 @@ class _EntryViewier extends State<EntryViewier> {
                   onDelete: widget.onDeleteEntry,
                   controller: mlvController,
                   onTap: (entry) {
+                    mlvController.disableReorder();
+
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) {
