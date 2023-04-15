@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/main.dart';
 import 'package:memorize/widgets/entry.dart';
 
 Future<void> loadData() async {
@@ -17,9 +20,9 @@ Future<void> loadData() async {
 }
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key, this.route = '/home'}) : super(key: key);
+  const SplashScreen({Key? key, this.route}) : super(key: key);
 
-  final String route;
+  final String? route;
 
   @override
   State<SplashScreen> createState() => _SplashScreen();
@@ -59,7 +62,18 @@ class _SplashScreen extends State<SplashScreen> {
   }
 
   void launchRoute() {
-    context.go(widget.route);
+    String? route = widget.route;
+
+    if (route == null) {
+      final file = File(lastRootLocationFilename);
+
+      if (file.existsSync()) {
+        route = file.readAsStringSync();
+      } else {
+        route = '/home';
+      }
+    }
+    context.go(route);
   }
 
   @override
@@ -77,10 +91,13 @@ class _SplashScreen extends State<SplashScreen> {
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           if (errorMessage != null) {
             return LoadingFailureWidget(
-              message: errorMessage!,
-              onRetry: () => setState(() => retryLoadData()),
-            );
+                message: errorMessage!,
+                onRetry: () {
+                  retryLoadData();
+                  setState(() {});
+                });
           }
+
           return const Center(child: CircularProgressIndicator());
         },
       ),
