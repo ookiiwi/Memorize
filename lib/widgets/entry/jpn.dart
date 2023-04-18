@@ -202,7 +202,7 @@ class EntryJpn extends StatelessWidget {
                               floatingActionButton: list != null
                                   ? FloatingActionButton(
                                       onPressed: () {
-                                        list.entries.add(ListEntry(id, target));
+                                        list.entries.add(ListEntry(id));
                                         list.save();
 
                                         Navigator.of(context).maybePop();
