@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
@@ -18,9 +16,7 @@ import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pageview.dart';
-import 'package:memorize/widgets/pair_selector.dart';
 import 'package:memorize/widgets/selectable.dart';
-import 'package:mrx_charts/mrx_charts.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:xml/xml.dart';
@@ -54,26 +50,10 @@ class ListViewer extends StatefulWidget {
 
   static FutureOr<MemoList> preload(FileInfo info) {
     final list = MemoList.open(info.path);
-    final futures = <Future>[];
 
     if (list.entries.isEmpty) return list;
 
-    for (var e in list.targets) {
-      if (Dict.exists(e)) continue;
-
-      futures.add(Dict.download(e));
-    }
-
-    if (futures.isEmpty) {
-      return _preload(list);
-    }
-
-    return Future.wait(futures, eagerError: true).then((value) {
-      return _preload(list);
-    }).catchError(
-      (err) => list,
-      test: (error) => error is DictDownloadError,
-    );
+    return _preload(list);
   }
 
   static FutureOr<MemoList> _preload(MemoList list) {
@@ -116,16 +96,10 @@ class _ListViewer extends State<ListViewer> {
   List<String> availableTargets = Dict.listAllTargets()..sort();
   Future<void> fLoadTargets = Future.value();
   final Map<String, DictDownload> _dltargets = {};
-  bool? _needDlDico = false;
-  final mainLangExp = RegExp(r'^\w{3}-\w{3}');
   String? errorMessage; // critical
   final _popupPadding = const EdgeInsets.symmetric(horizontal: 12.0);
 
-  bool get isListInit =>
-      list != null && list!.name.isNotEmpty && list!.targets.isNotEmpty;
-
-  bool get canInteract =>
-      isListInit && _needDlDico == false && errorMessage == null;
+  bool get isListInit => list != null && list!.name.isNotEmpty;
 
   final _selectionController = SelectionController();
 
@@ -137,18 +111,6 @@ class _ListViewer extends State<ListViewer> {
       list = widget.list;
     } else if (widget.fileinfo != null) {
       list = MemoList.open(widget.fileinfo!.path);
-    }
-
-    if (list != null) {
-      if (list!.targets.isEmpty) {
-        final initTargets = getInitTarget();
-
-        for (var target in initTargets) {
-          list!.targets.add(target);
-        }
-      }
-
-      fLoadTargets = loadTargets(checkOnly: list!.entries.isEmpty);
     }
 
     if (list?.filename.isEmpty != false) {
@@ -167,58 +129,6 @@ class _ListViewer extends State<ListViewer> {
     setState(() {});
   }
 
-  Future<void> loadTargets({bool checkOnly = false}) {
-    assert(list != null);
-
-    if (list!.targets.isEmpty) return Future.value();
-
-    final futures = <Future>[];
-    _dltargets.clear();
-
-    for (var target in list!.targets) {
-      if (Dict.exists(target)) continue;
-
-      if (list?.entries.isEmpty != false) {
-        _needDlDico = true;
-      }
-
-      if (checkOnly) continue;
-
-      futures.add(Dict.download(target));
-      _needDlDico = true;
-
-      final info = Dict.getDownloadProgress(target);
-
-      if (info != null) {
-        _dltargets[target] = info;
-      }
-    }
-
-    return Future.wait(futures, eagerError: true).then((value) {
-      if (!checkOnly) {
-        _needDlDico = false;
-      }
-
-      errorMessage = null;
-    }).catchError(
-      (err) {
-        onDownloadError();
-      },
-      test: (error) => error is DictDownloadError,
-    );
-  }
-
-  List<String> getInitTarget() {
-    Iterable<String> target =
-        list?.targets.where((e) => mainLangExp.hasMatch(e)) ?? [];
-
-    if (target.isEmpty != false) {
-      target = availableTargets.where((e) => mainLangExp.hasMatch(e));
-    }
-
-    return target.toList();
-  }
-
   void openSearchPage() {
     assert(isListInit);
     assert(errorMessage == null);
@@ -227,7 +137,6 @@ class _ListViewer extends State<ListViewer> {
       PageRouteBuilder(
         pageBuilder: (context, _, __) {
           return EntrySearch(
-            targets: list!.targets,
             onItemSelected: (entry) {
               bool addEntry = !list!.entries
                   .any((e) => e.id == entry.id && e.target == entry.target);
@@ -237,11 +146,9 @@ class _ListViewer extends State<ListViewer> {
                 list!.save();
               }
 
-              Navigator.of(context).maybePop().then((value) {
-                if (addEntry) {
-                  setState(() {});
-                }
-              });
+              if (addEntry) {
+                setState(() {});
+              }
             },
           );
         },
@@ -251,79 +158,6 @@ class _ListViewer extends State<ListViewer> {
     });
 
     _selectionController.isEnabled = false;
-  }
-
-  Widget buildTargetDropDown(BuildContext context) {
-    void onTargetSelected(String? e) {
-      setState(() {
-        list?.targets.clear();
-
-        if (e == null) {
-          _needDlDico = null;
-          return;
-        }
-
-        _needDlDico = false;
-
-        list ??= MemoList('', {});
-
-        for (var target in availableTargets) {
-          if (!target.startsWith(e) && !e.startsWith(target)) {
-            continue;
-          }
-
-          list!.targets.add(target);
-
-          if (!Dict.exists(target)) _needDlDico = true;
-        }
-
-        if (list!.name.isNotEmpty) {
-          list!.save();
-        }
-      });
-    }
-
-    Pair<String>? pairFromListTarget() {
-      final target = getInitTarget()..sort();
-
-      if (target.isEmpty) return null;
-
-      final parts = target.first.split('-');
-
-      return Pair(
-        IsoLanguage.getFullname(parts[0]),
-        IsoLanguage.getFullname(parts[1]),
-        value: target.first,
-      );
-    }
-
-    return SafeArea(
-      child: Center(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 30),
-            child: PairSelector<String>(
-              selectedPair: pairFromListTarget(),
-              onSelected: (e) => mounted
-                  ? onTargetSelected(e)
-                  : WidgetsBinding.instance
-                      .addPostFrameCallback((_) => onTargetSelected(e)),
-              pairs: availableTargets
-                  .where((e) => mainLangExp.hasMatch(e))
-                  .map((e) {
-                final parts = e.split('-');
-
-                return Pair(
-                  IsoLanguage.getFullname(parts[0]),
-                  IsoLanguage.getFullname(parts[1]),
-                  value: e,
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   void showRenameDialog(BuildContext mainContext) {
@@ -371,19 +205,9 @@ class _ListViewer extends State<ListViewer> {
 
               if (list?.name.isEmpty != false) {
                 assert(widget.dir.isNotEmpty);
-                list = MemoList(filename, list?.targets ?? {})..save();
+                list = MemoList(filename)..save();
               } else {
                 list!.rename(text);
-              }
-
-              if (list!.targets.isEmpty) {
-                final initTargets = getInitTarget();
-
-                for (var target in initTargets) {
-                  list!.targets.add(target);
-                }
-
-                fLoadTargets = loadTargets(checkOnly: true);
               }
 
               setState(() {});
@@ -394,171 +218,128 @@ class _ListViewer extends State<ListViewer> {
         });
   }
 
-  Widget buildDicoDownload(BuildContext context) {
-    final recListenable = Listenable.merge(
-        _dltargets.values.fold([], (p, e) => p + [e.total, e.received]));
-
-    return Container(
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 30),
-      child: AnimatedBuilder(
-        animation: recListenable,
-        builder: (context, _) {
-          double received = 0;
-          double total = 0.1;
-          int dlCnt = 0;
-
-          for (var e in _dltargets.values) {
-            total += e.total.value;
-            received += e.received.value;
-
-            if (e.total.value == e.received.value) {
-              ++dlCnt;
-            }
-          }
-
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text("Download dico ($dlCnt/${_dltargets.length})"),
-              ),
-              LinearProgressIndicator(value: received / total)
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-        future: fLoadTargets,
-        builder: (context, snapshot) {
-          if (errorMessage == null &&
-              snapshot.connectionState == ConnectionState.done) {
-            _dltargets.clear();
-          }
+      future: fLoadTargets,
+      builder: (context, snapshot) {
+        if (errorMessage == null &&
+            snapshot.connectionState == ConnectionState.done) {
+          _dltargets.clear();
+        }
 
-          return Scaffold(
-            appBar: AppBar(
-              title: Row(
-                children: [
-                  const IconButton(onPressed: null, icon: SizedBox()),
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => showRenameDialog(context),
-                      child: Center(
-                        child: Text(
-                          list?.name.isEmpty == false ? list!.name : 'noname',
-                          textAlign: TextAlign.center,
-                        ),
+        return Scaffold(
+          appBar: AppBar(
+            title: Row(
+              children: [
+                const IconButton(onPressed: null, icon: SizedBox()),
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => showRenameDialog(context),
+                    child: Center(
+                      child: Text(
+                        list?.name.isEmpty == false ? list!.name : 'noname',
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
-                ],
-              ),
-              centerTitle: true,
-              actions: [
-                IconButton(
-                  onPressed: canInteract ? openSearchPage : null,
-                  icon: const Icon(Icons.add),
-                ),
-                AnimatedCrossFade(
-                  crossFadeState: mlvController.isReorderEnable
-                      ? CrossFadeState.showFirst
-                      : CrossFadeState.showSecond,
-                  duration: const Duration(milliseconds: 200),
-                  firstChild: IconButton(
-                    onPressed: () => setState(
-                      () => mlvController.disableReorder(),
-                    ),
-                    icon: const Icon(Icons.cancel),
-                  ),
-                  secondChild: PopupMenuButton(
-                      enabled: canInteract,
-                      position: PopupMenuPosition.under,
-                      color: Theme.of(context).colorScheme.secondary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      onSelected: (dynamic value) => value(),
-                      itemBuilder: (context) {
-                        return [
-                          PopupMenuItem(
-                            padding: _popupPadding,
-                            enabled: list?.recordID != null,
-                            value: () async {
-                              throw UnimplementedError();
-                              //await pb
-                              //    .collection('memo_list')
-                              //    .getOne(list!.recordID!);
-                            },
-                            child: const Text('Sync'),
-                          ),
-                          PopupMenuItem(
-                            padding: _popupPadding,
-                            value: () {
-                              assert(isListInit);
-
-                              if (list!.entries.isEmpty) return;
-
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) {
-                                    return UploadPage(list: list!);
-                                  },
-                                ),
-                              );
-                            },
-                            child: const Text('Share'),
-                          ),
-                          PopupMenuItem(
-                            padding: _popupPadding,
-                            value: () => setState(
-                              () => mlvController.enableReorder(),
-                            ),
-                            child: const Text('Order'),
-                          ),
-                          PopupMenuItem(
-                            padding: _popupPadding,
-                            value: () {
-                              assert(isListInit);
-
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => AboutPage(list: list!),
-                                ),
-                              );
-                            },
-                            child: const Text('About'),
-                          )
-                        ];
-                      }),
                 ),
               ],
             ),
-            body: errorMessage != null && list?.entries.isNotEmpty == true
-                ? Center(child: Text(errorMessage!))
-                : Builder(builder: (context) {
-                    if (_needDlDico == true &&
-                        snapshot.connectionState != ConnectionState.done) {
-                      return buildDicoDownload(context);
-                    } else if (isListInit && list!.entries.isNotEmpty) {
-                      return EntryViewier(
-                        list: list!,
-                        selectionController: _selectionController,
-                        onDeleteEntry: (_) => setState(() {}),
-                        mlvController: mlvController,
-                      );
-                    }
+            centerTitle: true,
+            actions: [
+              IconButton(
+                onPressed: openSearchPage,
+                icon: const Icon(Icons.add),
+              ),
+              AnimatedCrossFade(
+                crossFadeState: mlvController.isReorderEnable
+                    ? CrossFadeState.showFirst
+                    : CrossFadeState.showSecond,
+                duration: const Duration(milliseconds: 200),
+                firstChild: IconButton(
+                  onPressed: () => setState(
+                    () => mlvController.disableReorder(),
+                  ),
+                  icon: const Icon(Icons.cancel),
+                ),
+                secondChild: PopupMenuButton(
+                    position: PopupMenuPosition.under,
+                    color: Theme.of(context).colorScheme.secondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onSelected: (dynamic value) => value(),
+                    itemBuilder: (context) {
+                      return [
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          enabled: list?.recordID != null,
+                          value: () async {
+                            throw UnimplementedError();
+                            //await pb
+                            //    .collection('memo_list')
+                            //    .getOne(list!.recordID!);
+                          },
+                          child: const Text('Sync'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
 
-                    return buildTargetDropDown(context);
-                  }),
-          );
-        });
+                            if (list!.entries.isEmpty) return;
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) {
+                                  return UploadPage(list: list!);
+                                },
+                              ),
+                            );
+                          },
+                          child: const Text('Share'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () => setState(
+                            () => mlvController.enableReorder(),
+                          ),
+                          child: const Text('Order'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => AboutPage(list: list!),
+                              ),
+                            );
+                          },
+                          child: const Text('About'),
+                        )
+                      ];
+                    }),
+              ),
+            ],
+          ),
+          body: errorMessage != null && list?.entries.isNotEmpty == true
+              ? Center(child: Text(errorMessage!))
+              : Builder(
+                  builder: (context) {
+                    return EntryViewier(
+                      list: list!,
+                      selectionController: _selectionController,
+                      onDeleteEntry: (_) => setState(() {}),
+                      mlvController: mlvController,
+                    );
+                  },
+                ),
+        );
+      },
+    );
   }
 }
 
@@ -771,9 +552,8 @@ class _EntryViewInfo extends State<EntryViewInfo> {
 }
 
 class EntrySearch extends StatefulWidget {
-  const EntrySearch({super.key, this.onItemSelected, required this.targets});
+  const EntrySearch({super.key, this.onItemSelected});
 
-  final Set<String> targets;
   final void Function(ListEntry entry)? onItemSelected;
 
   @override
@@ -781,95 +561,9 @@ class EntrySearch extends StatefulWidget {
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  Map<String, List<Widget>> entries = {};
-  Map<String, Future<List<MapEntry<String, List<int>>>>> entriesData = {};
-  Map<String, Key> targetKey = {};
-  int selectedTarget = 0;
-  String prevSearch = '';
-  bool noMoreEntries = false;
-  int lastLoadedPage = 0;
-
-  late List<String> targets = widget.targets.toList()
-    ..sort((a, b) => a.length.compareTo(b.length));
-
-  @override
-  void initState() {
-    super.initState();
-
-    DicoManager.load(targets, loadSubTargets: false);
-
-    for (var target in targets) {
-      entries[target] = [];
-      entriesData[target] = Future.value([]);
-    }
-  }
-
-  Widget buildResultArea(BuildContext context, String target) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: DicoFindBuilder(
-        findResult: entriesData[target]!,
-        builder: (context, res) {
-          if (res.isEmpty) {
-            return const Center(child: Text("No result >_<"));
-          }
-          return MemoListView(
-            key: targetKey[target], // change key if new search
-            entries: res.map((e) => ListEntry(e.key, target)).toList(),
-            onTap: widget.onItemSelected != null
-                ? (entry) => widget.onItemSelected!(entry)
-                : null,
-            /*
-              onLoad: (page, cnt) {
-                print('load $page $lastLoadedPage $noMoreEntries');
-                if (noMoreEntries || page + 1 <= lastLoadedPage) return;
-
-                lastLoadedPage = page + 1;
-
-                final findRet = DicoManager
-                    .find(
-                      target,
-                      prevSearch,
-                      page: lastLoadedPage,
-                      cnt: cnt,
-                    )
-                    .expand((e) => e.value)
-                    .map((e) => ListEntry(e, target))
-                    .toList();
-
-                entriesData[target]!.addAll(findRet);
-
-                final offset = findRet.length;
-                if (offset < cnt) {
-                  noMoreEntries = true;
-
-                  if (offset == 0) return;
-                }
-
-                Future.delayed(Duration.zero, () {
-                  if (mounted) setState(() {});
-                });
-              },
-              */
-          );
-        },
-      ),
-    );
-  }
-
-  Widget buildResultAreas(BuildContext context) {
-    return LabeledPageView.builder(
-      labels: targets.map((e) {
-        final tar = e.replaceFirst(RegExp(r'^\w{3}-\w{3}-?'), '');
-
-        return tar.isEmpty ? 'WORD' : tar.toUpperCase();
-      }).toList(),
-      itemBuilder: (context, i) => buildResultArea(
-        context,
-        targets.elementAt(i),
-      ),
-    );
-  }
+  Future<List<MapEntry<String, List<int>>>> findResultWord = Future.value([]);
+  Future<List<MapEntry<String, List<int>>>> findResultKanji = Future.value([]);
+  String search = '';
 
   @override
   Widget build(BuildContext context) {
@@ -896,25 +590,35 @@ class _EntrySearch extends State<EntrySearch> {
             ),
           ),
           onChanged: (value) {
-            for (var target in entriesData.keys) {
-              targetKey[target] = UniqueKey();
-              entries[target]?.clear();
-              entriesData[target] = DicoManager.find(target, value);
-            }
-
-            prevSearch = value;
+            findResultWord =
+                DicoManager.find('jpn-${appSettings.language}', value);
+            findResultKanji =
+                DicoManager.find('jpn-${appSettings.language}-kanji', value);
+            search = value;
 
             setState(() {});
           },
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Builder(
-          builder: (context) => targets.length > 1
-              ? buildResultAreas(context)
-              : buildResultArea(context, targets[selectedTarget]),
-        ),
+      body: LabeledPageView.builder(
+        labels: const ['WORD', 'KANJI'],
+        itemBuilder: (context, i) {
+          return DicoFindBuilder(
+            findResult: i == 0 ? findResultWord : findResultKanji,
+            builder: (context, res) {
+              final List<ListEntry> entries = res.map((e) {
+                return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
+              }).toList();
+
+              return MemoListView(
+                entries: entries,
+                onTap: widget.onItemSelected != null
+                    ? (entry) => widget.onItemSelected!(entry)
+                    : null,
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -927,10 +631,6 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final parts = list.targets.first.split('-');
-    final src = IsoLanguage.getFullname(parts[0]);
-    final dst = IsoLanguage.getFullname(parts[1]);
-
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -944,18 +644,6 @@ class AboutPage extends StatelessWidget {
         builder: (context, setState) {
           return Column(
             children: [
-              ListTile(
-                title: Text(
-                  'Default dico',
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onBackground
-                        .withOpacity(0.6),
-                  ),
-                ),
-                trailing: Text('$src - $dst'),
-              ),
               ListTile(
                 title: const Text('Record id'),
                 trailing: Text(list.recordID ?? 'N/A'),
@@ -1049,7 +737,7 @@ class _UploadPage extends State<UploadPage> {
         final record = await pb.collection(collection).create(
           body: {
             'owner': auth.id,
-            'targets': list.targets.join(';'),
+            'targets': '',
             'name': list.name,
             'public': true,
           },
@@ -1060,7 +748,7 @@ class _UploadPage extends State<UploadPage> {
       } else {
         await pb.collection(collection).update(
               list.recordID!,
-              body: {'targets': list.targets.join(';')},
+              body: {'targets': ''},
               files: files,
             );
       }

@@ -19,6 +19,13 @@ Future<void> loadData() async {
   if (auth.isLogged) {
     await auth.refresh();
   }
+
+  if (!Dict.exists('jpn-${appSettings.language}')) {
+    await Dict.download('jpn-${appSettings.language}');
+    await Dict.download('jpn-${appSettings.language}-kanji');
+  }
+
+  await DicoManager.tryLoadCachedTargets();
 }
 
 class SplashScreen extends StatefulWidget {

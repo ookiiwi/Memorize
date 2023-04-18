@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
@@ -12,20 +11,9 @@ import 'package:path/path.dart' as p;
 import 'package:pocketbase/pocketbase.dart';
 
 class ListPreview extends StatelessWidget {
-  ListPreview({super.key, required this.list}) {
-    final futures = <Future>[];
-
-    for (var e in list.targets) {
-      if (!Dict.exists(e)) {
-        futures.add(Dict.download(e));
-      }
-    }
-
-    _dlDico = Future.wait(futures);
-  }
+  ListPreview({super.key, required this.list});
 
   final MemoList list;
-  late final Future _dlDico;
   String? _collectionPath;
 
   void onCollectionChoosen(BuildContext context) {
@@ -75,51 +63,39 @@ class ListPreview extends StatelessWidget {
           title: Text(list.name),
           centerTitle: true,
         ),
-        body: FutureBuilder(
-          future: _dlDico,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            return Stack(
-              children: [
-                // TODO: check targets are available
-
-                EntryViewier(list: list),
-                Positioned(
-                  right: 20,
-                  bottom: kBottomNavigationBarHeight + 5,
-                  child: FloatingActionButton(
-                    onPressed: () {
-                      Navigator.of(context, rootNavigator: true).push(
-                        MaterialPageRoute(
-                          builder: (context) => Scaffold(
-                            appBar:
-                                AppBar(title: const Text('Collection picker')),
-                            body: ListExplorer(
-                              buildScaffold: false,
-                              onCollectionTap: (path) {
-                                _collectionPath = path;
-                                return true;
-                              },
-                              onListTap: (_) => false,
-                            ),
-                            floatingActionButton: FloatingActionButton(
-                              heroTag: 'myhero',
-                              onPressed: () => onCollectionChoosen(context),
-                              child: const Icon(Icons.check),
-                            ),
-                          ),
+        body: Stack(
+          children: [
+            EntryViewier(list: list),
+            Positioned(
+              right: 20,
+              bottom: kBottomNavigationBarHeight + 5,
+              child: FloatingActionButton(
+                onPressed: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (context) => Scaffold(
+                        appBar: AppBar(title: const Text('Collection picker')),
+                        body: ListExplorer(
+                          buildScaffold: false,
+                          onCollectionTap: (path) {
+                            _collectionPath = path;
+                            return true;
+                          },
+                          onListTap: (_) => false,
                         ),
-                      );
-                    },
-                    child: const Icon(Icons.save_alt_rounded),
-                  ),
-                )
-              ],
-            );
-          },
+                        floatingActionButton: FloatingActionButton(
+                          heroTag: 'myhero',
+                          onPressed: () => onCollectionChoosen(context),
+                          child: const Icon(Icons.check),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: const Icon(Icons.save_alt_rounded),
+              ),
+            )
+          ],
         ),
       ),
     );

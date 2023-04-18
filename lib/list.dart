@@ -12,30 +12,34 @@ import 'package:diffutil_dart/diffutil.dart' as diffutil;
 import 'package:quiver/collection.dart' as quiver;
 
 class ListEntry extends Equatable {
-  const ListEntry(this.id, this.target, {this.data});
+  const ListEntry(this.id, {this.subTarget, this.data});
   ListEntry.fromJson(Map<String, dynamic> json, {this.data})
       : id = json['id'],
-        target = json['target'];
+        subTarget = json['s'];
 
-  ListEntry copyWith({int? id, String? target, XmlDocument? data}) {
+  ListEntry copyWith(
+      {int? id, String? source, String? subTarget, XmlDocument? data}) {
     return ListEntry(
       id ?? this.id,
-      target ?? this.target,
+      subTarget: subTarget ?? this.subTarget,
       data: data ?? this.data,
     );
   }
 
   final int id;
-  final String target;
+  final String? subTarget;
   final XmlDocument? data;
+
+  String get target =>
+      'jpn-${appSettings.language}${subTarget != null ? "-$subTarget" : ""}';
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'target': target,
+        if (subTarget != null) 's': subTarget,
       };
 
   @override
-  List<Object?> get props => [id, target];
+  List<Object?> get props => [id, subTarget];
 }
 
 class MemoList {
@@ -44,7 +48,6 @@ class MemoList {
 
   MemoList(
     this.filename,
-    this.targets,
   )   : entries = [],
         level = 1,
         score = 0,
@@ -54,8 +57,7 @@ class MemoList {
   }
 
   MemoList.fromJson(this.filename, Map<String, dynamic> json)
-      : targets = Set.from(json['targets']),
-        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))),
+      : entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))),
         level = json['level'] ?? 1,
         score = json['score'] ?? 0,
         lastQuizEntryCount = json['lqec'] ?? 0 {
@@ -76,7 +78,6 @@ class MemoList {
   }
 
   List<ListEntry> entries;
-  final Set<String> targets;
   String filename;
   int level;
   double score;
@@ -107,7 +108,6 @@ class MemoList {
       basename(filename).replaceFirst(recordIDre, '');
 
   Map<String, dynamic> toJson() => {
-        'targets': targets.toList(),
         'entries': entries.map((e) => e.toJson()).toList(),
         'level': level,
         'score': score,
@@ -128,10 +128,9 @@ class MemoList {
   }
 
   Future<void> setReminder(int id) async {
-    final minutes = 2 * level * 60;
+    final minutes = 2 * level * appSettings.quizStepMinutes;
     final date = tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes));
 
-    await flutterLocalNotificationsPlugin.cancel(id);
     await flutterLocalNotificationsPlugin.zonedSchedule(
       id,
       "It's quiz time",
