@@ -12,12 +12,14 @@ import 'package:pocketbase/pocketbase.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:memorize/statistic.dart';
+import 'package:memorize/settings.dart';
 
 late final String applicationDocumentDirectory;
 late final String temporaryDirectory;
 late final String host;
 late final PocketBase pb;
 late final GlobalStats globalStats;
+late final AppSettings appSettings;
 final auth = Auth();
 final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
@@ -64,6 +66,12 @@ Future<void> initConstants() async {
     globalStats = GlobalStats.load();
   } catch (e) {
     globalStats = GlobalStats();
+  }
+
+  try {
+    appSettings = AppSettings.load();
+  } catch (e) {
+    appSettings = AppSettings();
   }
 }
 
