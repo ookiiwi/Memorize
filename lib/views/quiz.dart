@@ -1,10 +1,12 @@
 import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/views/list.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -98,47 +100,98 @@ class _QuizLauncher extends State<QuizLauncher> {
       MaterialPageRoute(
         builder: (context) {
           return Quiz(
-            mode: _mode,
-            timer: _timer,
-            random: _random,
-            itemCount: list.entries.length,
-            questionBuilder: (context, i) {
-              return SingleChildScrollView(
-                child: DicoGetBuilder(
-                    getResult: entries[i].data != null
-                        ? entries[i].data!
-                        : DicoManager.get(entries[i].target, entries[i].id),
-                    builder: (context, doc) {
-                      entries[i] = entries[i].copyWith(data: doc);
+              mode: _mode,
+              timer: _timer,
+              random: _random,
+              itemCount: list.entries.length,
+              questionBuilder: (context, i) {
+                return SingleChildScrollView(
+                  child: DicoGetBuilder(
+                      getResult: entries[i].data != null
+                          ? entries[i].data!
+                          : DicoManager.get(entries[i].target, entries[i].id),
+                      builder: (context, doc) {
+                        entries[i] = entries[i].copyWith(data: doc);
 
-                      return getDetails(entries[i].target)!(
-                        xmlDoc: entries[i].data!,
-                        target: entries[i].target,
-                        mode: DisplayMode.quiz,
+                        return getDetails(entries[i].target)!(
+                          xmlDoc: entries[i].data!,
+                          target: entries[i].target,
+                          mode: DisplayMode.quiz,
+                        );
+                      }),
+                );
+              },
+              answerBuilder: (context, i) {
+                return DicoGetBuilder(
+                  getResult: entries[i].data != null
+                      ? entries[i].data!
+                      : DicoManager.get(entries[i].target, entries[i].id),
+                  builder: (context, doc) {
+                    entries[i] = entries[i].copyWith(data: doc);
+
+                    return getDetails(entries[i].target)!(
+                      xmlDoc: entries[i].data!,
+                      target: entries[i].target,
+                      mode: DisplayMode.details,
+                    );
+                  },
+                );
+              },
+              onTapInfo: (value) {
+                return Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) {
+                      final entry = entries[value];
+
+                      return EntryViewInfo(
+                        entry: entry,
                       );
-                    }),
-              );
-            },
-            answerBuilder: (context, i) {
-              return DicoGetBuilder(
-                getResult: entries[i].data != null
-                    ? entries[i].data!
-                    : DicoManager.get(entries[i].target, entries[i].id),
-                builder: (context, doc) {
-                  entries[i] = entries[i].copyWith(data: doc);
+                    },
+                  ),
+                );
+              },
+              onEnd: (value) async {
+                if (value < list.score) {
+                  list.level -= 4;
+                } else if (value == 100) {
+                  list.level += 1;
+                }
 
-                  return getDetails(entries[i].target)!(
-                    xmlDoc: entries[i].data!,
-                    target: entries[i].target,
-                    mode: DisplayMode.details,
-                  );
-                },
-              );
-            },
-            onEnd: () => Navigator.of(context)
-              ..pop()
-              ..pop(),
-          );
+                if (list.level < 1) {
+                  list.level = 1;
+                }
+
+                if (list.lastQuizEntryCount == 0) {
+                  ++globalStats.scoreCount;
+                  globalStats.overallScore += value;
+                } else {
+                  globalStats.overallScore += value - list.score;
+                }
+
+                if (list.lastQuizEntryCount != list.entries.length) {
+                  globalStats.newEntriesWeek +=
+                      list.entries.length - list.lastQuizEntryCount;
+                }
+
+                globalStats.save();
+
+                list
+                  ..score = value
+                  ..lastQuizEntryCount = entries.length
+                  ..save();
+
+                final pendingRequests = (await flutterLocalNotificationsPlugin
+                    .pendingNotificationRequests());
+
+                final pending = pendingRequests.firstWhereOrNull(
+                    (e) => e.payload!.contains(list.filename));
+
+                if (pending != null) {
+                  await flutterLocalNotificationsPlugin.cancel(pending.id);
+                }
+
+                await list.setReminder(pendingRequests.length);
+              });
         },
       ),
     );
@@ -155,9 +208,7 @@ class _QuizLauncher extends State<QuizLauncher> {
     final onPrimaryColor = Theme.of(context).colorScheme.onPrimaryContainer;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Launcher'),
-      ),
+      appBar: AppBar(title: Text(list.name)),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
           padding: const EdgeInsets.only(
@@ -309,15 +360,17 @@ class _QuizLauncher extends State<QuizLauncher> {
 }
 
 class Quiz extends StatefulWidget {
-  const Quiz(
-      {super.key,
-      this.mode = QuizMode.flashCard,
-      this.timer = 0,
-      this.random = false,
-      this.itemCount = 0,
-      required this.questionBuilder,
-      required this.answerBuilder,
-      this.onEnd});
+  const Quiz({
+    super.key,
+    this.mode = QuizMode.flashCard,
+    this.timer = 0,
+    this.random = false,
+    this.itemCount = 0,
+    required this.questionBuilder,
+    required this.answerBuilder,
+    this.onTapInfo,
+    this.onEnd,
+  });
 
   final int itemCount;
   final QuizMode mode;
@@ -325,7 +378,10 @@ class Quiz extends StatefulWidget {
   final bool random;
   final Widget Function(BuildContext, int) questionBuilder;
   final Widget Function(BuildContext, int) answerBuilder;
-  final VoidCallback? onEnd;
+  final Future<void> Function(int)? onTapInfo;
+
+  /// Score in range 0 - 100 (e.g 60.2)
+  final void Function(double score)? onEnd;
 
   @override
   State<StatefulWidget> createState() => _Quiz();
@@ -341,29 +397,39 @@ class _Quiz extends State<Quiz> {
   bool _isQuestions = true;
   late final _timerDuration = Duration(seconds: widget.timer);
 
-  int page = 0;
+  bool _showScore = false;
+  int _score = 0;
+
+  int page = -1;
   int get itemCount => widget.itemCount;
 
-  late List<int> indexes = List.generate(itemCount, (index) => index);
+  late final List<int> indexes = List.generate(
+    itemCount,
+    (index) => widget.random ? -1 : index,
+    growable: false,
+  );
 
   @override
   void initState() {
     super.initState();
 
     if (widget.timer > 0) _physics = const NeverScrollableScrollPhysics();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
 
     if (widget.random) {
       final random = Random();
 
-      indexes =
-          List.generate(itemCount, (index) => random.nextInt(widget.itemCount));
+      for (int i = 0; i < indexes.length; ++i) {
+        int n;
+
+        do {
+          n = random.nextInt(widget.itemCount);
+        } while (indexes.contains(n));
+
+        indexes[i] = n;
+      }
 
       assert(indexes.toSet().length == indexes.length);
+      assert(indexes.isSorted((a, b) => a.compareTo(b)) == false);
     }
   }
 
@@ -454,14 +520,107 @@ class _Quiz extends State<Quiz> {
       FloatingActionButton(
         heroTag: "wrongButton",
         onPressed: () => _answersCtrl.swipeLeft(),
-        child: const Icon(Icons.cancel),
+        child: Transform.rotate(
+          angle: 45 * pi / 180,
+          child: const Icon(Icons.add),
+        ),
       ),
       FloatingActionButton(
         heroTag: "rigthButton",
         onPressed: () => _answersCtrl.swipeRight(),
-        child: const Icon(Icons.check),
+        child: const Icon(Icons.circle_outlined),
       ),
     ];
+  }
+
+  Widget buildPageView(BuildContext context) {
+    return Column(children: [
+      Expanded(
+          child: Provider.value(
+        value: widget.mode,
+        builder: (context, _) {
+          return PageView.builder(
+            controller: _controller,
+            physics: _physics,
+            itemCount: itemCount + 1,
+            onPageChanged: (value) => setState(
+              () {
+                if (value == itemCount) {
+                  _physics = const NeverScrollableScrollPhysics();
+                  _isQuestions = false;
+                  page = 0;
+                } else {
+                  page = value.clamp(0, itemCount - 1);
+                }
+              },
+            ),
+            itemBuilder: (context, i) {
+              if (i < itemCount) {
+                return Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: buildCard(
+                    context,
+                    widget.questionBuilder(context, indexes[i]),
+                    center: true,
+                    timer: widget.timer,
+                  ),
+                );
+              } else {
+                if (page < 0) {
+                  page = 0;
+                }
+
+                return AppinioSwiper(
+                  cardsCount: itemCount,
+                  onEnd: () {
+                    if (widget.onEnd != null) {
+                      widget.onEnd!(double.parse(
+                          (100 / itemCount * _score).toStringAsPrecision(3)));
+                    }
+                  },
+                  controller: _answersCtrl,
+                  onSwipe: (i, dir) => setState(() {
+                    if (page != itemCount - 1) {
+                      ++page;
+                    } else {
+                      _showScore = true;
+                    }
+
+                    _score += (dir == AppinioSwiperDirection.left ? -1 : 1)
+                        .clamp(0, itemCount);
+                  }),
+                  cardsBuilder: (context, i) {
+                    return buildCard(
+                      context,
+                      widget.answerBuilder(context, indexes[i]),
+                      scrollWrap: true,
+                    );
+                  },
+                );
+              }
+            },
+          );
+        },
+      )),
+      Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Text('${page + 1}/$itemCount'),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: (_isQuestions ? buildQuestionsNav() : buildAnswersNav())
+              .map(
+                (e) => Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: e,
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    ]);
   }
 
   @override
@@ -469,78 +628,43 @@ class _Quiz extends State<Quiz> {
     return SafeArea(
       child: Scaffold(
         extendBody: true,
-        appBar: AppBar(title: const Text('Quiz')),
-        body: Column(children: [
-          Expanded(
-              child: Provider.value(
-            value: widget.mode,
-            builder: (context, _) {
-              return PageView.builder(
-                controller: _controller,
-                physics: _physics,
-                itemCount: itemCount + 1,
-                onPageChanged: (value) => setState(
-                  () {
-                    if (value == itemCount) {
-                      _physics = const NeverScrollableScrollPhysics();
-                      _isQuestions = false;
-                      page = 0;
-                    } else {
-                      page = value.clamp(0, itemCount - 1);
-                    }
-                  },
-                ),
-                itemBuilder: (context, i) {
-                  if (i < itemCount) {
-                    return Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: buildCard(
-                        context,
-                        widget.questionBuilder(context, i),
-                        center: true,
-                        timer: widget.timer,
-                      ),
-                    );
-                  } else {
-                    return AppinioSwiper(
-                      cardsCount: itemCount,
-                      onEnd: widget.onEnd,
-                      controller: _answersCtrl,
-                      onSwipe: (i, dir) => setState(
-                        () => page += (page != itemCount - 1 ? 1 : 0),
-                      ),
-                      cardsBuilder: (context, i) {
-                        return buildCard(
-                          context,
-                          widget.answerBuilder(context, i),
-                          scrollWrap: true,
-                        );
-                      },
-                    );
-                  }
-                },
-              );
-            },
-          )),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text('${page + 1}/$itemCount'),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: (_isQuestions ? buildQuestionsNav() : buildAnswersNav())
-                  .map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.all(15),
-                      child: e,
-                    ),
+        appBar: AppBar(
+          title: const Text('Quiz'),
+          actions: widget.onTapInfo != null && page == 0
+              ? [
+                  IconButton(
+                    onPressed: () => widget.onTapInfo!(page).then((value) {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    }),
+                    icon: const Icon(Icons.info_outline_rounded),
                   )
-                  .toList(),
-            ),
-          ),
-        ]),
+                ]
+              : null,
+        ),
+        body: _showScore
+            ? QuizScore(score: _score, total: itemCount)
+            : buildPageView(context),
+      ),
+    );
+  }
+}
+
+class QuizScore extends StatelessWidget {
+  QuizScore({super.key, required int score, required int total})
+      : assert(total != 0) {
+    this.score = (100 / total * score).toStringAsPrecision(3);
+  }
+
+  late final String score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        "$score/100",
+        style: const TextStyle(fontSize: 40),
       ),
     );
   }
