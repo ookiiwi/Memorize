@@ -253,52 +253,6 @@ class _ListViewer extends State<ListViewer> {
     _selectionController.isEnabled = false;
   }
 
-  Widget buildStats(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Center(
-              child: Text(
-                'Statistics',
-                textScaleFactor: 1.75,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
-              child: StatsViewer(entryCount: 10, results: [
-                ...List.generate(
-                  10,
-                  (i) => QuizResults(
-                    score: Random().nextInt(11),
-                    time: DateTime(2022, 11, i),
-                  ),
-                ),
-                ...List.generate(
-                  20,
-                  (i) => QuizResults(
-                    score: Random().nextInt(11),
-                    time: DateTime(2022, 12, i),
-                  ),
-                ),
-                ...List.generate(
-                  20,
-                  (i) => QuizResults(
-                    score: Random().nextInt(11),
-                    time: DateTime(2023, 1, i),
-                  ),
-                ),
-              ]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget buildTargetDropDown(BuildContext context) {
     void onTargetSelected(String? e) {
       setState(() {
@@ -586,26 +540,23 @@ class _ListViewer extends State<ListViewer> {
                 ),
               ],
             ),
-            body: PageView(children: [
-              errorMessage != null && list?.entries.isNotEmpty == true
-                  ? Center(child: Text(errorMessage!))
-                  : Builder(builder: (context) {
-                      if (_needDlDico == true &&
-                          snapshot.connectionState != ConnectionState.done) {
-                        return buildDicoDownload(context);
-                      } else if (isListInit && list!.entries.isNotEmpty) {
-                        return EntryViewier(
-                          list: list!,
-                          selectionController: _selectionController,
-                          onDeleteEntry: (_) => setState(() {}),
-                          mlvController: mlvController,
-                        );
-                      }
+            body: errorMessage != null && list?.entries.isNotEmpty == true
+                ? Center(child: Text(errorMessage!))
+                : Builder(builder: (context) {
+                    if (_needDlDico == true &&
+                        snapshot.connectionState != ConnectionState.done) {
+                      return buildDicoDownload(context);
+                    } else if (isListInit && list!.entries.isNotEmpty) {
+                      return EntryViewier(
+                        list: list!,
+                        selectionController: _selectionController,
+                        onDeleteEntry: (_) => setState(() {}),
+                        mlvController: mlvController,
+                      );
+                    }
 
-                      return buildTargetDropDown(context);
-                    }),
-              buildStats(context)
-            ]),
+                    return buildTargetDropDown(context);
+                  }),
           );
         });
   }
@@ -819,118 +770,6 @@ class _EntryViewInfo extends State<EntryViewInfo> {
   }
 }
 
-class QuizResults {
-  QuizResults({required this.score, this.errors = const [], DateTime? time})
-      : time = time ?? DateTime.now();
-
-  final int score;
-  final List errors;
-  final DateTime time;
-}
-
-class StatsViewer extends StatelessWidget {
-  StatsViewer({super.key, List<QuizResults>? results, required this.entryCount})
-      : results =
-            (results?..sort((a, b) => a.time.compareTo(b.time))) ?? const [];
-
-  final List<QuizResults> results;
-  final int entryCount;
-  late final from = results.isNotEmpty ? results.first.time : DateTime.now();
-  late final to = results.length > 1 ? results.last.time : DateTime.now();
-  late final monthsDiff = DateTime.fromMillisecondsSinceEpoch(
-      to.millisecondsSinceEpoch - from.millisecondsSinceEpoch);
-  late final frequency = monthsDiff.millisecondsSinceEpoch.toDouble() /
-      monthsDiff.month.clamp(0.0, 6.0);
-
-  @override
-  Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final toolTipColor = Theme.of(context).colorScheme.onPrimary;
-    return frequency == 0.0
-        ? const Center(child: Text('No data available yet'))
-        : Chart(
-            padding: const EdgeInsets.all(8.0),
-            layers: [
-              ChartAxisLayer(
-                labelX: (value) {
-                  late final String format;
-
-                  if (to.year != from.year) {
-                    format = 'yMMM';
-                  } else {
-                    format = 'MMM';
-                  }
-
-                  return DateFormat(format).format(
-                    DateTime.fromMillisecondsSinceEpoch(
-                      value.toInt(),
-                    ),
-                  );
-                },
-                labelY: (value) => value.toInt().toString(),
-                settings: ChartAxisSettings(
-                  x: ChartAxisSettingsAxis(
-                    frequency: frequency,
-                    max: to.millisecondsSinceEpoch.toDouble(),
-                    min: from.millisecondsSinceEpoch.toDouble(),
-                    textStyle: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 10,
-                    ),
-                  ),
-                  y: ChartAxisSettingsAxis(
-                    frequency: 1.0,
-                    max: entryCount.toDouble(),
-                    min: 0.0,
-                    textStyle: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-              ),
-              ChartLineLayer(
-                items: results
-                    .map(
-                      (e) => ChartLineDataItem(
-                        x: e.time.millisecondsSinceEpoch.toDouble(),
-                        value: e.score.toDouble(),
-                      ),
-                    )
-                    .toList(),
-                settings: ChartLineSettings(
-                  color: primaryColor,
-                  thickness: 4.0,
-                ),
-              ),
-              ChartTooltipLayer(
-                shape: () => ChartTooltipLineShape<ChartLineDataItem>(
-                  backgroundColor: toolTipColor,
-                  circleBackgroundColor: toolTipColor,
-                  circleBorderColor: toolTipColor,
-                  currentPos: (item) => item.currentValuePos,
-                  onTextValue: (item) =>
-                      'Score: ${item.value.toInt().toString()}\nDate:' +
-                      DateFormat.yMd().format(
-                        DateTime.fromMillisecondsSinceEpoch(
-                          item.x.toInt(),
-                        ),
-                      ),
-                  padding: const EdgeInsets.all(6.0),
-                  radius: 6.0,
-                  textStyle: TextStyle(
-                    color: primaryColor,
-                    letterSpacing: 0.2,
-                    fontSize: 14.0,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          );
-  }
-}
-
 class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected, required this.targets});
 
@@ -1101,24 +940,78 @@ class AboutPage extends StatelessWidget {
         title: const Text('About'),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          ListTile(
-            title: Text(
-              'Default dico',
-              style: TextStyle(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onBackground
-                      .withOpacity(0.6)),
-            ),
-            trailing: Text('$src - $dst'),
-          ),
-          ListTile(
-            title: const Text('Record id'),
-            trailing: Text(list.recordID ?? 'N/A'),
-          ),
-        ],
+      body: StatefulBuilder(
+        builder: (context, setState) {
+          return Column(
+            children: [
+              ListTile(
+                title: Text(
+                  'Default dico',
+                  style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onBackground
+                        .withOpacity(0.6),
+                  ),
+                ),
+                trailing: Text('$src - $dst'),
+              ),
+              ListTile(
+                title: const Text('Record id'),
+                trailing: Text(list.recordID ?? 'N/A'),
+              ),
+              ListTile(
+                title: const Text('Level'),
+                trailing: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.6),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      onPressed: list.level > 1
+                          ? () => setState(
+                                () => list
+                                  ..level -= 1
+                                  ..save(),
+                              )
+                          : null,
+                      icon: const Icon(Icons.horizontal_rule_rounded),
+                    ),
+                    Text('${list.level}'),
+                    IconButton(
+                      onPressed: () => setState(
+                        () => list
+                          ..level += 1
+                          ..save(),
+                      ),
+                      icon: const Icon(Icons.add_rounded),
+                    ),
+                  ]),
+                ),
+              ),
+              ListTile(
+                title: const Text('Score'),
+                trailing: Text('${list.score}'),
+              ),
+              ListTile(
+                title: const Text('Last quiz entry count'),
+                trailing: Text('${list.lastQuizEntryCount}'),
+              ),
+              ListTile(
+                title: const Text('Reset Quiz info'),
+                trailing: IconButton(
+                  onPressed: () => setState(() {
+                    list
+                      ..level = 1
+                      ..score = 0
+                      ..lastQuizEntryCount = 0
+                      ..save();
+                  }),
+                  icon: const Icon(Icons.delete),
+                ),
+              )
+            ],
+          );
+        },
       ),
     );
   }
