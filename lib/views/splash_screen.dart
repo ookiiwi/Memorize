@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/widgets/entry.dart';
 
@@ -43,7 +45,7 @@ class _SplashScreen extends State<SplashScreen> {
 
   Future<void> _loadData() {
     return loadData().then((value) {
-      launchRoute();
+      return launchRoute();
     }).catchError(
       (err) {
         errorHandler();
@@ -61,8 +63,10 @@ class _SplashScreen extends State<SplashScreen> {
     );
   }
 
-  void launchRoute() {
+  Future<void> launchRoute() async {
     String? route = widget.route;
+    final value =
+        await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
 
     if (route == null) {
       final file = File(lastRootLocationFilename);
@@ -73,7 +77,31 @@ class _SplashScreen extends State<SplashScreen> {
         route = '/home';
       }
     }
-    context.go(route);
+
+    try {
+      // ignore: use_build_context_synchronously
+      context.go(route);
+
+      if (value?.didNotificationLaunchApp == true) {
+        print('notif bg response ${value!.notificationResponse!.id}');
+        print('notif bg response ${value.notificationResponse!.payload}');
+        print('notif bg response ${value.notificationResponse!.input}');
+
+        final payload =
+            List.from(jsonDecode(value.notificationResponse!.payload!));
+        final filename = payload[0];
+
+        // ignore: use_build_context_synchronously
+        context.push(
+          '/quiz_launcher',
+          extra: MemoList.open(filename),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString();
+      });
+    }
   }
 
   @override
