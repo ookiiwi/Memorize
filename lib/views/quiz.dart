@@ -169,8 +169,9 @@ class _QuizLauncher extends State<QuizLauncher> {
                 }
 
                 if (list.lastQuizEntryCount != list.entries.length) {
-                  globalStats.newEntriesWeek +=
-                      list.entries.length - list.lastQuizEntryCount;
+                  final value = entries.length - list.lastQuizEntryCount;
+
+                  globalStats.incrementEntries(value);
                 }
 
                 globalStats.save();
