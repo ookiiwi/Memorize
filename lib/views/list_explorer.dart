@@ -43,7 +43,7 @@ class _ListExplorer extends State<ListExplorer> {
   bool get buildScaffold => widget.buildScaffold;
 
   late final _popupbuttonValues = {
-    'New list': () => context.push('/list', extra: {'dir': currentDir}),
+    'New list': () => context.push('/list', extra: currentDir),
     'New collection': () => addNewCollection(context),
   };
 
@@ -282,7 +282,7 @@ class _ListExplorer extends State<ListExplorer> {
             });
           } else {
             if (widget.onListTap == null || widget.onListTap!(info)) {
-              context.push('/list', extra: {'fileinfo': info});
+              context.push('/list', extra: info);
             }
           }
         },
@@ -332,24 +332,28 @@ class _ListExplorer extends State<ListExplorer> {
       return buildBody(context);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('List explorer'),
-        centerTitle: true,
-        actions: [
-          PopupMenuButton(
-            position: PopupMenuPosition.under,
-            offset: const Offset(0, 15),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            itemBuilder: (context) => _popupbuttonValues.entries
-                .map((e) => PopupMenuItem(onTap: e.value, child: Text(e.key)))
-                .toList(),
-          )
-        ],
+    return SafeArea(
+      bottom: false,
+      child: Scaffold(
+        appBar: AppBar(
+          scrolledUnderElevation: 0,
+          title: const Text('List explorer'),
+          centerTitle: true,
+          actions: [
+            PopupMenuButton(
+              position: PopupMenuPosition.under,
+              offset: const Offset(0, 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              itemBuilder: (context) => _popupbuttonValues.entries
+                  .map((e) => PopupMenuItem(onTap: e.value, child: Text(e.key)))
+                  .toList(),
+            )
+          ],
+        ),
+        body: buildBody(context),
       ),
-      body: buildBody(context),
     );
   }
 }
@@ -392,8 +396,9 @@ class _ListExplorerItems extends State<ListExplorerItems> {
                 '/quiz_launcher',
                 extra: MemoList.open(item.path),
               ),
-              icon: const Icon(
-                Icons.play_arrow_outlined,
+              icon: Icon(
+                Icons.play_arrow_rounded,
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
                 size: 36,
               ),
             )
