@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -39,7 +40,11 @@ class _QuizLauncher extends State<QuizLauncher> {
   final _playButtonDiameter = 200.0;
   late final _playButtonRadius = _playButtonDiameter * 0.5;
   final _optSelection = <int>{};
-  late String _optionsTarget = list.targets.first;
+  final targets = {
+    'jpn-${appSettings.language}',
+    'jpn-${appSettings.language}-kanji'
+  };
+  late String _optionsTarget = targets.first;
 
   QuizMode _mode = QuizMode.flashCard;
   int _timer = 0;
@@ -181,17 +186,21 @@ class _QuizLauncher extends State<QuizLauncher> {
                   ..lastQuizEntryCount = entries.length
                   ..save();
 
-                final pendingRequests = (await flutterLocalNotificationsPlugin
-                    .pendingNotificationRequests());
+                final pendingRequests = await flutterLocalNotificationsPlugin
+                    .pendingNotificationRequests();
+                int id = pendingRequests.length;
 
-                final pending = pendingRequests.firstWhereOrNull(
-                    (e) => e.payload!.contains(list.filename));
+                final pending = pendingRequests.firstWhereOrNull((e) {
+                  final payload = jsonDecode(e.payload!);
+                  return payload[0] == list.filename;
+                });
 
                 if (pending != null) {
                   await flutterLocalNotificationsPlugin.cancel(pending.id);
+                  --id;
                 }
 
-                await list.setReminder(pendingRequests.length);
+                await list.setReminder(id);
               });
         },
       ),
@@ -254,50 +263,49 @@ class _QuizLauncher extends State<QuizLauncher> {
                   ],
                 ),
               ),
-              if (list.targets.length > 1)
-                Container(
-                  height: 56.0,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.all(8.0),
-                  child: ListView.builder(
-                      shrinkWrap: true,
-                      scrollDirection: Axis.horizontal,
-                      itemCount: list.targets.length,
-                      itemBuilder: (context, i) {
-                        final e = list.targets.elementAt(i);
-                        final parts = e.split('-');
-                        String title = IsoLanguage.getFullname(parts[1]);
+              Container(
+                height: 56.0,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(8.0),
+                child: ListView.builder(
+                    shrinkWrap: true,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: targets.length,
+                    itemBuilder: (context, i) {
+                      final e = targets.elementAt(i);
+                      final parts = e.split('-');
+                      String title = IsoLanguage.getFullname(parts[1]);
 
-                        if (parts.length > 2) {
-                          title += '(${parts[2]})';
-                        }
+                      if (parts.length > 2) {
+                        title += '(${parts[2]})';
+                      }
 
-                        return TextButton(
-                          style: TextButton.styleFrom(
-                            backgroundColor:
-                                _optionsTarget == e ? primaryColor : null,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 0,
-                              horizontal: 10,
-                            ),
+                      return TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor:
+                              _optionsTarget == e ? primaryColor : null,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 0,
+                            horizontal: 10,
                           ),
-                          onPressed: () {
-                            if (e != _optionsTarget) {
-                              _optionsTarget = e;
-                              setState(() {});
-                            }
-                          },
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              color: _optionsTarget == e
-                                  ? Theme.of(context).colorScheme.background
-                                  : null,
-                            ),
+                        ),
+                        onPressed: () {
+                          if (e != _optionsTarget) {
+                            _optionsTarget = e;
+                            setState(() {});
+                          }
+                        },
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            color: _optionsTarget == e
+                                ? Theme.of(context).colorScheme.background
+                                : null,
                           ),
-                        );
-                      }),
-                ),
+                        ),
+                      );
+                    }),
+              ),
               if (entryOptionsError[_optionsTarget] != null)
                 Padding(
                   padding: const EdgeInsets.all(8.0),
@@ -312,7 +320,8 @@ class _QuizLauncher extends State<QuizLauncher> {
                 providers: [
                   Provider.value(value: _mode),
                   Provider<EntryOptionsWidgetErrorCallback>.value(
-                      value: entryOptionsErrorCb)
+                    value: entryOptionsErrorCb,
+                  )
                 ],
                 builder: (context, child) {
                   return getDetails(_optionsTarget)!(
