@@ -18,49 +18,63 @@ import 'package:memorize/views/search.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
-final _routerNavKey = GlobalKey<NavigatorState>();
+final routerNavKey = GlobalKey<NavigatorState>();
 const _routes = ['home', 'lists', 'search', 'settings'];
 const _appBarIconSize = 36.0;
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 
 final router = GoRouter(initialLocation: '/splash', routes: [
   GoRoute(
-      path: '/splash',
-      pageBuilder: (context, state) =>
-          const NoTransitionPage(child: SplashScreen())),
+    path: '/splash',
+    pageBuilder: (context, state) =>
+        const NoTransitionPage(child: SplashScreen()),
+  ),
   ShellRoute(
-    navigatorKey: _routerNavKey,
+    navigatorKey: routerNavKey,
     builder: (context, state, child) {
       final appBarIconColor = Theme.of(context).colorScheme.onBackground;
-      final appBarColor =
-          Theme.of(context).colorScheme.background.withOpacity(0.5);
+      final appBarColor = Theme.of(context).colorScheme.background;
 
       return Scaffold(
         extendBody: true,
         body: SafeArea(bottom: false, child: child),
-        bottomNavigationBar: BottomNavBar(
-          backgroundColor: appBarColor,
-          onTap: (i) {
-            final location = '/${_routes[i]}';
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                appBarColor.withOpacity(0.0),
+                appBarColor.withOpacity(0.8),
+                appBarColor,
+              ],
+            ),
+          ),
+          child: BottomNavBar(
+            backgroundColor: Colors.transparent,
+            onTap: (i) {
+              final location = '/${_routes[i]}';
 
-            if (GoRouter.of(context).location == location) {
-              GoRouter.of(context).refresh();
-            }
+              if (GoRouter.of(context).location == location) {
+                GoRouter.of(context).refresh();
+              }
 
-            final file = File(lastRootLocationFilename);
-            file.writeAsStringSync(location);
+              final file = File(lastRootLocationFilename);
+              file.writeAsStringSync(location);
 
-            context.go(location);
-          },
-          items: [
-            Icon(Icons.home_rounded,
-                color: appBarIconColor, size: _appBarIconSize),
-            Icon(Icons.list_rounded,
-                color: appBarIconColor, size: _appBarIconSize),
-            Icon(Icons.search_rounded,
-                color: appBarIconColor, size: _appBarIconSize),
-            Icon(Icons.settings, color: appBarIconColor, size: _appBarIconSize),
-          ],
+              context.go(location);
+            },
+            items: [
+              Icon(Icons.home_rounded,
+                  color: appBarIconColor, size: _appBarIconSize),
+              Icon(Icons.list_rounded,
+                  color: appBarIconColor, size: _appBarIconSize),
+              Icon(Icons.search_rounded,
+                  color: appBarIconColor, size: _appBarIconSize),
+              Icon(Icons.settings,
+                  color: appBarIconColor, size: _appBarIconSize),
+            ],
+          ),
         ),
       );
     },
@@ -80,17 +94,14 @@ final router = GoRouter(initialLocation: '/splash', routes: [
           builder: (context, state) {
             assert(state.extra != null);
 
-            final Map extra = state.extra as Map;
-            final FileInfo? fileinfo = extra['fileinfo'];
-            final MemoList? list = extra['list'];
-            final String? dir = extra['dir'];
+            final extra = state.extra;
 
-            if (fileinfo != null) {
-              return ListViewer.fromFile(fileinfo: fileinfo);
-            } else if (list != null) {
-              return ListViewer.fromList(list: list);
-            } else if (dir != null) {
-              return ListViewer(dir: dir);
+            if (extra is FileInfo) {
+              return ListViewer.fromFile(fileinfo: extra);
+            } else if (extra is MemoList) {
+              return ListViewer.fromList(list: extra);
+            } else if (extra is String) {
+              return ListViewer(dir: extra);
             }
 
             throw Exception('Invalid list arguments');
@@ -166,8 +177,76 @@ class HomePage extends StatelessWidget {
       ),
       body: SafeArea(
         bottom: false,
-        child: Container(
-          color: Colors.amber,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(
+            bottom: kBottomNavigationBarHeight + 10,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  width: 300,
+                  height: 300,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: RotatedBox(
+                          quarterTurns: 2,
+                          child: CircularProgressIndicator(
+                            value: globalStats.normalizedScore,
+                            strokeWidth: 15.0,
+                            color: Colors.amber,
+                            backgroundColor: Colors.grey.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(26.0),
+                        child: Center(
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: Text(
+                              '${double.parse(globalStats.percentage.toStringAsPrecision(4))}%',
+                              textScaleFactor: 100,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    children: {
+                      'Week': globalStats.newEntriesWeek,
+                      'Month': globalStats.newEntriesMonth,
+                      'Year': globalStats.newEntriesYear,
+                      'All time': globalStats.newEntriesAllTime
+                    }
+                        .entries
+                        .map(
+                          (e) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 5.0),
+                            child: ListTile(
+                              title: Text(e.key),
+                              trailing: Text('${e.value}'),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
