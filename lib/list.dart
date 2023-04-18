@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:path/path.dart';
+import 'package:timezone/timezone.dart' as tz;
 import 'package:xml/xml.dart';
 import 'package:diffutil_dart/diffutil.dart' as diffutil;
 import 'package:quiver/collection.dart' as quiver;
@@ -40,19 +42,26 @@ class MemoList {
   static final recordIDre = RegExp(r'_(\w|\d){15}$');
   static final dummyRecordID = List.generate(15, (_) => '0').join();
 
-  MemoList(this.filename, this.targets) : entries = VersionList() {
+  MemoList(
+    this.filename,
+    this.targets,
+  )   : entries = [],
+        level = 1,
+        score = 0,
+        lastQuizEntryCount = 0 {
     // Force set recordID
-    if (recordID == null) {
-      recordID = null;
-    }
+    recordID ??= null;
   }
 
   MemoList.fromJson(this.filename, Map<String, dynamic> json)
       : targets = Set.from(json['targets']),
-        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))) {
-    if (recordID == null) {
-      recordID = null;
-    }
+        entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))),
+        level = json['level'] ?? 1,
+        score = json['score'] ?? 0,
+        lastQuizEntryCount = json['lqec'] ?? 0 {
+    if (level < 1) level = 1;
+
+    recordID ??= null;
   }
 
   factory MemoList.open(String filename) {
@@ -69,6 +78,9 @@ class MemoList {
   List<ListEntry> entries;
   final Set<String> targets;
   String filename;
+  int level;
+  double score;
+  int lastQuizEntryCount;
 
   String get name => extractName(filename);
   String? get recordID {
@@ -96,7 +108,10 @@ class MemoList {
 
   Map<String, dynamic> toJson() => {
         'targets': targets.toList(),
-        'entries': entries.map((e) => e.toJson()).toList()
+        'entries': entries.map((e) => e.toJson()).toList(),
+        'level': level,
+        'score': score,
+        'lqec': lastQuizEntryCount
       };
 
   void save() => File(filename).writeAsStringSync(jsonEncode(toJson()));
@@ -110,6 +125,30 @@ class MemoList {
     if (file.existsSync()) {
       file.renameSync(filename);
     }
+  }
+
+  Future<void> setReminder(int id) async {
+    final minutes = 2 * level * 60;
+    final date = tz.TZDateTime.now(tz.local).add(Duration(minutes: minutes));
+
+    await flutterLocalNotificationsPlugin.cancel(id);
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      id,
+      "It's quiz time",
+      'Start a quiz on $name',
+      date,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'my channel id',
+          'my channel name',
+        ),
+      ),
+      payload:
+          jsonEncode([filename, 'scheduled at ${date.toLocal()} ($minutes)']),
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      androidAllowWhileIdle: true,
+    );
   }
 }
 
