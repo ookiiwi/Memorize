@@ -91,7 +91,7 @@ class ListViewer extends StatefulWidget {
 }
 
 class _ListViewer extends State<ListViewer> {
-  MemoList? list;
+  MemoList list = MemoList('');
   final mlvController = MemoListViewController();
   List<String> availableTargets = Dict.listAllTargets()..sort();
   Future<void> fLoadTargets = Future.value();
@@ -99,7 +99,7 @@ class _ListViewer extends State<ListViewer> {
   String? errorMessage; // critical
   final _popupPadding = const EdgeInsets.symmetric(horizontal: 12.0);
 
-  bool get isListInit => list != null && list!.name.isNotEmpty;
+  bool get isListInit => list.name.isNotEmpty;
 
   final _selectionController = SelectionController();
 
@@ -108,25 +108,15 @@ class _ListViewer extends State<ListViewer> {
     super.initState();
 
     if (widget.list != null) {
-      list = widget.list;
+      list = widget.list!;
     } else if (widget.fileinfo != null) {
       list = MemoList.open(widget.fileinfo!.path);
     }
 
-    if (list?.filename.isEmpty != false) {
+    if (list.name.isEmpty) {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => showRenameDialog(context));
     }
-  }
-
-  void onDownloadError() {
-    errorMessage = 'error mazafaka #_#';
-
-    if (list?.entries.isEmpty != false) {
-      print('show snack');
-    }
-
-    setState(() {});
   }
 
   void openSearchPage() {
@@ -138,12 +128,12 @@ class _ListViewer extends State<ListViewer> {
         pageBuilder: (context, _, __) {
           return EntrySearch(
             onItemSelected: (entry) {
-              bool addEntry = !list!.entries
+              bool addEntry = !list.entries
                   .any((e) => e.id == entry.id && e.target == entry.target);
 
               if (addEntry) {
-                list!.entries.add(entry);
-                list!.save();
+                list.entries.add(entry);
+                list.save();
               }
 
               if (addEntry) {
@@ -162,10 +152,10 @@ class _ListViewer extends State<ListViewer> {
 
   void showRenameDialog(BuildContext mainContext) {
     showDialog(
-        barrierDismissible: list?.name.isNotEmpty == true,
+        barrierDismissible: list.name.isNotEmpty == true,
         context: context,
         builder: (context) {
-          final controller = TextEditingController(text: list?.name);
+          final controller = TextEditingController(text: list.name);
 
           return TextFieldDialog(
             controller: controller,
@@ -173,7 +163,7 @@ class _ListViewer extends State<ListViewer> {
             hasConfirmed: (value) {
               if (!value) {
                 Navigator.of(context).maybePop().then((value) {
-                  if (list?.filename.isEmpty != false) {
+                  if (list.filename.isEmpty != false) {
                     Navigator.of(mainContext).maybePop();
                   }
                 });
@@ -187,14 +177,13 @@ class _ListViewer extends State<ListViewer> {
               }
 
               final filename = p.join(
-                  list?.filename.isEmpty == false
-                      ? p.dirname(list!.filename)
-                      : widget.dir,
-                  text);
+                list.name.isNotEmpty ? p.dirname(list.filename) : widget.dir,
+                text,
+              );
 
               assert(filename != text);
 
-              if (filename == list?.filename) {
+              if (filename == list.filename) {
                 return null;
               }
 
@@ -203,11 +192,11 @@ class _ListViewer extends State<ListViewer> {
                 return '$text already exists';
               }
 
-              if (list?.name.isEmpty != false) {
+              if (list.name.isEmpty != false) {
                 assert(widget.dir.isNotEmpty);
                 list = MemoList(filename)..save();
               } else {
-                list!.rename(text);
+                list.rename(text);
               }
 
               setState(() {});
@@ -238,7 +227,7 @@ class _ListViewer extends State<ListViewer> {
                     onPressed: () => showRenameDialog(context),
                     child: Center(
                       child: Text(
-                        list?.name.isEmpty == false ? list!.name : 'noname',
+                        list.name.isEmpty == false ? list.name : 'noname',
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -274,12 +263,12 @@ class _ListViewer extends State<ListViewer> {
                       return [
                         PopupMenuItem(
                           padding: _popupPadding,
-                          enabled: list?.recordID != null,
+                          enabled: list.recordID != null,
                           value: () async {
                             throw UnimplementedError();
                             //await pb
                             //    .collection('memo_list')
-                            //    .getOne(list!.recordID!);
+                            //    .getOne(list.recordID!);
                           },
                           child: const Text('Sync'),
                         ),
@@ -288,12 +277,12 @@ class _ListViewer extends State<ListViewer> {
                           value: () {
                             assert(isListInit);
 
-                            if (list!.entries.isEmpty) return;
+                            if (list.entries.isEmpty) return;
 
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (context) {
-                                  return UploadPage(list: list!);
+                                  return UploadPage(list: list);
                                 },
                               ),
                             );
@@ -314,7 +303,7 @@ class _ListViewer extends State<ListViewer> {
 
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (context) => AboutPage(list: list!),
+                                builder: (context) => AboutPage(list: list),
                               ),
                             );
                           },
@@ -325,12 +314,12 @@ class _ListViewer extends State<ListViewer> {
               ),
             ],
           ),
-          body: errorMessage != null && list?.entries.isNotEmpty == true
+          body: errorMessage != null && list.entries.isNotEmpty == true
               ? Center(child: Text(errorMessage!))
               : Builder(
                   builder: (context) {
                     return EntryViewier(
-                      list: list!,
+                      list: list,
                       selectionController: _selectionController,
                       onDeleteEntry: (_) => setState(() {}),
                       mlvController: mlvController,
@@ -600,25 +589,30 @@ class _EntrySearch extends State<EntrySearch> {
           },
         ),
       ),
-      body: LabeledPageView.builder(
-        labels: const ['WORD', 'KANJI'],
-        itemBuilder: (context, i) {
-          return DicoFindBuilder(
-            findResult: i == 0 ? findResultWord : findResultKanji,
-            builder: (context, res) {
-              final List<ListEntry> entries = res.map((e) {
-                return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
-              }).toList();
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: LabeledPageView.builder(
+          key: const ValueKey(0),
+          labels: const ['WORD', 'KANJI'],
+          itemBuilder: (context, i) {
+            return DicoFindBuilder(
+              findResult: i == 0 ? findResultWord : findResultKanji,
+              builder: (context, res) {
+                final List<ListEntry> entries = res.map((e) {
+                  return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
+                }).toList();
 
-              return MemoListView(
-                entries: entries,
-                onTap: widget.onItemSelected != null
-                    ? (entry) => widget.onItemSelected!(entry)
-                    : null,
-              );
-            },
-          );
-        },
+                return MemoListView(
+                  key: ValueKey('$search $i'),
+                  entries: entries,
+                  onTap: widget.onItemSelected != null
+                      ? (entry) => widget.onItemSelected!(entry)
+                      : null,
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -737,7 +731,6 @@ class _UploadPage extends State<UploadPage> {
         final record = await pb.collection(collection).create(
           body: {
             'owner': auth.id,
-            'targets': '',
             'name': list.name,
             'public': true,
           },
@@ -746,11 +739,7 @@ class _UploadPage extends State<UploadPage> {
 
         list.recordID = record.id;
       } else {
-        await pb.collection(collection).update(
-              list.recordID!,
-              body: {'targets': ''},
-              files: files,
-            );
+        await pb.collection(collection).update(list.recordID!, files: files);
       }
 
       if (mounted) Navigator.of(context).maybePop();
