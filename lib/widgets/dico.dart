@@ -31,7 +31,9 @@ class _DicoFindBuilder extends State<DicoFindBuilder> {
 
           return widget.builder(context, res);
         } else if (snapshot.hasError) {
-          return const Center(child: Text('Error in DicoFindBuilder'));
+          return Center(
+            child: Text('Error in DicoFindBuilder: ${snapshot.error}'),
+          );
         }
 
         return const Center(child: CircularProgressIndicator());
@@ -69,7 +71,9 @@ class _DicoGetBuilder extends State<DicoGetBuilder> {
 
           return widget.builder(context, doc!);
         } else if (snapshot.hasError) {
-          return const Center(child: Text('Error in DicoGetBuilder'));
+          return Center(
+            child: Text('Error in DicoGetBuilder: ${snapshot.error}'),
+          );
         }
 
         return const Center(child: CircularProgressIndicator());
@@ -132,10 +136,15 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
           final List<XmlDocument> entries =
               results + List<XmlDocument>.from(snapshot.data!);
 
-          return ListView.builder(
+          return ListView.separated(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
             itemCount: entries.length,
+            separatorBuilder: (context, index) => const Divider(
+              indent: 10,
+              endIndent: 10,
+              thickness: 0.1,
+            ),
             itemBuilder: (context, i) => widget.builder(
               context,
               entries[i],
@@ -143,7 +152,9 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
             ),
           );
         } else if (snapshot.hasError) {
-          return const Center(child: Text('Error in DicoGetListViewBuilder'));
+          return Center(
+            child: Text('Error in DicoGetListViewBuilder: ${snapshot.error}'),
+          );
         }
 
         return const Center(child: CircularProgressIndicator());
