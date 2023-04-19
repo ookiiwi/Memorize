@@ -84,8 +84,10 @@ abstract class Entry {
 Widget buildDetailsField(
   BuildContext context,
   String name,
-  List<Widget> children,
-) {
+  List<Widget> children, {
+  bool wrap = true,
+  Axis direction = Axis.horizontal,
+}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     mainAxisSize: MainAxisSize.min,
@@ -98,11 +100,16 @@ Widget buildDetailsField(
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
-      Wrap(
-        crossAxisAlignment: WrapCrossAlignment.end,
-        spacing: 20,
-        children: children,
-      )
+      if (wrap)
+        Wrap(
+          direction: direction,
+          spacing: 20,
+          children: children,
+        ),
+      if (!wrap)
+        Column(
+          children: children,
+        )
     ],
   );
 }
