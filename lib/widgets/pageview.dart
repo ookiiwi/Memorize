@@ -1,24 +1,33 @@
 import 'package:flutter/material.dart';
 
-class LabeledPageView extends StatelessWidget {
-  LabeledPageView({super.key, this.labels = const [], this.children = const []})
-      : itemBuilder = null {
-    _init();
-  }
+class LabeledPageView extends StatefulWidget {
+  const LabeledPageView(
+      {super.key, this.labels = const [], this.children = const []})
+      : itemBuilder = null;
 
-  LabeledPageView.builder(
+  const LabeledPageView.builder(
       {super.key, this.labels = const [], required this.itemBuilder})
-      : children = const [] {
-    _init();
-  }
+      : children = const [];
 
   final List<String> labels;
   final List<Widget> children;
   final Widget? Function(BuildContext, int)? itemBuilder;
+
+  @override
+  State<StatefulWidget> createState() => _LabeledPageView();
+}
+
+class _LabeledPageView extends State<LabeledPageView> {
   final _controller = PageController();
   final _offset = ValueNotifier(0.0);
+  List<String> get labels => widget.labels;
+  List<Widget> get children => widget.children;
+  Widget? Function(BuildContext, int)? get itemBuilder => widget.itemBuilder;
 
-  void _init() {
+  @override
+  void initState() {
+    super.initState();
+
     _controller
         .addListener(() => _offset.value = _controller.page ?? _offset.value);
   }
