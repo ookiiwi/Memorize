@@ -128,7 +128,6 @@ class _MemoListView extends State<MemoListView> {
             constraints: BoxConstraints(
               minWidth: 50,
               minHeight: itemExtent,
-              maxHeight: itemExtent,
             ),
             child: Center(
               widthFactor: 1,
@@ -213,8 +212,14 @@ class _MemoListView extends State<MemoListView> {
           );
         }
 
-        return ListView.builder(
+        return ListView.separated(
           itemCount: itemCount,
+          shrinkWrap: true,
+          separatorBuilder: (context, index) => const Divider(
+            indent: 10,
+            endIndent: 10,
+            thickness: 0.1,
+          ),
           itemBuilder: (context, index) => itemBuilder(
             context,
             index,
