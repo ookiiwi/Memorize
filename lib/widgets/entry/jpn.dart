@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/views/list.dart';
 import 'package:memorize/views/quiz.dart';
+import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:provider/provider.dart';
@@ -28,7 +30,8 @@ class EntryJpn extends StatelessWidget {
             'part-of-speech',
             'notes',
             'furigana',
-            'otherForms'
+            'otherForms',
+            'kanji'
           ],
           quiz: {
             QuizMode.choice: ['word → sense', 'sense → word']
@@ -256,8 +259,9 @@ class EntryJpn extends StatelessWidget {
 
   Widget buildMainForm(BuildContext context, [double? fontSize]) {
     return FittedBox(
-        fit: BoxFit.fitWidth,
-        child: buildWords(cnt: 1, fontSize: fontSize).first);
+      fit: BoxFit.fitWidth,
+      child: buildWords(cnt: 1, fontSize: fontSize).first,
+    );
   }
 
   List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
@@ -364,6 +368,79 @@ class EntryJpn extends StatelessWidget {
       ..removeWhere((e) => e == null)) as List<Widget>;
   }
 
+  List<Widget> buildKanjiDecomposition(BuildContext context) {
+    final word = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node?.text;
+    final ret = <Widget>[];
+
+    if (word == null) return [];
+
+    for (var c in word.characters) {
+      if (!isKanji(c)) continue;
+
+      final getRes = DicoManager.get('$target-kanji', c.runes.first);
+
+      ret.add(
+        DicoGetBuilder(
+          getResult: getRes,
+          builder: (context, doc) {
+            return MaterialButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) {
+                      return EntryView.single(
+                        entry: ListEntry(c.runes.first, subTarget: 'kanji'),
+                      );
+                    },
+                  ),
+                );
+              },
+              child: EntryJpnKanji(xmlDoc: doc, target: '$target-kanji'),
+            );
+          },
+        ),
+      );
+    }
+
+    return ret;
+  }
+
+  Widget buildPreview(BuildContext context) {
+    final senses = buildSenses(
+      context,
+      pos: false,
+      domain: false,
+      note: false,
+      ref: false,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buildMainForm(context),
+        for (int i = 0; i < senses.length && i < 3; ++i)
+          LayoutBuilder(builder: (context, constraints) {
+            return ConstrainedBox(
+              constraints: constraints,
+              child: IntrinsicWidth(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 16),
+                        child: senses[i],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          })
+      ],
+    );
+  }
+
   Widget buildDetails(BuildContext context) {
     return compose(context);
   }
@@ -412,6 +489,7 @@ class EntryJpn extends StatelessWidget {
     bool? notes,
     bool? furigana,
     bool? otherForms,
+    bool? kanji,
     bool senseRef = true,
     bool centered = false,
   }) {
@@ -420,6 +498,7 @@ class EntryJpn extends StatelessWidget {
     notes ??= options.display['notes']!;
     otherForms ??= options.display['otherForms']!;
     pos ??= options.display['part-of-speech']!;
+    kanji ??= options.display['kanji']!;
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -437,7 +516,14 @@ class EntryJpn extends StatelessWidget {
             ...buildSenses(context, pos: pos, note: notes, ref: senseRef),
           if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
           if (otherForms)
-            buildDetailsField(context, 'Other forms', buildOtherForms(context))
+            buildDetailsField(context, 'Other forms', buildOtherForms(context)),
+          if (kanji)
+            buildDetailsField(
+              context,
+              'Kanji',
+              buildKanjiDecomposition(context),
+              wrap: false,
+            ),
         ],
       ),
     );
@@ -447,7 +533,7 @@ class EntryJpn extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (mode) {
       case DisplayMode.preview:
-        return buildMainForm(context);
+        return buildPreview(context);
       case DisplayMode.details:
         return buildDetails(context);
       case DisplayMode.quiz:
@@ -494,7 +580,7 @@ class EntryJpnKanji extends StatelessWidget {
 
     Widget decodeText(String text, Color color) {
       return Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20), color: color),
         child: Text(text),
@@ -509,23 +595,18 @@ class EntryJpnKanji extends StatelessWidget {
       nanori.removeWhere((e) => exp.hasMatch(e.text!));
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Wrap(
-        children: List.from(
-          [
-            [kun, Colors.blue.shade300],
-            [on, Colors.red.shade300],
-            [nanori, Colors.green.shade300]
-          ].expand(
-            (item) => (item[0] as List).map(
-              (e) => Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 2,
-                  vertical: 10,
-                ),
-                child: decodeText(e.text!, item[1] as Color),
-              ),
+    return Wrap(
+      runSpacing: 4,
+      children: List.from(
+        [
+          [kun, Colors.blue.shade300],
+          [on, Colors.red.shade300],
+          [nanori, Colors.green.shade300]
+        ].expand(
+          (item) => (item[0] as List).map(
+            (e) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: decodeText(e.text!, item[1] as Color),
             ),
           ),
         ),
@@ -542,17 +623,45 @@ class EntryJpnKanji extends StatelessWidget {
     );
   }
 
-  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) => [];
-
   List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
     final kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
 
     return [
-      Text(
-        kun.map((e) => e.text!).join(", "),
-        style: TextStyle(fontSize: fontSize),
-      )
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Text(
+          kun.map((e) => e.text!).join(", "),
+          style:
+              DefaultTextStyle.of(context).style.copyWith(fontSize: fontSize),
+        ),
+      ),
     ];
+  }
+
+  Widget buildPreview(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            child: buildMainForm(context, 20),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [buildReadings(context), buildSenses(context).first],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget buildDetails(BuildContext context) {
@@ -613,7 +722,8 @@ class EntryJpnKanji extends StatelessWidget {
         crossAxisAlignment:
             centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
-          if (kanji) Center(child: buildMainForm(context, 40)),
+          if (kanji) Center(child: buildMainForm(context, 60)),
+          const SizedBox(height: 10),
           if (reading) Center(child: buildReadings(context)),
           if (sense) ...buildSenses(context, 20),
         ],
@@ -625,7 +735,7 @@ class EntryJpnKanji extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (mode) {
       case DisplayMode.preview:
-        return buildMainForm(context);
+        return buildPreview(context);
       case DisplayMode.details:
         return buildDetails(context);
       case DisplayMode.quiz:
