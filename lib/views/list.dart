@@ -219,6 +219,7 @@ class _ListViewer extends State<ListViewer> {
 
         return Scaffold(
           appBar: AppBar(
+            scrolledUnderElevation: 0,
             title: Row(
               children: [
                 const IconButton(onPressed: null, icon: SizedBox()),
@@ -406,15 +407,23 @@ class _EntryViewier extends State<EntryViewier> {
   }
 }
 
-class EntryView<T> extends StatefulWidget {
+class EntryView extends StatefulWidget {
   const EntryView(
       {super.key,
       required this.list,
       required this.entryId,
-      this.entryOpts = const []});
+      this.entryOpts = const []})
+      : entry = null;
 
-  final T entryId;
-  final MemoList list;
+  const EntryView.single({super.key, required this.entry})
+      : entryId = 0,
+        list = null,
+        entryOpts = const [],
+        assert(entry != null);
+
+  final int entryId;
+  final MemoList? list;
+  final ListEntry? entry;
   final Iterable<EntryOptions> entryOpts;
 
   @override
@@ -422,7 +431,8 @@ class EntryView<T> extends StatefulWidget {
 }
 
 class _EntryView extends State<EntryView> {
-  late List<ListEntry> entries = widget.list.entries.toList();
+  late List<ListEntry> entries =
+      widget.list?.entries.toList() ?? [widget.entry!];
   late final PageController _controller;
 
   @override
@@ -430,8 +440,10 @@ class _EntryView extends State<EntryView> {
     super.initState();
 
     _controller = PageController(
-        initialPage:
-            entries.toList().indexWhere((e) => e.id == widget.entryId));
+      initialPage: widget.entry != null
+          ? 0
+          : entries.toList().indexWhere((e) => e.id == widget.entryId),
+    );
   }
 
   @override
