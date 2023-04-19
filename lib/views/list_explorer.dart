@@ -9,7 +9,7 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 import 'package:universal_io/io.dart';
 import 'package:memorize/file_system.dart';
 
-enum Filter { asc, dsc, rct }
+enum Filter { ascending, descending, recent }
 
 class ListExplorer extends StatefulWidget {
   const ListExplorer(
@@ -30,7 +30,7 @@ class ListExplorer extends StatefulWidget {
 class _ListExplorer extends State<ListExplorer> {
   final key = GlobalKey();
   final double globalPadding = 10;
-  Filter filter = Filter.asc;
+  Filter filter = Filter.ascending;
   List<FileInfo> _dirContent = [];
 
   ModalRoute? _route;
@@ -157,85 +157,17 @@ class _ListExplorer extends State<ListExplorer> {
 
   void _sortItems(List<FileInfo> items) {
     switch (filter) {
-      case Filter.asc:
+      case Filter.ascending:
         items.sort((a, b) => a.name.compareTo(b.name));
         break;
-      case Filter.dsc:
+      case Filter.descending:
         items.sort((a, b) => b.name.compareTo(a.name));
         break;
-      case Filter.rct:
+      case Filter.recent:
         // TODO: implement history
         break;
     }
   }
-
-  /*
-  Widget buildHeader() {
-    final primaryColor = Theme.of(context).colorScheme.secondaryContainer;
-    final onPrimaryColor = Theme.of(context).colorScheme.onSecondaryContainer;
-
-    return Container(
-      height: 56.0,
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: primaryColor,
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          popupMenuTheme: PopupMenuThemeData(
-            color: primaryColor,
-            textStyle: TextStyle(color: onPrimaryColor),
-          ),
-          floatingActionButtonTheme: FloatingActionButtonThemeData(
-            foregroundColor: onPrimaryColor,
-            backgroundColor: primaryColor,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'Home collection',
-              padding: const EdgeInsets.only(),
-              onPressed: () {
-                _changeCollection(root);
-
-                if (collectionHistory.isNotEmpty) {
-                  collectionHistoryCtrl.scrollToIndex(0);
-                }
-              },
-              icon: Icon(
-                Icons.home_rounded,
-                color: currentCollection.isEmpty ? Colors.white : null,
-              ),
-            ),
-            Expanded(
-              child: CollectionHistory(
-                  scrollController: collectionHistoryCtrl,
-                  history: collectionHistory,
-                  current: currentCollection,
-                  onCollectionChange: (value) =>
-                      _changeCollection(p.join(root, value))),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 0),
-              child: IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.search),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 0),
-              child: buildSearchFilter(),
-            ),
-            ...adapter.buildHeaderTrailing(context, controller),
-          ],
-        ),
-      ),
-    );
-  }
-  */
 
   void addNewCollection(BuildContext context) {
     showDialog(
@@ -270,56 +202,78 @@ class _ListExplorer extends State<ListExplorer> {
   Widget buildBody(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: globalPadding),
-      child: ListExplorerItems(
-        items: _dirContent,
-        onItemTap: (info) {
-          if (info.type == FileSystemEntityType.directory) {
-            setState(() {
-              if (widget.onCollectionTap == null ||
-                  widget.onCollectionTap!(info.path)) {
-                _changeCollection(info.path);
-              }
-            });
-          } else {
-            if (widget.onListTap == null || widget.onListTap!(info)) {
-              context.push('/list', extra: info);
-            }
-          }
-        },
-        onItemLongPress: (info) {
-          showDialog(
-              context: context,
-              builder: (context) {
-                return Dialog(
-                  child: ListView(shrinkWrap: true, children: [
-                    ListTile(
-                      leading: const Icon(Icons.abc),
-                      title: const Text('Dummy'),
-                      onTap: () => Navigator.of(context).maybePop(),
+      child: Column(
+        children: [
+          SingleChildScrollView(
+            child: Row(
+              children: Filter.values
+                  .map(
+                    (e) => Container(
+                      margin: const EdgeInsets.all(8.0),
+                      child: OutlinedButton(
+                        onPressed: () => setState(() => filter = e),
+                        child: Text(e.name),
+                      ),
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.delete),
-                      title: const Text('Delete'),
-                      splashColor: Colors.transparent,
-                      onTap: () {
-                        final file = File(info.path);
+                  )
+                  .toList(),
+            ),
+          ),
+          Expanded(
+            child: ListExplorerItems(
+              items: _dirContent,
+              onItemTap: (info) {
+                if (info.type == FileSystemEntityType.directory) {
+                  setState(() {
+                    if (widget.onCollectionTap == null ||
+                        widget.onCollectionTap!(info.path)) {
+                      _changeCollection(info.path);
+                    }
+                  });
+                } else {
+                  if (widget.onListTap == null || widget.onListTap!(info)) {
+                    context.push('/list', extra: info);
+                  }
+                }
+              },
+              onItemLongPress: (info) {
+                showDialog(
+                  context: context,
+                  builder: (context) {
+                    return Dialog(
+                      child: ListView(shrinkWrap: true, children: [
+                        ListTile(
+                          leading: const Icon(Icons.abc),
+                          title: const Text('Dummy'),
+                          onTap: () => Navigator.of(context).maybePop(),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.delete),
+                          title: const Text('Delete'),
+                          splashColor: Colors.transparent,
+                          onTap: () {
+                            final file = File(info.path);
 
-                        if (info.type == FileSystemEntityType.file) {
-                          ListViewer.unload(info);
-                        }
+                            if (info.type == FileSystemEntityType.file) {
+                              ListViewer.unload(info);
+                            }
 
-                        // recursive to handle directories
-                        file.deleteSync(recursive: true);
+                            // recursive to handle directories
+                            file.deleteSync(recursive: true);
 
-                        setState(() => _updateData());
+                            setState(() => _updateData());
 
-                        Navigator.of(context).maybePop();
-                      },
-                    )
-                  ]),
+                            Navigator.of(context).maybePop();
+                          },
+                        )
+                      ]),
+                    );
+                  },
                 );
-              });
-        },
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -338,8 +292,14 @@ class _ListExplorer extends State<ListExplorer> {
         appBar: AppBar(
           scrolledUnderElevation: 0,
           title: const Text('List explorer'),
-          centerTitle: true,
           actions: [
+            IconButton(
+              onPressed: () => context.push(
+                '/lists/search',
+                extra: Directory(currentDir),
+              ),
+              icon: const Icon(Icons.search_rounded),
+            ),
             PopupMenuButton(
               position: PopupMenuPosition.under,
               offset: const Offset(0, 15),
@@ -439,6 +399,66 @@ class _ListExplorerItems extends State<ListExplorerItems> {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 5),
             child: buildItem(item),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ListExplorerSearch extends StatefulWidget {
+  const ListExplorerSearch({super.key, required this.dir});
+
+  final Directory dir;
+
+  @override
+  State<StatefulWidget> createState() => _ListExplorerSearch();
+}
+
+class _ListExplorerSearch extends State<ListExplorerSearch> {
+  var results = <FileInfo>[];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        toolbarHeight: kToolbarHeight * 1.3,
+        title: SizedBox(
+          height: kToolbarHeight,
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'List name',
+              border: OutlineInputBorder(
+                borderSide: BorderSide.none,
+                borderRadius: BorderRadius.circular(30),
+              ),
+            ),
+            onChanged: (value) {
+              setState(() {
+                results = widget.dir.listSync().fold([], (p, e) {
+                  final type = e.statSync().type;
+
+                  if (type == FileSystemEntityType.file) {
+                    final name = MemoList.extractName(e.path);
+
+                    if (name.toLowerCase().startsWith(value.toLowerCase())) {
+                      p.add(FileInfo(name, e.path, type));
+                    }
+                  }
+
+                  return p;
+                });
+              });
+            },
+          ),
+        ),
+        actions: const [IconButton(onPressed: null, icon: SizedBox())],
+      ),
+      body: StatefulBuilder(
+        builder: (context, setState) {
+          return ListExplorerItems(
+            items: results,
+            onItemTap: (info) => context.push('/list', extra: info),
           );
         },
       ),
