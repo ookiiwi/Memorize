@@ -7,6 +7,7 @@ import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
+import 'package:memorize/views/memo_hub.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/views/splash_screen.dart';
 import 'package:go_router/go_router.dart';
@@ -14,12 +15,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
-import 'package:memorize/views/search.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['home', 'lists', 'search', 'settings'];
+const _routes = ['home', 'lists', 'memo_hub', 'settings'];
 const _appBarIconSize = 36.0;
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 
@@ -85,10 +85,18 @@ final router = GoRouter(initialLocation: '/splash', routes: [
             const NoTransitionPage(child: HomePage()),
       ),
       GoRoute(
-        path: '/lists',
-        pageBuilder: (context, state) =>
-            const NoTransitionPage(child: ListExplorer()),
-      ),
+          path: '/lists',
+          pageBuilder: (context, state) => const NoTransitionPage(
+                child: ListExplorer(),
+              ),
+          routes: [
+            GoRoute(
+              path: 'search',
+              pageBuilder: (context, state) => NoTransitionPage(
+                child: ListExplorerSearch(dir: state.extra as Directory),
+              ),
+            )
+          ]),
       GoRoute(
           path: '/list',
           builder: (context, state) {
@@ -113,14 +121,17 @@ final router = GoRouter(initialLocation: '/splash', routes: [
         ),
       ),
       GoRoute(
-          path: '/search',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: SearchPage()),
+          path: '/memo_hub',
+          pageBuilder: (context, state) => const NoTransitionPage(
+                child: MemoHub(),
+              ),
           routes: [
             GoRoute(
-              path: 'preview',
+              path: 'list_preview',
               pageBuilder: (context, state) => NoTransitionPage(
-                child: ListPreview(list: state.extra as MemoList),
+                child: ListPreview(
+                  list: state.extra as MemoList,
+                ),
               ),
             )
           ]),
@@ -133,6 +144,16 @@ final router = GoRouter(initialLocation: '/splash', routes: [
               path: 'dictionary',
               pageBuilder: (context, state) =>
                   const NoTransitionPage(child: DictionaryPage()),
+            ),
+            GoRoute(
+              path: 'reminder',
+              pageBuilder: (context, state) =>
+                  NoTransitionPage(child: ReminderPage()),
+            ),
+            GoRoute(
+              path: 'system',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: SystemPage()),
             )
           ]),
       GoRoute(
