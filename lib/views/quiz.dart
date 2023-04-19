@@ -110,21 +110,19 @@ class _QuizLauncher extends State<QuizLauncher> {
               random: _random,
               itemCount: list.entries.length,
               questionBuilder: (context, i) {
-                return SingleChildScrollView(
-                  child: DicoGetBuilder(
-                      getResult: entries[i].data != null
-                          ? entries[i].data!
-                          : DicoManager.get(entries[i].target, entries[i].id),
-                      builder: (context, doc) {
-                        entries[i] = entries[i].copyWith(data: doc);
+                return DicoGetBuilder(
+                    getResult: entries[i].data != null
+                        ? entries[i].data!
+                        : DicoManager.get(entries[i].target, entries[i].id),
+                    builder: (context, doc) {
+                      entries[i] = entries[i].copyWith(data: doc);
 
-                        return getDetails(entries[i].target)!(
-                          xmlDoc: entries[i].data!,
-                          target: entries[i].target,
-                          mode: DisplayMode.quiz,
-                        );
-                      }),
-                );
+                      return getDetails(entries[i].target)!(
+                        xmlDoc: entries[i].data!,
+                        target: entries[i].target,
+                        mode: DisplayMode.quiz,
+                      );
+                    });
               },
               answerBuilder: (context, i) {
                 return DicoGetBuilder(
@@ -458,14 +456,10 @@ class _Quiz extends State<Quiz> {
         data: Theme.of(context).copyWith(textTheme: textTheme),
         child: DefaultTextStyle.merge(
           style: TextStyle(color: textColor),
-          child: child,
+          child: scrollWrap ? SingleChildScrollView(child: child) : child,
         ),
       ),
     );
-
-    if (scrollWrap) {
-      card = SingleChildScrollView(child: card);
-    }
 
     return timer > 0
         ? Card(
@@ -573,6 +567,7 @@ class _Quiz extends State<Quiz> {
                     widget.questionBuilder(context, indexes[i]),
                     center: true,
                     timer: widget.timer,
+                    scrollWrap: true,
                   ),
                 );
               } else {
