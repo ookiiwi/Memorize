@@ -35,6 +35,18 @@ class EntryOptions {
       this.display = Map.from(map['display']);
       this.quiz = Map.from(map['quiz'].map(
           (key, value) => MapEntry(QuizMode.values[int.parse(key)], value)));
+
+      final newDisplay = display.toSet().difference(this.display.keys.toSet());
+      final oldEntries = this.display.keys.toSet().difference(display.toSet());
+
+      if (newDisplay.isNotEmpty) {
+        this.display.addEntries(newDisplay.map((e) => MapEntry(e, true)));
+      }
+      if (oldEntries.isNotEmpty) {
+        this.display.removeWhere((key, value) => oldEntries.contains(key));
+      }
+
+      // TODO: update quiz keys
     } else {
       this.display = Map.fromEntries(display.map((e) => MapEntry(e, true)));
       this.quiz = quiz.map((key, value) => MapEntry(key, value.first));
