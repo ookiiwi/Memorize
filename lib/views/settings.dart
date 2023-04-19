@@ -1,8 +1,10 @@
-import 'package:flutter_dico/flutter_dico.dart';
+import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -36,9 +38,181 @@ class _SettingsPage extends State<SettingsPage> {
               size: 16,
             ),
             onTap: () => context.push('/settings/dictionary'),
+          ),
+          ListTile(
+            title: const Text('Reminders'),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+            ),
+            onTap: () => context.push('/settings/reminder'),
+          ),
+          ListTile(
+            title: const Text('System'),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+            ),
+            onTap: () => context.push('/settings/system'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SystemPage extends StatefulWidget {
+  const SystemPage({super.key});
+
+  @override
+  State<StatefulWidget> createState() => _SystemPage();
+}
+
+class _SystemPage extends State<SystemPage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('System')),
+      body: ListView(
+        children: [
+          ListTile(
+            title: const Text('Language'),
+            trailing: Text(IsoLanguage.getFullname(appSettings.language)),
+            onTap: () {
+              showDialog(
+                  context: context,
+                  builder: (context) {
+                    return Dialog(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: ['eng', 'fra']
+                            .map(
+                              (e) => Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: TextButton(
+                                  onPressed: () {
+                                    if (e != appSettings.language) {
+                                      setState(
+                                        () => appSettings
+                                          ..language = e
+                                          ..save(),
+                                      );
+                                    }
+
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: Text(
+                                    IsoLanguage.getFullname(e),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    );
+                  });
+            },
           )
         ],
       ),
+    );
+  }
+}
+
+class ReminderPage extends StatelessWidget {
+  ReminderPage({super.key});
+
+  final reminders =
+      flutterLocalNotificationsPlugin.pendingNotificationRequests();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reminders')),
+      body: StatefulBuilder(builder: (context, setState) {
+        return FutureBuilder(
+            future: reminders,
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return ListView(
+                  children: (snapshot.data! as List<PendingNotificationRequest>)
+                      .map(
+                        (e) => ListTile(
+                          title: Text(e.title ?? 'N/A'),
+                          trailing: IconButton(
+                            onPressed: () => setState(() {
+                              flutterLocalNotificationsPlugin.cancel(e.id);
+                            }),
+                            icon: const Icon(Icons.delete),
+                          ),
+                          subtitle: Text(e.payload ?? 'N/A'),
+                          onTap: () {
+                            showDialog(
+                                context: context,
+                                builder: (context) {
+                                  final controller = TextEditingController();
+
+                                  return Dialog(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(20.0),
+                                      child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            TextField(controller: controller),
+                                            TextButton(
+                                              onPressed: () async {
+                                                final time =
+                                                    tz.TZDateTime.now(tz.local)
+                                                        .add(
+                                                  Duration(
+                                                    seconds: int.parse(
+                                                      controller.text,
+                                                    ),
+                                                  ),
+                                                );
+
+                                                await flutterLocalNotificationsPlugin
+                                                    .cancel(e.id);
+
+                                                await flutterLocalNotificationsPlugin
+                                                    .zonedSchedule(
+                                                  e.id,
+                                                  e.title,
+                                                  e.body,
+                                                  time,
+                                                  const NotificationDetails(
+                                                    android:
+                                                        AndroidNotificationDetails(
+                                                      'my channel id',
+                                                      'my channel name',
+                                                    ),
+                                                  ),
+                                                  payload:
+                                                      '${e.payload} => ${time.toLocal()}',
+                                                  uiLocalNotificationDateInterpretation:
+                                                      UILocalNotificationDateInterpretation
+                                                          .absoluteTime,
+                                                  androidAllowWhileIdle: true,
+                                                );
+                                              },
+                                              child: const Text('Reschedule'),
+                                            )
+                                          ]),
+                                    ),
+                                  );
+                                });
+                          },
+                        ),
+                      )
+                      .toList(),
+                );
+              } else if (snapshot.hasError) {
+                return const Center(child: Text('Error'));
+              }
+
+              return const Center(child: CircularProgressIndicator());
+            });
+      }),
     );
   }
 }
@@ -185,7 +359,7 @@ class DicoGeneralInfoPage extends StatelessWidget {
         children: [
           ListTile(
             title: const Text("libdico version"),
-            trailing: Text(Reader.getLibdicoVersion()),
+            //trailing: Text(Reader.getLibdicoVersion()),
           )
         ],
       ),
@@ -195,22 +369,22 @@ class DicoGeneralInfoPage extends StatelessWidget {
 
 class DicoInfoPage extends StatelessWidget {
   DicoInfoPage({super.key, required this.target, required this.fullName}) {
-    try {
-      final reader = Dict.open(target);
-      info = reader.getInfo();
-      reader.close();
-    } catch (e) {
-      if (e is DicoUnsupportedVersion) {
-        info = e.version ?? const DicoInfo();
-      } else {
-        rethrow;
-      }
-    }
+    //try {
+    //  final reader = Dict.open(target);
+    //  info = reader.getInfo();
+    //  reader.close();
+    //} catch (e) {
+    //  if (e is DicoUnsupportedVersion) {
+    //    info = e.version ?? const DicoInfo();
+    //  } else {
+    //    rethrow;
+    //  }
+    //}
   }
 
   final String target;
   final String fullName;
-  late final DicoInfo info;
+  //late final DicoInfo info;
 
   @override
   Widget build(BuildContext context) {
@@ -220,11 +394,11 @@ class DicoInfoPage extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          ListTile(
-            title: const Text('Libdico version'),
-            trailing: Text(
-                "${info.majorVersion}.${info.minorVersion}.${info.patchVersion}"),
-          )
+          //ListTile(
+          //  title: const Text('Libdico version'),
+          //  trailing: Text(
+          //      "${info.majorVersion}.${info.minorVersion}.${info.patchVersion}"),
+          //)
         ],
       ),
     );
