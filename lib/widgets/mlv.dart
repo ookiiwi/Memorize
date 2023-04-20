@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
@@ -153,12 +154,8 @@ class _MemoListView extends State<MemoListView> {
       child: DicoGetListViewBuilder(
         key: ValueKey(entries.length),
         entries: entries.getRange(start, end).toList(),
-        builder: (context, doc, j) {
-          int i = start + j;
-
-          entries[i] = entries[i].copyWith(data: doc);
-
-          return buildEntry(context, entries[i]);
+        builder: (context, entry) {
+          return buildEntry(context, entry);
         },
       ),
     );
@@ -188,25 +185,23 @@ class _MemoListView extends State<MemoListView> {
       builder: (context, constraints) {
         if (controller?._enableReorder == true && widget.list != null) {
           return ReorderableListView.builder(
-            buildDefaultDragHandles: false,
+            dragStartBehavior: DragStartBehavior.down,
             itemCount: entries.length,
             onReorder: onReorder,
+            padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
             itemBuilder: (context, index) {
-              return ReorderableDelayedDragStartListener(
+              return DicoGetBuilder(
                 key: Key('$index'),
-                index: index,
-                child: DicoGetBuilder(
-                  getResult: entries[index].data ??
-                      DicoManager.get(
-                        entries[index].target,
-                        entries[index].id,
-                      ),
-                  builder: (context, doc) {
-                    entries[index] = entries[index].copyWith(data: doc);
+                getResult: entries[index].data ??
+                    DicoManager.get(
+                      entries[index].target,
+                      entries[index].id,
+                    ),
+                builder: (context, doc) {
+                  entries[index] = entries[index].copyWith(data: doc);
 
-                    return buildEntry(context, entries[index]);
-                  },
-                ),
+                  return buildEntry(context, entries[index]);
+                },
               );
             },
           );
