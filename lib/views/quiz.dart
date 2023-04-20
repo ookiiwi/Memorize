@@ -630,27 +630,61 @@ class _Quiz extends State<Quiz> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(
-        extendBody: true,
-        appBar: AppBar(
-          title: const Text('Quiz'),
-          actions: widget.onTapInfo != null && page == 0
-              ? [
-                  IconButton(
-                    onPressed: () => widget.onTapInfo!(page).then((value) {
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    }),
-                    icon: const Icon(Icons.info_outline_rounded),
-                  )
-                ]
-              : null,
+    return WillPopScope(
+      onWillPop: () async {
+        if (_showScore) return true;
+
+        return await showDialog(
+                context: context,
+                builder: (context) {
+                  return Dialog(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Text('Abort ?'),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(context).maybePop(false),
+                              child: const Text('No'),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(context).maybePop(true),
+                              child: const Text('Yes'),
+                            )
+                          ],
+                        )
+                      ]),
+                    ),
+                  );
+                }) ??
+            false;
+      },
+      child: SafeArea(
+        child: Scaffold(
+          extendBody: true,
+          appBar: AppBar(
+            title: const Text('Quiz'),
+            actions: widget.onTapInfo != null && page == 0
+                ? [
+                    IconButton(
+                      onPressed: () => widget.onTapInfo!(page).then((value) {
+                        if (mounted) {
+                          setState(() {});
+                        }
+                      }),
+                      icon: const Icon(Icons.info_outline_rounded),
+                    )
+                  ]
+                : null,
+          ),
+          body: _showScore
+              ? QuizScore(score: _score, total: itemCount)
+              : buildPageView(context),
         ),
-        body: _showScore
-            ? QuizScore(score: _score, total: itemCount)
-            : buildPageView(context),
       ),
     );
   }
