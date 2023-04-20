@@ -637,8 +637,10 @@ class EntryJpnKanji extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Text(
           kun.map((e) => e.text!).join(", "),
-          style:
-              DefaultTextStyle.of(context).style.copyWith(fontSize: fontSize),
+          style: Theme.of(context)
+              .textTheme
+              .bodyLarge
+              ?.copyWith(fontSize: fontSize),
         ),
       ),
     ];
