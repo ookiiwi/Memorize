@@ -10,6 +10,7 @@ import 'package:memorize/app_constants.dart';
 import 'package:memorize/file_system.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/main.dart';
 import 'package:memorize/views/auth.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/dico.dart';
@@ -120,6 +121,8 @@ class _ListViewer extends State<ListViewer> {
   void openSearchPage() {
     assert(isListInit);
 
+    mlvController.isSelectionEnabled = false;
+
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, _, __) {
@@ -206,110 +209,112 @@ class _ListViewer extends State<ListViewer> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        scrolledUnderElevation: 0,
-        title: Row(
-          children: [
-            const IconButton(onPressed: null, icon: SizedBox()),
-            Expanded(
-              child: TextButton(
-                onPressed: () => showRenameDialog(context),
-                child: Center(
-                  child: Text(
-                    list.name.isEmpty == false ? list.name : 'noname',
-                    textAlign: TextAlign.center,
+    return WillPopScope(
+      onWillPop: () async {
+        bottomNavBar.value = null;
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          scrolledUnderElevation: 0,
+          title: Row(
+            children: [
+              const IconButton(onPressed: null, icon: SizedBox()),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => showRenameDialog(context),
+                  child: Center(
+                    child: Text(
+                      list.name.isEmpty == false ? list.name : 'noname',
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
+              ),
+            ],
+          ),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              onPressed: openSearchPage,
+              icon: const Icon(Icons.add),
+            ),
+            AnimatedBuilder(
+              animation: mlvController,
+              builder: (context, _) => AnimatedCrossFade(
+                crossFadeState: mlvController.isSelectionEnabled
+                    ? CrossFadeState.showFirst
+                    : CrossFadeState.showSecond,
+                duration: const Duration(milliseconds: 200),
+                firstChild: IconButton(
+                  onPressed: () => setState(
+                    () => mlvController.isSelectionEnabled = false,
+                  ),
+                  icon: const Icon(Icons.cancel),
+                ),
+                secondChild: PopupMenuButton(
+                    position: PopupMenuPosition.under,
+                    color: Theme.of(context).colorScheme.secondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    onSelected: (dynamic value) => value(),
+                    itemBuilder: (context) {
+                      return [
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          enabled: list.recordID != null,
+                          value: () async {
+                            throw UnimplementedError();
+                            //await pb
+                            //    .collection('memo_list')
+                            //    .getOne(list.recordID!);
+                          },
+                          child: const Text('Sync'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
+
+                            if (list.entries.isEmpty) return;
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) {
+                                  return UploadPage(list: list);
+                                },
+                              ),
+                            );
+                          },
+                          child: const Text('Share'),
+                        ),
+                        PopupMenuItem(
+                          padding: _popupPadding,
+                          value: () {
+                            assert(isListInit);
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => AboutPage(list: list),
+                              ),
+                            );
+                          },
+                          child: const Text('About'),
+                        )
+                      ];
+                    }),
               ),
             ),
           ],
         ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            onPressed: openSearchPage,
-            icon: const Icon(Icons.add),
-          ),
-          AnimatedCrossFade(
-            crossFadeState: mlvController.isReorderEnable
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            duration: const Duration(milliseconds: 200),
-            firstChild: IconButton(
-              onPressed: () => setState(
-                () => mlvController.disableReorder(),
-              ),
-              icon: const Icon(Icons.cancel),
-            ),
-            secondChild: PopupMenuButton(
-                position: PopupMenuPosition.under,
-                color: Theme.of(context).colorScheme.secondary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                onSelected: (dynamic value) => value(),
-                itemBuilder: (context) {
-                  return [
-                    PopupMenuItem(
-                      padding: _popupPadding,
-                      enabled: list.recordID != null,
-                      value: () async {
-                        throw UnimplementedError();
-                        //await pb
-                        //    .collection('memo_list')
-                        //    .getOne(list.recordID!);
-                      },
-                      child: const Text('Sync'),
-                    ),
-                    PopupMenuItem(
-                      padding: _popupPadding,
-                      value: () {
-                        assert(isListInit);
-
-                        if (list.entries.isEmpty) return;
-
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) {
-                              return UploadPage(list: list);
-                            },
-                          ),
-                        );
-                      },
-                      child: const Text('Share'),
-                    ),
-                    PopupMenuItem(
-                      padding: _popupPadding,
-                      value: () => setState(
-                        () => mlvController.enableReorder(),
-                      ),
-                      child: const Text('Order'),
-                    ),
-                    PopupMenuItem(
-                      padding: _popupPadding,
-                      value: () {
-                        assert(isListInit);
-
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => AboutPage(list: list),
-                          ),
-                        );
-                      },
-                      child: const Text('About'),
-                    )
-                  ];
-                }),
-          ),
-        ],
-      ),
-      body: EntryViewier(
-        key: ValueKey(list.filename),
-        list: list,
-        selectionController: _selectionController,
-        onDeleteEntry: (_) => setState(() {}),
-        mlvController: mlvController,
+        body: EntryViewier(
+          key: ValueKey(list.filename),
+          list: list,
+          selectionController: _selectionController,
+          onDeleteEntry: (_) => setState(() {}),
+          mlvController: mlvController,
+        ),
       ),
     );
   }
@@ -364,7 +369,7 @@ class _EntryViewier extends State<EntryViewier> {
                   onDelete: widget.onDeleteEntry,
                   controller: mlvController,
                   onTap: (entry) {
-                    mlvController.disableReorder();
+                    mlvController.isSelectionEnabled = false;
 
                     Navigator.of(context).push(
                       MaterialPageRoute(
