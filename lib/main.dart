@@ -22,6 +22,7 @@ final routerNavKey = GlobalKey<NavigatorState>();
 const _routes = ['home', 'lists', 'memo_hub', 'settings'];
 const _appBarIconSize = 36.0;
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
+final ValueNotifier<Widget?> bottomNavBar = ValueNotifier(null);
 
 final router = GoRouter(initialLocation: '/splash', routes: [
   GoRoute(
@@ -50,30 +51,39 @@ final router = GoRouter(initialLocation: '/splash', routes: [
               ],
             ),
           ),
-          child: BottomNavBar(
-            backgroundColor: Colors.transparent,
-            onTap: (i) {
-              final location = '/${_routes[i]}';
-
-              if (GoRouter.of(context).location == location) {
-                GoRouter.of(context).refresh();
+          child: ValueListenableBuilder<Widget?>(
+            valueListenable: bottomNavBar,
+            builder: (context, value, _) {
+              if (value != null) {
+                return value;
               }
 
-              final file = File(lastRootLocationFilename);
-              file.writeAsStringSync(location);
+              return BottomNavBar(
+                backgroundColor: Colors.transparent,
+                onTap: (i) {
+                  final location = '/${_routes[i]}';
 
-              context.go(location);
+                  if (GoRouter.of(context).location == location) {
+                    GoRouter.of(context).refresh();
+                  }
+
+                  final file = File(lastRootLocationFilename);
+                  file.writeAsStringSync(location);
+
+                  context.go(location);
+                },
+                items: [
+                  Icon(Icons.home_rounded,
+                      color: appBarIconColor, size: _appBarIconSize),
+                  Icon(Icons.list_rounded,
+                      color: appBarIconColor, size: _appBarIconSize),
+                  Icon(Icons.search_rounded,
+                      color: appBarIconColor, size: _appBarIconSize),
+                  Icon(Icons.settings,
+                      color: appBarIconColor, size: _appBarIconSize),
+                ],
+              );
             },
-            items: [
-              Icon(Icons.home_rounded,
-                  color: appBarIconColor, size: _appBarIconSize),
-              Icon(Icons.list_rounded,
-                  color: appBarIconColor, size: _appBarIconSize),
-              Icon(Icons.search_rounded,
-                  color: appBarIconColor, size: _appBarIconSize),
-              Icon(Icons.settings,
-                  color: appBarIconColor, size: _appBarIconSize),
-            ],
           ),
         ),
       );
