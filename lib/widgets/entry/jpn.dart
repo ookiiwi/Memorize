@@ -195,10 +195,12 @@ class EntryJpn extends StatelessWidget {
                               body: Provider.value(
                                 value: list,
                                 builder: (context, _) {
-                                  return EntryJpn(
-                                    target: target,
-                                    xmlDoc: snapshot.data as XmlDocument,
-                                    mode: DisplayMode.details,
+                                  return SingleChildScrollView(
+                                    child: EntryJpn(
+                                      target: target,
+                                      xmlDoc: snapshot.data as XmlDocument,
+                                      mode: DisplayMode.details,
+                                    ),
                                   );
                                 },
                               ),
@@ -583,7 +585,10 @@ class EntryJpnKanji extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20), color: color),
-        child: Text(text),
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       );
     }
 
@@ -619,7 +624,8 @@ class EntryJpnKanji extends StatelessWidget {
 
     return Text(
       k.text!,
-      style: TextStyle(fontSize: fontSize),
+      style:
+          Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: fontSize),
     );
   }
 
