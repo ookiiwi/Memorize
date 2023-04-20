@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/main.dart';
 import 'package:memorize/views/list.dart';
+import 'package:memorize/widgets/bar.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:path/path.dart' as p;
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -236,41 +238,8 @@ class _ListExplorer extends State<ListExplorer> {
                   }
                 }
               },
-              onItemLongPress: (info) {
-                showDialog(
-                  context: context,
-                  builder: (context) {
-                    return Dialog(
-                      child: ListView(shrinkWrap: true, children: [
-                        ListTile(
-                          leading: const Icon(Icons.abc),
-                          title: const Text('Dummy'),
-                          onTap: () => Navigator.of(context).maybePop(),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.delete),
-                          title: const Text('Delete'),
-                          splashColor: Colors.transparent,
-                          onTap: () {
-                            final file = File(info.path);
-
-                            if (info.type == FileSystemEntityType.file) {
-                              ListViewer.unload(info);
-                            }
-
-                            // recursive to handle directories
-                            file.deleteSync(recursive: true);
-
-                            setState(() => _updateData());
-
-                            Navigator.of(context).maybePop();
-                          },
-                        )
-                      ]),
-                    );
-                  },
-                );
-              },
+              onSelectionAction:
+                  !buildScaffold ? null : () => setState(() => _updateData()),
             ),
           ),
         ],
@@ -323,12 +292,12 @@ class ListExplorerItems<T> extends StatefulWidget {
     super.key,
     this.items = const [],
     this.onItemTap,
-    this.onItemLongPress,
+    this.onSelectionAction,
   });
 
   final List<FileInfo> items;
   final void Function(FileInfo info)? onItemTap;
-  final void Function(FileInfo info)? onItemLongPress;
+  final VoidCallback? onSelectionAction;
 
   @override
   State createState() => _ListExplorerItems();
@@ -336,21 +305,104 @@ class ListExplorerItems<T> extends StatefulWidget {
 
 class _ListExplorerItems extends State<ListExplorerItems> {
   List<FileInfo> get items => widget.items;
+  final _selectedLists = <FileInfo>[];
+
+  @override
+  void initState() {
+    super.initState();
+
+    bottomNavBar.addListener(_openSelection);
+  }
+
+  @override
+  void dispose() {
+    bottomNavBar.removeListener(_openSelection);
+    super.dispose();
+  }
+
+  void _openSelection() {
+    if (bottomNavBar.value == null) {
+      setState(() {
+        _selectedLists.clear();
+      });
+    }
+  }
+
+  void _onListSelected(FileInfo item) {
+    setState(() {
+      if (_selectedLists.contains(item)) {
+        _selectedLists.remove(item);
+      } else {
+        _selectedLists.add(item);
+      }
+    });
+  }
+
+  void _moveSelection([bool after = false]) {
+    // TODO: hide check boxes
+  }
 
   Widget buildItem(FileInfo item) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return ListTile(
+      leading: bottomNavBar.value != null
+          ? Checkbox(
+              checkColor: colorScheme.background,
+              fillColor: MaterialStateProperty.resolveWith(
+                (states) => colorScheme.onBackground,
+              ),
+              side: BorderSide(color: colorScheme.onBackground),
+              value: _selectedLists.contains(item),
+              onChanged: (value) => _onListSelected(item),
+            )
+          : null,
       title: Text(item.name),
       onTap: () {
-        if (widget.onItemTap != null) {
+        if (bottomNavBar.value != null) {
+          _onListSelected(item);
+        } else if (widget.onItemTap != null) {
           widget.onItemTap!(item);
         }
       },
-      onLongPress: () {
-        if (widget.onItemLongPress != null) {
-          widget.onItemLongPress!(item);
-        }
-      },
-      trailing: item.type == FileSystemEntityType.file
+      onLongPress: widget.onSelectionAction != null
+          ? () {
+              setState(() {
+                bottomNavBar.value = BottomNavBar(
+                  onTap: (i) {
+                    setState(() {
+                      switch (i) {
+                        case 0:
+                          _moveSelection();
+                          break;
+                        case 1:
+                          _moveSelection(true);
+                          break;
+                        case 2:
+                          setState(() {
+                            for (var e in _selectedLists) {
+                              File(e.path).deleteSync(recursive: true);
+                            }
+                          });
+                          break;
+                      }
+
+                      bottomNavBar.value = null;
+                    });
+
+                    widget.onSelectionAction!();
+                  },
+                  items: const [
+                    Icon(Icons.move_up),
+                    Icon(Icons.move_down),
+                    Icon(Icons.delete),
+                  ],
+                );
+              });
+            }
+          : null,
+      trailing: item.type == FileSystemEntityType.file &&
+              bottomNavBar.value == null
           ? IconButton(
               onPressed: () => context.push(
                 '/quiz_launcher',
