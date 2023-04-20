@@ -1,33 +1,21 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
+import 'package:memorize/main.dart';
+import 'package:memorize/widgets/bar.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
 
+enum MovePosition { before, after }
+
 class MemoListViewController extends ChangeNotifier {
-  bool _enableReorder = false;
-  bool get isReorderEnable => _enableReorder;
   bool _isSelectionEnabled = false;
   bool get isSelectionEnabled => _isSelectionEnabled;
   set isSelectionEnabled(bool value) {
     if (_isSelectionEnabled == value) return;
 
     _isSelectionEnabled = value;
-    notifyListeners();
-  }
+    if (!value) bottomNavBar.value = null;
 
-  void enableReorder() {
-    if (_enableReorder) return;
-
-    _enableReorder = true;
-    notifyListeners();
-  }
-
-  void disableReorder() {
-    if (!_enableReorder) return;
-
-    _enableReorder = false;
     notifyListeners();
   }
 }
@@ -59,6 +47,8 @@ class _MemoListView extends State<MemoListView> {
   List<ListEntry> get entries => widget.list?.entries ?? widget.entries;
   MemoListViewController? get controller => widget.controller;
   double get itemExtent => widget.itemExtent;
+  final List<ListEntry> _selectedEntries = [];
+  MovePosition? _movePosition;
 
   final scrollController = ScrollController();
 
@@ -72,7 +62,10 @@ class _MemoListView extends State<MemoListView> {
   }
 
   void _controllerListener() {
-    setState(() {});
+    setState(() {
+      _selectedEntries.clear();
+      _movePosition = null;
+    });
   }
 
   @override
@@ -111,32 +104,104 @@ class _MemoListView extends State<MemoListView> {
     );
   }
 
+  void openSelection(ListEntry entry) {
+    controller?.isSelectionEnabled = true;
+
+    bottomNavBar.value = BottomNavBar(
+      onTap: (i) {
+        setState(() {
+          switch (i) {
+            case 0:
+              _movePosition = MovePosition.before;
+              break;
+            case 1:
+              _movePosition = MovePosition.after;
+              break;
+            case 2:
+              setState(() {
+                entries.remove(entry);
+              });
+
+              widget.list!.save();
+
+              if (widget.onDelete != null) widget.onDelete!(entry);
+              controller?.isSelectionEnabled = false;
+
+              break;
+          }
+        });
+      },
+      items: const [
+        Icon(Icons.move_up),
+        Icon(Icons.move_down),
+        Icon(Icons.delete),
+      ],
+    );
+  }
+
+  void moveSelection(ListEntry entry) {
+    entries.removeWhere((e) => _selectedEntries.contains(e));
+    final i = entries.indexOf(entry);
+
+    if (_movePosition == MovePosition.before) {
+      entries.insertAll(i, _selectedEntries);
+    } else if (_movePosition == MovePosition.after) {
+      if (i + 1 < entries.length) {
+        entries.insertAll(i + 1, _selectedEntries);
+      } else {
+        entries.addAll(_selectedEntries);
+      }
+    }
+
+    widget.list?.save();
+
+    controller?.isSelectionEnabled = false;
+  }
+
   Widget buildEntry(BuildContext context, ListEntry entry) {
     return LayoutBuilder(
-      builder: (context, constraints) => MaterialButton(
-        minWidth: constraints.maxWidth,
-        padding: const EdgeInsets.all(8.0),
-        onLongPress: widget.list == null || controller?._enableReorder == true
-            ? null
-            : () => showDialog(
-                  context: context,
-                  builder: (context) => dialog(context, entry),
+      builder: (context, constraints) => Container(
+        color: _selectedEntries.contains(entry)
+            ? Colors.blue.withOpacity(0.1)
+            : null,
+        child: MaterialButton(
+          minWidth: constraints.maxWidth,
+          padding: const EdgeInsets.all(8.0),
+          onLongPress: widget.list == null ? null : () => openSelection(entry),
+          onPressed: widget.onTap != null
+              ? () {
+                  if (controller?.isSelectionEnabled != true) {
+                    widget.onTap!(entry);
+                  } else {
+                    setState(() {
+                      if (_movePosition != null) {
+                        if (!_selectedEntries.contains(entry)) {
+                          moveSelection(entry);
+                        }
+                      } else if (_selectedEntries.contains(entry)) {
+                        _selectedEntries.remove(entry);
+                      } else {
+                        _selectedEntries.add(entry);
+                      }
+                    });
+                  }
+                }
+              : null,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: 50,
+                minHeight: itemExtent,
+              ),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: getDetails(entry.target)!(
+                  xmlDoc: entry.data!,
+                  target: entry.target,
+                  mode: DisplayMode.preview,
                 ),
-        onPressed: widget.onTap != null ? (() => widget.onTap!(entry)) : null,
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minWidth: 50,
-              minHeight: itemExtent,
-            ),
-            child: Center(
-              widthFactor: 1,
-              heightFactor: 1,
-              child: getDetails(entry.target)!(
-                xmlDoc: entry.data!,
-                target: entry.target,
-                mode: DisplayMode.preview,
               ),
             ),
           ),
@@ -152,28 +217,13 @@ class _MemoListView extends State<MemoListView> {
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: index == 0 ? maxHeight : 0.0),
       child: DicoGetListViewBuilder(
-        key: ValueKey(entries.length),
+        key: UniqueKey(),
         entries: entries.getRange(start, end).toList(),
         builder: (context, entry) {
           return buildEntry(context, entry);
         },
       ),
     );
-  }
-
-  void onReorder(int oldIndex, int newIndex) {
-    assert(widget.list != null);
-
-    setState(() {
-      if (oldIndex < newIndex) {
-        newIndex -= 1;
-      }
-
-      final ListEntry item = entries.removeAt(oldIndex);
-      entries.insert(newIndex, item);
-    });
-
-    widget.list?.save();
   }
 
   @override
@@ -183,30 +233,6 @@ class _MemoListView extends State<MemoListView> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (controller?._enableReorder == true && widget.list != null) {
-          return ReorderableListView.builder(
-            dragStartBehavior: DragStartBehavior.down,
-            itemCount: entries.length,
-            onReorder: onReorder,
-            padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-            itemBuilder: (context, index) {
-              return DicoGetBuilder(
-                key: Key('$index'),
-                getResult: entries[index].data ??
-                    DicoManager.get(
-                      entries[index].target,
-                      entries[index].id,
-                    ),
-                builder: (context, doc) {
-                  entries[index] = entries[index].copyWith(data: doc);
-
-                  return buildEntry(context, entries[index]);
-                },
-              );
-            },
-          );
-        }
-
         return ListView.separated(
           itemCount: itemCount,
           shrinkWrap: true,
