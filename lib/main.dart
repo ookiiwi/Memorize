@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
@@ -24,6 +25,11 @@ const _appBarIconSize = 36.0;
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 final ValueNotifier<Widget?> bottomNavBar = ValueNotifier(null);
 
+Future<bool> _onWillPop(bool stopDefaultButtonEvent, RouteInfo info) async {
+  bottomNavBar.value = null;
+  return false;
+}
+
 final router = GoRouter(initialLocation: '/splash', routes: [
   GoRoute(
     path: '/splash',
@@ -35,6 +41,9 @@ final router = GoRouter(initialLocation: '/splash', routes: [
     builder: (context, state, child) {
       final appBarIconColor = Theme.of(context).colorScheme.onBackground;
       final appBarColor = Theme.of(context).colorScheme.background;
+
+      BackButtonInterceptor.remove(_onWillPop);
+      BackButtonInterceptor.add(_onWillPop);
 
       return Scaffold(
         extendBody: true,
