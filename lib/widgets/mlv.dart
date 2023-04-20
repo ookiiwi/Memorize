@@ -119,7 +119,9 @@ class _MemoListView extends State<MemoListView> {
               break;
             case 2:
               setState(() {
-                entries.remove(entry);
+                for (var e in _selectedEntries) {
+                  entries.remove(e);
+                }
               });
 
               widget.list!.save();
