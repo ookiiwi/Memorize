@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
@@ -94,9 +95,6 @@ class _ListViewer extends State<ListViewer> {
   MemoList list = MemoList('');
   final mlvController = MemoListViewController();
   List<String> availableTargets = Dict.listAllTargets()..sort();
-  Future<void> fLoadTargets = Future.value();
-  final Map<String, DictDownload> _dltargets = {};
-  String? errorMessage; // critical
   final _popupPadding = const EdgeInsets.symmetric(horizontal: 12.0);
 
   bool get isListInit => list.name.isNotEmpty;
@@ -121,23 +119,22 @@ class _ListViewer extends State<ListViewer> {
 
   void openSearchPage() {
     assert(isListInit);
-    assert(errorMessage == null);
 
     Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, _, __) {
           return EntrySearch(
             onItemSelected: (entry) {
-              bool addEntry = !list.entries
-                  .any((e) => e.id == entry.id && e.target == entry.target);
+              bool addEntry = list.entries.isEmpty ||
+                  !list.entries
+                      .any((e) => e.id == entry.id && e.target == entry.target);
 
               if (addEntry) {
-                list.entries.add(entry);
+                setState(() {
+                  list.entries.add(entry);
+                });
+
                 list.save();
-              }
-
-              if (addEntry) {
-                setState(() {});
               }
             },
           );
@@ -209,126 +206,111 @@ class _ListViewer extends State<ListViewer> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: fLoadTargets,
-      builder: (context, snapshot) {
-        if (errorMessage == null &&
-            snapshot.connectionState == ConnectionState.done) {
-          _dltargets.clear();
-        }
-
-        return Scaffold(
-          appBar: AppBar(
-            scrolledUnderElevation: 0,
-            title: Row(
-              children: [
-                const IconButton(onPressed: null, icon: SizedBox()),
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => showRenameDialog(context),
-                    child: Center(
-                      child: Text(
-                        list.name.isEmpty == false ? list.name : 'noname',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+    return Scaffold(
+      appBar: AppBar(
+        scrolledUnderElevation: 0,
+        title: Row(
+          children: [
+            const IconButton(onPressed: null, icon: SizedBox()),
+            Expanded(
+              child: TextButton(
+                onPressed: () => showRenameDialog(context),
+                child: Center(
+                  child: Text(
+                    list.name.isEmpty == false ? list.name : 'noname',
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              ],
+              ),
             ),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                onPressed: openSearchPage,
-                icon: const Icon(Icons.add),
-              ),
-              AnimatedCrossFade(
-                crossFadeState: mlvController.isReorderEnable
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
-                duration: const Duration(milliseconds: 200),
-                firstChild: IconButton(
-                  onPressed: () => setState(
-                    () => mlvController.disableReorder(),
-                  ),
-                  icon: const Icon(Icons.cancel),
-                ),
-                secondChild: PopupMenuButton(
-                    position: PopupMenuPosition.under,
-                    color: Theme.of(context).colorScheme.secondary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    onSelected: (dynamic value) => value(),
-                    itemBuilder: (context) {
-                      return [
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          enabled: list.recordID != null,
-                          value: () async {
-                            throw UnimplementedError();
-                            //await pb
-                            //    .collection('memo_list')
-                            //    .getOne(list.recordID!);
-                          },
-                          child: const Text('Sync'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
-
-                            if (list.entries.isEmpty) return;
-
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) {
-                                  return UploadPage(list: list);
-                                },
-                              ),
-                            );
-                          },
-                          child: const Text('Share'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () => setState(
-                            () => mlvController.enableReorder(),
-                          ),
-                          child: const Text('Order'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
-
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => AboutPage(list: list),
-                              ),
-                            );
-                          },
-                          child: const Text('About'),
-                        )
-                      ];
-                    }),
-              ),
-            ],
+          ],
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: openSearchPage,
+            icon: const Icon(Icons.add),
           ),
-          body: errorMessage != null && list.entries.isNotEmpty == true
-              ? Center(child: Text(errorMessage!))
-              : Builder(
-                  builder: (context) {
-                    return EntryViewier(
-                      list: list,
-                      selectionController: _selectionController,
-                      onDeleteEntry: (_) => setState(() {}),
-                      mlvController: mlvController,
-                    );
-                  },
+          AnimatedCrossFade(
+            crossFadeState: mlvController.isReorderEnable
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 200),
+            firstChild: IconButton(
+              onPressed: () => setState(
+                () => mlvController.disableReorder(),
+              ),
+              icon: const Icon(Icons.cancel),
+            ),
+            secondChild: PopupMenuButton(
+                position: PopupMenuPosition.under,
+                color: Theme.of(context).colorScheme.secondary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
-        );
-      },
+                onSelected: (dynamic value) => value(),
+                itemBuilder: (context) {
+                  return [
+                    PopupMenuItem(
+                      padding: _popupPadding,
+                      enabled: list.recordID != null,
+                      value: () async {
+                        throw UnimplementedError();
+                        //await pb
+                        //    .collection('memo_list')
+                        //    .getOne(list.recordID!);
+                      },
+                      child: const Text('Sync'),
+                    ),
+                    PopupMenuItem(
+                      padding: _popupPadding,
+                      value: () {
+                        assert(isListInit);
+
+                        if (list.entries.isEmpty) return;
+
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) {
+                              return UploadPage(list: list);
+                            },
+                          ),
+                        );
+                      },
+                      child: const Text('Share'),
+                    ),
+                    PopupMenuItem(
+                      padding: _popupPadding,
+                      value: () => setState(
+                        () => mlvController.enableReorder(),
+                      ),
+                      child: const Text('Order'),
+                    ),
+                    PopupMenuItem(
+                      padding: _popupPadding,
+                      value: () {
+                        assert(isListInit);
+
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => AboutPage(list: list),
+                          ),
+                        );
+                      },
+                      child: const Text('About'),
+                    )
+                  ];
+                }),
+          ),
+        ],
+      ),
+      body: EntryViewier(
+        key: ValueKey(list.filename),
+        list: list,
+        selectionController: _selectionController,
+        onDeleteEntry: (_) => setState(() {}),
+        mlvController: mlvController,
+      ),
     );
   }
 }
@@ -565,6 +547,7 @@ class _EntrySearch extends State<EntrySearch> {
   Future<List<MapEntry<String, List<int>>>> findResultWord = Future.value([]);
   Future<List<MapEntry<String, List<int>>>> findResultKanji = Future.value([]);
   String search = '';
+  final controller = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -581,10 +564,18 @@ class _EntrySearch extends State<EntrySearch> {
         ],
         centerTitle: true,
         title: TextField(
+          controller: controller,
           textAlignVertical: TextAlignVertical.center,
           decoration: InputDecoration(
             contentPadding: const EdgeInsets.all(8.0),
             hintText: 'Search',
+            suffix: GestureDetector(
+              onTap: () => setState(() => controller.clear()),
+              child: Transform.rotate(
+                angle: 45 * pi / 180,
+                child: const Icon(Icons.add),
+              ),
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -618,7 +609,28 @@ class _EntrySearch extends State<EntrySearch> {
                   key: ValueKey('$search $i'),
                   entries: entries,
                   onTap: widget.onItemSelected != null
-                      ? (entry) => widget.onItemSelected!(entry)
+                      ? (entry) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => Stack(
+                                children: [
+                                  EntryView.single(entry: entry),
+                                  Positioned(
+                                    right: 20,
+                                    bottom: kBottomNavigationBarHeight + 10,
+                                    child: FloatingActionButton(
+                                      onPressed: () {
+                                        widget.onItemSelected!(entry);
+                                        Navigator.of(context).pop();
+                                      },
+                                      child: const Icon(Icons.add),
+                                    ),
+                                  )
+                                ],
+                              ),
+                            ),
+                          );
+                        }
                       : null,
                 );
               },
