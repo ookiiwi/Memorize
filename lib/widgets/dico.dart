@@ -90,30 +90,30 @@ class DicoGetListViewBuilder extends StatefulWidget {
   });
 
   final List<ListEntry> entries;
-  final Widget Function(BuildContext, XmlDocument, int) builder;
+  final Widget Function(BuildContext, ListEntry) builder;
 
   @override
   State<StatefulWidget> createState() => _DicoGetListViewBuilder();
 }
 
 class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
-  Future<List<XmlDocument>> fResults = Future.value([]);
+  Future<List<ListEntry>> fResults = Future.value([]);
   bool isFutureSet = false;
-  List<XmlDocument> results = [];
+  List<ListEntry> results = [];
 
   @override
   void initState() {
     super.initState();
 
-    List<Future<XmlDocument>> fRes = [];
+    List<Future<ListEntry>> fRes = [];
 
     for (var e in widget.entries) {
       final entry = DicoManager.get(e.target, e.id);
 
       if (entry is Future<XmlDocument>) {
-        fRes.add(entry);
+        fRes.add(entry.then((value) => e.copyWith(data: value)));
       } else {
-        results.add(entry);
+        results.add(e.copyWith(data: entry));
       }
     }
 
@@ -125,7 +125,7 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<XmlDocument>>(
+    return FutureBuilder<List<ListEntry>>(
       initialData: isFutureSet ? null : [],
       future: isFutureSet ? fResults : null,
       builder: (context, snapshot) {
@@ -133,8 +133,8 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
           assert(snapshot.data != null);
           isFutureSet = false;
 
-          final List<XmlDocument> entries =
-              results + List<XmlDocument>.from(snapshot.data!);
+          final List<ListEntry> entries =
+              results + List<ListEntry>.from(snapshot.data!);
 
           return ListView.separated(
             physics: const NeverScrollableScrollPhysics(),
@@ -148,7 +148,6 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
             itemBuilder: (context, i) => widget.builder(
               context,
               entries[i],
-              i,
             ),
           );
         } else if (snapshot.hasError) {
