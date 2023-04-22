@@ -197,7 +197,7 @@ class ListPreview extends StatelessWidget {
           )
         ],
       ),
-      body: EntryViewier(list: list),
+      body: EntryViewer(list: list),
     );
   }
 }
