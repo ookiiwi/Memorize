@@ -305,9 +305,19 @@ class ListExplorerItems<T> extends StatefulWidget {
   State createState() => _ListExplorerItems();
 }
 
-class _ListExplorerItems extends State<ListExplorerItems> {
+class _ListExplorerItems extends State<ListExplorerItems>
+    with SingleTickerProviderStateMixin {
   List<FileInfo> get items => widget.items;
   final _selectedLists = <FileInfo>[];
+
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(milliseconds: 200),
+    vsync: this,
+  );
+  late final Animation<double> _animation = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.linearToEaseOut,
+  );
 
   @override
   void initState() {
@@ -318,16 +328,56 @@ class _ListExplorerItems extends State<ListExplorerItems> {
 
   @override
   void dispose() {
+    _controller.dispose();
     bottomNavBar.removeListener(_openSelection);
     super.dispose();
   }
 
   void _openSelection() {
     if (bottomNavBar.value == null) {
-      setState(() {
-        _selectedLists.clear();
-      });
+      //setState(() {
+      _selectedLists.clear();
+      //});
+
+      _controller.reverse();
+    } else {
+      _controller.forward();
     }
+  }
+
+  void _setBottomNavBar() {
+    setState(() {
+      bottomNavBar.value = BottomNavBar(
+        onTap: (i) {
+          setState(() {
+            switch (i) {
+              case 0:
+                _moveSelection();
+                break;
+              case 1:
+                _moveSelection(true);
+                break;
+              case 2:
+                setState(() {
+                  for (var e in _selectedLists) {
+                    File(e.path).deleteSync(recursive: true);
+                  }
+                });
+                break;
+            }
+
+            bottomNavBar.value = null;
+          });
+
+          widget.onSelectionAction!();
+        },
+        items: const [
+          Icon(Icons.move_up),
+          Icon(Icons.move_down),
+          Icon(Icons.delete),
+        ],
+      );
+    });
   }
 
   void _onListSelected(FileInfo item) {
@@ -347,9 +397,17 @@ class _ListExplorerItems extends State<ListExplorerItems> {
   Widget buildItem(FileInfo item) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return ListTile(
-      leading: bottomNavBar.value != null
-          ? Checkbox(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(),
+      child: Row(
+        children: [
+          SizeTransition(
+            axis: Axis.horizontal,
+            sizeFactor: _animation,
+            child: Checkbox(
+              shape: const CircleBorder(),
               checkColor: colorScheme.background,
               fillColor: MaterialStateProperty.resolveWith(
                 (states) => colorScheme.onBackground,
@@ -357,66 +415,47 @@ class _ListExplorerItems extends State<ListExplorerItems> {
               side: BorderSide(color: colorScheme.onBackground),
               value: _selectedLists.contains(item),
               onChanged: (value) => _onListSelected(item),
-            )
-          : null,
-      title: Text(item.name),
-      onTap: () {
-        if (bottomNavBar.value != null) {
-          _onListSelected(item);
-        } else if (widget.onItemTap != null) {
-          widget.onItemTap!(item);
-        }
-      },
-      onLongPress: widget.onSelectionAction != null
-          ? () {
-              setState(() {
-                bottomNavBar.value = BottomNavBar(
-                  onTap: (i) {
-                    setState(() {
-                      switch (i) {
-                        case 0:
-                          _moveSelection();
-                          break;
-                        case 1:
-                          _moveSelection(true);
-                          break;
-                        case 2:
-                          setState(() {
-                            for (var e in _selectedLists) {
-                              File(e.path).deleteSync(recursive: true);
-                            }
-                          });
-                          break;
-                      }
-
-                      bottomNavBar.value = null;
-                    });
-
-                    widget.onSelectionAction!();
-                  },
-                  items: const [
-                    Icon(Icons.move_up),
-                    Icon(Icons.move_down),
-                    Icon(Icons.delete),
-                  ],
-                );
-              });
-            }
-          : null,
-      trailing: item.type == FileSystemEntityType.file &&
-              bottomNavBar.value == null
-          ? IconButton(
-              onPressed: () => context.push(
-                '/quiz_launcher',
-                extra: MemoList.open(item.path),
-              ),
-              icon: Icon(
-                Icons.play_arrow_rounded,
+            ),
+          ),
+          SizedBox(
+            width: MediaQuery.of(context).size.width,
+            child: ListTile(
+              leading: Icon(
+                item.type == FileSystemEntityType.directory
+                    ? Icons.folder
+                    : Icons.rectangle_rounded,
                 color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-                size: 36,
               ),
-            )
-          : null,
+              title: Text(item.name),
+              onTap: () {
+                if (bottomNavBar.value != null) {
+                  _onListSelected(item);
+                } else if (widget.onItemTap != null) {
+                  widget.onItemTap!(item);
+                }
+              },
+              onLongPress:
+                  widget.onSelectionAction != null ? _setBottomNavBar : null,
+              trailing: item.type == FileSystemEntityType.file
+                  ? IconButton(
+                      onPressed: () => context.push(
+                        '/quiz_launcher',
+                        extra: MemoList.open(item.path),
+                      ),
+                      icon: Icon(
+                        Icons.play_arrow_rounded,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withOpacity(0.7),
+                        size: 36,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -432,6 +471,7 @@ class _ListExplorerItems extends State<ListExplorerItems> {
         ),
       ),
       child: ListView.separated(
+        shrinkWrap: true,
         padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight * 2),
         separatorBuilder: (context, i) {
           return Divider(
