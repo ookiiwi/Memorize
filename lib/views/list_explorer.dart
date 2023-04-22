@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
@@ -469,6 +471,7 @@ class ListExplorerSearch extends StatefulWidget {
 
 class _ListExplorerSearch extends State<ListExplorerSearch> {
   var results = <FileInfo>[];
+  final controller = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -478,7 +481,15 @@ class _ListExplorerSearch extends State<ListExplorerSearch> {
         title: SizedBox(
           height: kToolbarHeight,
           child: TextField(
+            controller: controller,
             decoration: InputDecoration(
+              suffix: GestureDetector(
+                onTap: () => setState(() => controller.clear()),
+                child: Transform.rotate(
+                  angle: 45 * pi / 180,
+                  child: const Icon(Icons.add),
+                ),
+              ),
               hintText: 'List name',
               border: OutlineInputBorder(
                 borderSide: BorderSide.none,
@@ -493,7 +504,7 @@ class _ListExplorerSearch extends State<ListExplorerSearch> {
                   if (type == FileSystemEntityType.file) {
                     final name = MemoList.extractName(e.path);
 
-                    if (name.toLowerCase().startsWith(value.toLowerCase())) {
+                    if (name.toLowerCase().contains(value.toLowerCase())) {
                       p.add(FileInfo(name, e.path, type));
                     }
                   }
