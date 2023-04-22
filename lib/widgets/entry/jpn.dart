@@ -390,8 +390,8 @@ class EntryJpn extends StatelessWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) {
-                      return EntryView.single(
-                        entry: ListEntry(c.runes.first, subTarget: 'kanji'),
+                      return EntryView.fromEntries(
+                        entries: [ListEntry(c.runes.first, subTarget: 'kanji')],
                       );
                     },
                   ),
