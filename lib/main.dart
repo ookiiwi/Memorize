@@ -12,8 +12,8 @@ import 'package:memorize/views/memo_hub.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/views/splash_screen.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:memorize/file_system.dart';
+import 'package:memorize/views/home.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/views/settings.dart';
@@ -102,6 +102,19 @@ final router = GoRouter(initialLocation: '/splash', routes: [
         path: '/home',
         pageBuilder: (context, state) =>
             const NoTransitionPage(child: HomePage()),
+        routes: [
+          GoRoute(
+            path: 'progress',
+            redirect: (context, state) => '/home/progress/details',
+            routes: [
+              GoRoute(
+                path: 'details',
+                pageBuilder: (context, state) =>
+                    const NoTransitionPage(child: ProgressDetails()),
+              )
+            ],
+          )
+        ],
       ),
       GoRoute(
           path: '/lists',
@@ -184,115 +197,6 @@ final router = GoRouter(initialLocation: '/splash', routes: [
   )
 ]);
 
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    bool lightBrightness = MyApp.of(context).themeMode == ThemeMode.light;
-
-    return Scaffold(
-      extendBody: true,
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            onPressed: () {
-              lightBrightness = !lightBrightness;
-              MyApp.of(context).themeMode =
-                  lightBrightness ? ThemeMode.light : ThemeMode.dark;
-            },
-            icon: Icon(
-                lightBrightness ? Icons.light_mode : Icons.nightlight_round),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications),
-          ),
-        ],
-        title: Text(
-          'Memo',
-          textScaleFactor: 1.75,
-          style: GoogleFonts.zenMaruGothic(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(
-            bottom: kBottomNavigationBarHeight + 10,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16.0),
-                  width: 300,
-                  height: 300,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: RotatedBox(
-                          quarterTurns: 2,
-                          child: CircularProgressIndicator(
-                            value: globalStats.normalizedScore,
-                            strokeWidth: 15.0,
-                            color: Colors.amber,
-                            backgroundColor: Colors.grey.withOpacity(0.3),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(26.0),
-                        child: Center(
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            child: Text(
-                              '${double.parse(globalStats.percentage.toStringAsPrecision(4))}%',
-                              textScaleFactor: 100,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(16.0),
-                  decoration: BoxDecoration(
-                    color: Colors.amber,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    children: {
-                      'Week': globalStats.newEntriesWeek,
-                      'Month': globalStats.newEntriesMonth,
-                      'Year': globalStats.newEntriesYear,
-                      'All time': globalStats.newEntriesAllTime
-                    }
-                        .entries
-                        .map(
-                          (e) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 5.0),
-                            child: ListTile(
-                              title: Text(e.key),
-                              trailing: Text('${e.value}'),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -302,9 +206,9 @@ void main() {
 class MyApp extends StatelessWidget {
   MyApp({super.key});
 
-  final _themeMode = ValueNotifier(ThemeMode.light);
-  set themeMode(ThemeMode mode) => _themeMode.value = mode;
-  ThemeMode get themeMode => _themeMode.value;
+  final themeModeNotifier = ValueNotifier(ThemeMode.light);
+  set themeMode(ThemeMode mode) => themeModeNotifier.value = mode;
+  ThemeMode get themeMode => themeModeNotifier.value;
 
   final flexScheme = const FlexSchemeData(
     name: 'Panda',
@@ -381,7 +285,7 @@ class MyApp extends StatelessWidget {
     //const usedScheme = FlexScheme.vesuviusBurn;
 
     return ValueListenableBuilder<ThemeMode>(
-      valueListenable: _themeMode,
+      valueListenable: themeModeNotifier,
       builder: (context, value, child) => MaterialApp.router(
         debugShowCheckedModeBanner: false,
         title: 'Memo',
