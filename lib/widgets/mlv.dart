@@ -43,7 +43,8 @@ class MemoListView extends StatefulWidget {
   State<StatefulWidget> createState() => _MemoListView();
 }
 
-class _MemoListView extends State<MemoListView> {
+class _MemoListView extends State<MemoListView>
+    with SingleTickerProviderStateMixin {
   List<ListEntry> get entries => widget.list?.entries ?? widget.entries;
   MemoListViewController? get controller => widget.controller;
   double get itemExtent => widget.itemExtent;
@@ -54,11 +55,33 @@ class _MemoListView extends State<MemoListView> {
 
   final pageSize = 20;
 
+  AnimationController? _controller;
+  late Animation<double> _animation;
+
   @override
   void initState() {
     super.initState();
 
     controller?.addListener(_controllerListener);
+    bottomNavBar.addListener(_bottomNavBarListener);
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _animation = CurvedAnimation(
+      parent: _controller!,
+      curve: Curves.linearToEaseOut,
+    );
+  }
+
+  void _bottomNavBarListener() {
+    if (bottomNavBar.value == null) {
+      _controller?.reverse();
+    } else {
+      _controller?.forward();
+    }
   }
 
   void _controllerListener() {
@@ -71,6 +94,7 @@ class _MemoListView extends State<MemoListView> {
   @override
   void dispose() {
     controller?.removeListener(_controllerListener);
+    bottomNavBar.removeListener(_bottomNavBarListener);
     super.dispose();
   }
 
@@ -160,54 +184,93 @@ class _MemoListView extends State<MemoListView> {
     controller?.isSelectionEnabled = false;
   }
 
-  Widget buildEntry(BuildContext context, ListEntry entry) {
-    return LayoutBuilder(
-      builder: (context, constraints) => Container(
-        color: _selectedEntries.contains(entry)
-            ? Colors.blue.withOpacity(0.1)
-            : null,
-        child: MaterialButton(
-          minWidth: constraints.maxWidth,
-          padding: const EdgeInsets.all(8.0),
-          onLongPress: widget.list == null ? null : () => openSelection(entry),
-          onPressed: widget.onTap != null
-              ? () {
-                  if (controller?.isSelectionEnabled != true) {
-                    widget.onTap!(entry);
-                  } else {
-                    setState(() {
-                      if (_movePosition != null) {
-                        if (!_selectedEntries.contains(entry)) {
-                          moveSelection(entry);
-                        }
-                      } else if (_selectedEntries.contains(entry)) {
-                        _selectedEntries.remove(entry);
-                      } else {
-                        _selectedEntries.add(entry);
-                      }
-                    });
-                  }
-                }
-              : null,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minWidth: 50,
-                minHeight: itemExtent,
+  void _onEntrySelected(ListEntry entry) {
+    if (controller?.isSelectionEnabled != true) {
+      widget.onTap!(entry);
+    } else {
+      setState(() {
+        if (_movePosition != null) {
+          if (!_selectedEntries.contains(entry)) {
+            moveSelection(entry);
+          }
+        } else if (_selectedEntries.contains(entry)) {
+          _selectedEntries.remove(entry);
+        } else {
+          _selectedEntries.add(entry);
+        }
+      });
+    }
+  }
+
+  Widget buildEntry(BuildContext context, ListEntry entry,
+      [bool isEnd = false]) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizeTransition(
+            axis: Axis.horizontal,
+            sizeFactor: _animation,
+            child: Checkbox(
+              shape: const CircleBorder(),
+              checkColor: colorScheme.background,
+              fillColor: MaterialStateProperty.resolveWith(
+                (states) => colorScheme.onBackground,
               ),
-              child: Center(
-                widthFactor: 1,
-                heightFactor: 1,
-                child: getDetails(entry.target)!(
-                  xmlDoc: entry.data!,
-                  target: entry.target,
-                  mode: DisplayMode.preview,
-                ),
-              ),
+              side: BorderSide(color: colorScheme.onBackground),
+              value: _selectedEntries.contains(entry),
+              onChanged: (value) => _onEntrySelected(entry),
             ),
           ),
-        ),
+          SizedBox(
+            width: MediaQuery.of(context).size.width,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MaterialButton(
+                  onLongPress:
+                      widget.list == null ? null : () => openSelection(entry),
+                  onPressed: () {
+                    if (widget.onTap != null) {
+                      if (controller?.isSelectionEnabled == true) {
+                        _onEntrySelected(entry);
+                      } else {
+                        widget.onTap!(entry);
+                      }
+                    }
+                  },
+                  child: Container(
+                    alignment: Alignment.centerLeft,
+                    constraints: BoxConstraints(
+                      minWidth: 50,
+                      minHeight: itemExtent,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: getDetails(entry.target)!(
+                        xmlDoc: entry.data!,
+                        target: entry.target,
+                        mode: DisplayMode.preview,
+                      ),
+                    ),
+                  ),
+                ),
+                if (!isEnd)
+                  const Divider(
+                    indent: 16.0,
+                    endIndent: 16.0,
+                    thickness: 0.1,
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -222,7 +285,8 @@ class _MemoListView extends State<MemoListView> {
         key: UniqueKey(),
         entries: entries.getRange(start, end).toList(),
         builder: (context, entry) {
-          return buildEntry(context, entry);
+          return buildEntry(
+              context, entry, end == entries.length && entries.last == entry);
         },
       ),
     );
@@ -235,14 +299,9 @@ class _MemoListView extends State<MemoListView> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        return ListView.separated(
+        return ListView.builder(
           itemCount: itemCount,
           shrinkWrap: true,
-          separatorBuilder: (context, index) => const Divider(
-            indent: 10,
-            endIndent: 10,
-            thickness: 0.1,
-          ),
           itemBuilder: (context, index) => itemBuilder(
             context,
             index,
