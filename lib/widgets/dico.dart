@@ -136,15 +136,10 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
           final List<ListEntry> entries =
               results + List<ListEntry>.from(snapshot.data!);
 
-          return ListView.separated(
+          return ListView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
             itemCount: entries.length,
-            separatorBuilder: (context, index) => const Divider(
-              indent: 10,
-              endIndent: 10,
-              thickness: 0.1,
-            ),
             itemBuilder: (context, i) => widget.builder(
               context,
               entries[i],
