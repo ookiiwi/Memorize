@@ -241,72 +241,61 @@ class _ListViewer extends State<ListViewer> {
               onPressed: openSearchPage,
               icon: const Icon(Icons.add),
             ),
-            AnimatedBuilder(
-              animation: mlvController,
-              builder: (context, _) => AnimatedCrossFade(
-                crossFadeState: mlvController.isSelectionEnabled
-                    ? CrossFadeState.showFirst
-                    : CrossFadeState.showSecond,
-                duration: const Duration(milliseconds: 200),
-                firstChild: IconButton(
-                  onPressed: () => setState(
-                    () => mlvController.isSelectionEnabled = false,
-                  ),
-                  icon: const Icon(Icons.cancel),
-                ),
-                secondChild: PopupMenuButton(
-                    position: PopupMenuPosition.under,
-                    color: Theme.of(context).colorScheme.secondary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    onSelected: (dynamic value) => value(),
-                    itemBuilder: (context) {
-                      return [
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          enabled: list.recordID != null,
-                          value: () async {
-                            throw UnimplementedError();
-                            //await pb
-                            //    .collection('memo_list')
-                            //    .getOne(list.recordID!);
-                          },
-                          child: const Text('Sync'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
-
-                            if (list.entries.isEmpty) return;
-
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) {
-                                  return UploadPage(list: list);
-                                },
-                              ),
-                            );
-                          },
-                          child: const Text('Share'),
-                        ),
-                        PopupMenuItem(
-                          padding: _popupPadding,
-                          value: () {
-                            assert(isListInit);
-
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => AboutPage(list: list),
-                              ),
-                            );
-                          },
-                          child: const Text('About'),
-                        )
-                      ];
-                    }),
+            PopupMenuButton(
+              position: PopupMenuPosition.under,
+              color: Theme.of(context).colorScheme.secondary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
               ),
+              onSelected: (dynamic value) {
+                mlvController.isSelectionEnabled = false;
+                value();
+              },
+              itemBuilder: (context) {
+                return [
+                  PopupMenuItem(
+                    padding: _popupPadding,
+                    enabled: list.recordID != null,
+                    value: () async {
+                      throw UnimplementedError();
+                      //await pb
+                      //    .collection('memo_list')
+                      //    .getOne(list.recordID!);
+                    },
+                    child: const Text('Sync'),
+                  ),
+                  PopupMenuItem(
+                    padding: _popupPadding,
+                    value: () {
+                      assert(isListInit);
+
+                      if (list.entries.isEmpty) return;
+
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) {
+                            return UploadPage(list: list);
+                          },
+                        ),
+                      );
+                    },
+                    child: const Text('Share'),
+                  ),
+                  PopupMenuItem(
+                    padding: _popupPadding,
+                    value: () {
+                      assert(isListInit);
+
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => AboutPage(list: list),
+                        ),
+                      );
+                    },
+                    child: const Text('About'),
+                  )
+                ];
+              },
             ),
           ],
         ),
