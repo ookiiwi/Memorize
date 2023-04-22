@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/list.dart';
+import 'package:quiver/collection.dart';
 
 extension DateTimeExtension on DateTime {
   int get weekOfMonth {
@@ -19,22 +21,20 @@ extension DateTimeExtension on DateTime {
 class GlobalStats {
   static final filepath = '$applicationDocumentDirectory/stats/global';
 
-  GlobalStats({
-    this.overallScore = 0,
-    this.scoreCount = 0,
-  })  : _newEntriesWeek = 0,
+  GlobalStats()
+      : _newEntriesWeek = 0,
         _newEntriesMonth = 0,
         _newEntriesYear = 0,
         _newEntriesAllTime = 0,
-        _time = DateTime.now();
+        _time = DateTime.now(),
+        progressWatcher = ProgressWatcher.tryLoad();
 
   GlobalStats.fromJson(Map<String, dynamic> json)
       : _newEntriesWeek = json['neWeek'],
         _newEntriesMonth = json['neMonth'],
         _newEntriesYear = json['neYear'],
         _newEntriesAllTime = json['neAllTime'],
-        overallScore = json['overallScore'],
-        scoreCount = json['scoreCount'],
+        progressWatcher = ProgressWatcher.tryLoad(),
         _time = DateTime.fromMillisecondsSinceEpoch(json['time']) {
     adjustCounts();
   }
@@ -44,15 +44,13 @@ class GlobalStats {
     final content = jsonDecode(file.readAsStringSync());
 
     return GlobalStats.fromJson(content);
-    //return GlobalStats();
   }
 
   int _newEntriesWeek;
   int _newEntriesMonth;
   int _newEntriesYear;
   int _newEntriesAllTime;
-  double overallScore;
-  int scoreCount;
+  ProgressWatcher progressWatcher;
   DateTime _time;
 
   void incrementEntries(int value) {
@@ -69,18 +67,19 @@ class GlobalStats {
   int get newEntriesYear => _newEntriesYear;
   int get newEntriesAllTime => _newEntriesAllTime;
 
-  double get normalizedScore =>
-      scoreCount == 0 ? 0 : overallScore / (scoreCount * 100);
+  double get normalizedScore => progressWatcher.isEmpty
+      ? 0
+      : progressWatcher.score / (progressWatcher.length * 100);
 
-  double get percentage => scoreCount == 0 ? 0 : overallScore / scoreCount;
+  double get percentage => progressWatcher.isEmpty
+      ? 0
+      : progressWatcher.score / progressWatcher.length;
 
   Map<String, dynamic> toJson() => {
         'neWeek': newEntriesWeek,
         'neMonth': newEntriesMonth,
         'neYear': newEntriesYear,
         'neAllTime': newEntriesAllTime,
-        'overallScore': overallScore,
-        'scoreCount': scoreCount,
         'time': DateTime.now().millisecondsSinceEpoch,
       };
 
@@ -90,6 +89,7 @@ class GlobalStats {
     if (!file.existsSync()) file.createSync(recursive: true);
 
     file.writeAsStringSync(jsonEncode(this));
+    progressWatcher._save();
   }
 
   void adjustCounts() {
@@ -108,4 +108,90 @@ class GlobalStats {
 
     _time = time;
   }
+}
+
+class ProgressWatcher extends DelegatingMap<String, ListProgressInfo> {
+  static final filepath = '$applicationDocumentDirectory/stats/progress';
+
+  ProgressWatcher() : progressInfo = {} {
+    MemoList.addListener(_listener);
+  }
+
+  ProgressWatcher.fromJson(Map<String, dynamic> json)
+      : progressInfo =
+            json.map((e, v) => MapEntry(e, ListProgressInfo.fromJson(v))) {
+    MemoList.addListener(_listener);
+  }
+
+  factory ProgressWatcher.tryLoad() {
+    final file = File(filepath);
+
+    if (file.existsSync()) {
+      final content = jsonDecode(file.readAsStringSync());
+      return ProgressWatcher.fromJson(content);
+    }
+
+    return ProgressWatcher();
+  }
+
+  final Map<String, ListProgressInfo> progressInfo;
+
+  @override
+  Map<String, ListProgressInfo> get delegate => progressInfo;
+
+  @override
+  Iterable<MapEntry<String, ListProgressInfo>> get entries =>
+      progressInfo.entries;
+
+  double get score {
+    double score = 0;
+
+    progressInfo.forEach((key, value) => score += value.score);
+
+    return score;
+  }
+
+  void dispose() {
+    MemoList.removeListener(_listener);
+  }
+
+  void _listener(MemoList list, MemoListEvent event, [dynamic data]) {
+    ListProgressInfo? info;
+
+    switch (event) {
+      case MemoListEvent.rename:
+        if (progressInfo.containsKey(data)) {
+          info = progressInfo.remove(data)!;
+          _save();
+        }
+        break;
+      case MemoListEvent.newScore:
+        info = ListProgressInfo(list.score);
+        break;
+    }
+
+    if (info != null) {
+      progressInfo[list.filename] = info;
+    }
+  }
+
+  Map<String, dynamic> toJson() =>
+      progressInfo.map((key, value) => MapEntry(key, value.toJson()));
+
+  void _save() {
+    final file = File(filepath);
+
+    if (!file.existsSync()) file.createSync(recursive: true);
+
+    file.writeAsStringSync(jsonEncode(this));
+  }
+}
+
+class ListProgressInfo {
+  ListProgressInfo(this.score);
+  ListProgressInfo.fromJson(List json) : score = json[0];
+
+  double score;
+
+  List toJson() => [score];
 }
