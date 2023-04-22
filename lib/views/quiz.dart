@@ -55,6 +55,9 @@ class _QuizLauncher extends State<QuizLauncher> {
   MemoList get list => widget.list;
   List<ListEntry> get entries => list.entries;
 
+  final Set<int> _rights = {};
+  final Set<int> _wrongs = {};
+
   late final _optIcons = [
     QuizOpt(Icons.shuffle, (isSelected) => _random = isSelected, () => _random),
     QuizOpt(Icons.flash_on, (isSelected) => _mode = QuizMode.flashCard,
@@ -153,7 +156,16 @@ class _QuizLauncher extends State<QuizLauncher> {
                   ),
                 );
               },
+              onAnswer: (value, i) => value ? _rights.add(i) : _wrongs.add(i),
               onEnd: (value) async {
+                for (int i = 0; i < entries.length; ++i) {
+                  if (_rights.contains(i)) {
+                    entries[i] = entries[i].copyWith(isWrong: false);
+                  } else if (_wrongs.contains(i)) {
+                    entries[i] = entries[i].copyWith(isWrong: true);
+                  }
+                }
+
                 if (value < list.score) {
                   list.level -= 4;
                 } else if (value == 100) {
@@ -164,25 +176,18 @@ class _QuizLauncher extends State<QuizLauncher> {
                   list.level = 1;
                 }
 
-                if (list.lastQuizEntryCount == 0) {
-                  ++globalStats.scoreCount;
-                  globalStats.overallScore += value;
-                } else {
-                  globalStats.overallScore += value - list.score;
-                }
-
                 if (list.lastQuizEntryCount != list.entries.length) {
                   final value = entries.length - list.lastQuizEntryCount;
 
                   globalStats.incrementEntries(value);
                 }
 
-                globalStats.save();
-
                 list
                   ..score = value
                   ..lastQuizEntryCount = entries.length
                   ..save();
+
+                globalStats.save();
 
                 final pendingRequests = await flutterLocalNotificationsPlugin
                     .pendingNotificationRequests();
@@ -377,6 +382,7 @@ class Quiz extends StatefulWidget {
     required this.questionBuilder,
     required this.answerBuilder,
     this.onTapInfo,
+    this.onAnswer,
     this.onEnd,
   });
 
@@ -387,6 +393,7 @@ class Quiz extends StatefulWidget {
   final Widget Function(BuildContext, int) questionBuilder;
   final Widget Function(BuildContext, int) answerBuilder;
   final Future<void> Function(int)? onTapInfo;
+  final void Function(bool value, int i)? onAnswer;
 
   /// Score in range 0 - 100 (e.g 60.2)
   final void Function(double score)? onEnd;
@@ -589,6 +596,13 @@ class _Quiz extends State<Quiz> {
                       ++page;
                     } else {
                       _showScore = true;
+                    }
+
+                    if (widget.onAnswer != null) {
+                      widget.onAnswer!(
+                        dir == AppinioSwiperDirection.right,
+                        indexes[i - 1],
+                      );
                     }
 
                     _score += (dir == AppinioSwiperDirection.left ? -1 : 1)
