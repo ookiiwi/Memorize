@@ -204,48 +204,45 @@ class _ListExplorer extends State<ListExplorer> {
   }
 
   Widget buildBody(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: globalPadding),
-      child: Column(
-        children: [
-          SingleChildScrollView(
-            child: Row(
-              children: Filter.values
-                  .map(
-                    (e) => Container(
-                      margin: const EdgeInsets.all(8.0),
-                      child: OutlinedButton(
-                        onPressed: () => setState(() => filter = e),
-                        child: Text(e.name),
-                      ),
+    return Column(
+      children: [
+        SingleChildScrollView(
+          child: Row(
+            children: Filter.values
+                .map(
+                  (e) => Container(
+                    margin: const EdgeInsets.all(8.0),
+                    child: OutlinedButton(
+                      onPressed: () => setState(() => filter = e),
+                      child: Text(e.name),
                     ),
-                  )
-                  .toList(),
-            ),
+                  ),
+                )
+                .toList(),
           ),
-          Expanded(
-            child: ListExplorerItems(
-              items: _dirContent,
-              onItemTap: (info) {
-                if (info.type == FileSystemEntityType.directory) {
-                  setState(() {
-                    if (widget.onCollectionTap == null ||
-                        widget.onCollectionTap!(info.path)) {
-                      _changeCollection(info.path);
-                    }
-                  });
-                } else {
-                  if (widget.onListTap == null || widget.onListTap!(info)) {
-                    context.push('/list', extra: info);
+        ),
+        Expanded(
+          child: ListExplorerItems(
+            items: _dirContent,
+            onItemTap: (info) {
+              if (info.type == FileSystemEntityType.directory) {
+                setState(() {
+                  if (widget.onCollectionTap == null ||
+                      widget.onCollectionTap!(info.path)) {
+                    _changeCollection(info.path);
                   }
+                });
+              } else {
+                if (widget.onListTap == null || widget.onListTap!(info)) {
+                  context.push('/list', extra: info);
                 }
-              },
-              onSelectionAction:
-                  !buildScaffold ? null : () => setState(() => _updateData()),
-            ),
+              }
+            },
+            onSelectionAction:
+                !buildScaffold ? null : () => setState(() => _updateData()),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -310,38 +307,39 @@ class _ListExplorerItems extends State<ListExplorerItems>
   List<FileInfo> get items => widget.items;
   final _selectedLists = <FileInfo>[];
 
-  late final AnimationController _controller = AnimationController(
-    duration: const Duration(milliseconds: 200),
-    vsync: this,
-  );
-  late final Animation<double> _animation = CurvedAnimation(
-    parent: _controller,
-    curve: Curves.linearToEaseOut,
-  );
+  AnimationController? _controller;
+  late Animation<double> _animation;
 
   @override
   void initState() {
     super.initState();
 
     bottomNavBar.addListener(_openSelection);
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _animation = CurvedAnimation(
+      parent: _controller!,
+      curve: Curves.linearToEaseOut,
+    );
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     bottomNavBar.removeListener(_openSelection);
     super.dispose();
   }
 
   void _openSelection() {
     if (bottomNavBar.value == null) {
-      //setState(() {
       _selectedLists.clear();
-      //});
-
-      _controller.reverse();
+      _controller?.reverse();
     } else {
-      _controller.forward();
+      _controller?.forward();
     }
   }
 
@@ -394,7 +392,7 @@ class _ListExplorerItems extends State<ListExplorerItems>
     // TODO: hide check boxes
   }
 
-  Widget buildItem(FileInfo item) {
+  Widget buildItem(FileInfo item, [bool isEnd = false]) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
@@ -406,52 +404,70 @@ class _ListExplorerItems extends State<ListExplorerItems>
           SizeTransition(
             axis: Axis.horizontal,
             sizeFactor: _animation,
-            child: Checkbox(
-              shape: const CircleBorder(),
-              checkColor: colorScheme.background,
-              fillColor: MaterialStateProperty.resolveWith(
-                (states) => colorScheme.onBackground,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 5),
+              child: Checkbox(
+                shape: const CircleBorder(),
+                checkColor: colorScheme.background,
+                fillColor: MaterialStateProperty.resolveWith(
+                  (states) => colorScheme.onBackground,
+                ),
+                side: BorderSide(color: colorScheme.onBackground),
+                value: _selectedLists.contains(item),
+                onChanged: (value) => _onListSelected(item),
               ),
-              side: BorderSide(color: colorScheme.onBackground),
-              value: _selectedLists.contains(item),
-              onChanged: (value) => _onListSelected(item),
             ),
           ),
           SizedBox(
             width: MediaQuery.of(context).size.width,
-            child: ListTile(
-              leading: Icon(
-                item.type == FileSystemEntityType.directory
-                    ? Icons.folder
-                    : Icons.rectangle_rounded,
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-              ),
-              title: Text(item.name),
-              onTap: () {
-                if (bottomNavBar.value != null) {
-                  _onListSelected(item);
-                } else if (widget.onItemTap != null) {
-                  widget.onItemTap!(item);
-                }
-              },
-              onLongPress:
-                  widget.onSelectionAction != null ? _setBottomNavBar : null,
-              trailing: item.type == FileSystemEntityType.file
-                  ? IconButton(
-                      onPressed: () => context.push(
-                        '/quiz_launcher',
-                        extra: MemoList.open(item.path),
-                      ),
-                      icon: Icon(
-                        Icons.play_arrow_rounded,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withOpacity(0.7),
-                        size: 36,
-                      ),
-                    )
-                  : null,
+            child: Column(
+              children: [
+                MaterialButton(
+                  onPressed: () {
+                    if (bottomNavBar.value != null) {
+                      _onListSelected(item);
+                    } else if (widget.onItemTap != null) {
+                      widget.onItemTap!(item);
+                    }
+                  },
+                  onLongPress: widget.onSelectionAction != null
+                      ? _setBottomNavBar
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(item.name),
+                          item.type == FileSystemEntityType.file
+                              ? IconButton(
+                                  onPressed: () => context.push(
+                                    '/quiz_launcher',
+                                    extra: MemoList.open(item.path),
+                                  ),
+                                  icon: Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: colorScheme.primary.withOpacity(0.7),
+                                    size: 36,
+                                  ),
+                                )
+                              : IconButton(
+                                  onPressed: null,
+                                  icon: Icon(
+                                    Icons.folder_rounded,
+                                    color: colorScheme.primary.withOpacity(0.7),
+                                  ),
+                                ),
+                        ]),
+                  ),
+                ),
+                if (!isEnd)
+                  const Divider(
+                    indent: 16.0,
+                    endIndent: 16.0,
+                    thickness: 0.1,
+                  )
+              ],
             ),
           ),
         ],
@@ -470,17 +486,9 @@ class _ListExplorerItems extends State<ListExplorerItems>
           checkColor: MaterialStateProperty.all(colorScheme.onSurfaceVariant),
         ),
       ),
-      child: ListView.separated(
+      child: ListView.builder(
         shrinkWrap: true,
         padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight * 2),
-        separatorBuilder: (context, i) {
-          return Divider(
-            indent: 16,
-            endIndent: 16,
-            thickness: 0.3,
-            color: colorScheme.primary.withOpacity(0.3),
-          );
-        },
         itemCount: items.length,
         itemBuilder: (context, i) {
           final item = items[i];
@@ -490,10 +498,7 @@ class _ListExplorerItems extends State<ListExplorerItems>
             ListViewer.preload(item);
           }
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: buildItem(item),
-          );
+          return buildItem(item, i == items.length - 1);
         },
       ),
     );
@@ -521,14 +526,12 @@ class _ListExplorerSearch extends State<ListExplorerSearch> {
         title: SizedBox(
           height: kToolbarHeight,
           child: TextField(
+            autofocus: true,
             controller: controller,
             decoration: InputDecoration(
-              suffix: GestureDetector(
-                onTap: () => setState(() => controller.clear()),
-                child: Transform.rotate(
-                  angle: 45 * pi / 180,
-                  child: const Icon(Icons.add),
-                ),
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => controller.clear()),
+                icon: const Icon(Icons.clear),
               ),
               hintText: 'List name',
               border: OutlineInputBorder(
