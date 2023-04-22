@@ -209,6 +209,8 @@ class _ListViewer extends State<ListViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final wrongEntries = list.wrongEntries;
+
     return WillPopScope(
       onWillPop: () async {
         bottomNavBar.value = null;
@@ -308,56 +310,73 @@ class _ListViewer extends State<ListViewer> {
             ),
           ],
         ),
-        body: EntryViewier(
-          key: ValueKey(list.filename),
-          list: list,
-          selectionController: _selectionController,
-          onDeleteEntry: (_) => setState(() {}),
-          mlvController: mlvController,
+        body: PageView(
+          children: [
+            EntryViewer(
+              key: ValueKey(list.filename),
+              list: list,
+              selectionController: _selectionController,
+              onDeleteEntry: (_) => setState(() {}),
+              mlvController: mlvController,
+            ),
+            if (wrongEntries.isNotEmpty &&
+                wrongEntries.length != list.entries.length)
+              EntryViewer.fromEntries(entries: wrongEntries)
+          ],
         ),
       ),
     );
   }
 }
 
-class EntryViewier extends StatefulWidget {
-  const EntryViewier(
+class EntryViewer extends StatefulWidget {
+  const EntryViewer(
       {super.key,
       required this.list,
       this.selectionController,
       this.onDeleteEntry,
-      this.mlvController});
+      this.mlvController})
+      : entries = const [];
 
-  final MemoList list;
+  const EntryViewer.fromEntries({super.key, this.entries = const []})
+      : list = null,
+        selectionController = null,
+        onDeleteEntry = null,
+        mlvController = null;
+
+  final MemoList? list;
+  final Iterable<ListEntry> entries;
   final SelectionController? selectionController;
   final void Function(ListEntry entry)? onDeleteEntry;
   final MemoListViewController? mlvController;
 
   @override
-  State<StatefulWidget> createState() => _EntryViewier();
+  State<StatefulWidget> createState() => _EntryViewer();
 }
 
-class _EntryViewier extends State<EntryViewier> {
+class _EntryViewer extends State<EntryViewer> {
   late final list = widget.list;
   late final selectionController = widget.selectionController;
-  late final mlvController = widget.mlvController ?? MemoListViewController();
+  late final mlvController = widget.list != null
+      ? (widget.mlvController ?? MemoListViewController())
+      : null;
 
-  List<ListEntry> get entries => widget.list.entries;
+  Iterable<ListEntry> get entries => widget.list?.entries ?? widget.entries;
 
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        if (mlvController.isSelectionEnabled) {
-          setState(() => mlvController.isSelectionEnabled = false);
+        if (mlvController?.isSelectionEnabled == true) {
+          setState(() => mlvController!.isSelectionEnabled = false);
           return false;
         }
 
         return true;
       },
       child: GestureDetector(
-        onTap: mlvController.isSelectionEnabled
-            ? () => setState(() => mlvController.isSelectionEnabled = false)
+        onTap: mlvController?.isSelectionEnabled == true
+            ? () => setState(() => mlvController!.isSelectionEnabled = false)
             : null,
         child: Column(
           children: [
@@ -366,18 +385,24 @@ class _EntryViewier extends State<EntryViewier> {
                 animation: selectionController ?? ValueNotifier(null),
                 builder: (context, _) => MemoListView(
                   list: list,
+                  entries: widget.entries.toList(),
                   onDelete: widget.onDeleteEntry,
                   controller: mlvController,
                   onTap: (entry) {
-                    mlvController.isSelectionEnabled = false;
+                    mlvController?.isSelectionEnabled = false;
 
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) {
-                          return EntryView(
-                            list: widget.list,
-                            entryId: entry.id,
-                          );
+                          return widget.list != null
+                              ? EntryView(
+                                  list: widget.list,
+                                  entryId: entry.id,
+                                )
+                              : EntryView.fromEntries(
+                                  entries: entries.toList(),
+                                  entryId: entry.id,
+                                );
                         },
                       ),
                     ).then((value) {
@@ -398,19 +423,18 @@ class EntryView extends StatefulWidget {
   const EntryView(
       {super.key,
       required this.list,
-      required this.entryId,
+      this.entryId = 0,
       this.entryOpts = const []})
-      : entry = null;
+      : entries = const [];
 
-  const EntryView.single({super.key, required this.entry})
-      : entryId = 0,
-        list = null,
-        entryOpts = const [],
-        assert(entry != null);
+  const EntryView.fromEntries(
+      {super.key, this.entries = const [], this.entryId = 0})
+      : list = null,
+        entryOpts = const [];
 
   final int entryId;
   final MemoList? list;
-  final ListEntry? entry;
+  final List<ListEntry> entries;
   final Iterable<EntryOptions> entryOpts;
 
   @override
@@ -419,7 +443,7 @@ class EntryView extends StatefulWidget {
 
 class _EntryView extends State<EntryView> {
   late List<ListEntry> entries =
-      widget.list?.entries.toList() ?? [widget.entry!];
+      widget.list?.entries.toList() ?? widget.entries;
   late final PageController _controller;
 
   @override
@@ -427,7 +451,7 @@ class _EntryView extends State<EntryView> {
     super.initState();
 
     _controller = PageController(
-      initialPage: widget.entry != null
+      initialPage: widget.entries.length == 1
           ? 0
           : entries.toList().indexWhere((e) => e.id == widget.entryId),
     );
@@ -619,7 +643,7 @@ class _EntrySearch extends State<EntrySearch> {
                             MaterialPageRoute(
                               builder: (context) => Stack(
                                 children: [
-                                  EntryView.single(entry: entry),
+                                  EntryView.fromEntries(entries: [entry]),
                                   Positioned(
                                     right: 20,
                                     bottom: kBottomNavigationBarHeight + 10,
