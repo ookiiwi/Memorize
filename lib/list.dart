@@ -11,24 +11,37 @@ import 'package:xml/xml.dart';
 import 'package:diffutil_dart/diffutil.dart' as diffutil;
 import 'package:quiver/collection.dart' as quiver;
 
+enum MemoListEvent { rename, newScore }
+
+typedef MemoListEventListener = void
+    Function(MemoList list, MemoListEvent event, [dynamic data]);
+
 class ListEntry extends Equatable {
-  const ListEntry(this.id, {this.subTarget, this.data});
+  const ListEntry(this.id, {this.subTarget, this.data, this.isWrong = false});
   ListEntry.fromJson(Map<String, dynamic> json, {this.data})
       : id = json['id'],
-        subTarget = json['s'];
+        subTarget = json['s'],
+        isWrong = json['w'] ?? false;
 
-  ListEntry copyWith(
-      {int? id, String? source, String? subTarget, XmlDocument? data}) {
+  ListEntry copyWith({
+    int? id,
+    String? source,
+    String? subTarget,
+    XmlDocument? data,
+    bool? isWrong,
+  }) {
     return ListEntry(
       id ?? this.id,
       subTarget: subTarget ?? this.subTarget,
       data: data ?? this.data,
+      isWrong: isWrong ?? this.isWrong,
     );
   }
 
   final int id;
   final String? subTarget;
   final XmlDocument? data;
+  final bool isWrong;
 
   String get target =>
       'jpn-${appSettings.language}${subTarget != null ? "-$subTarget" : ""}';
@@ -36,6 +49,7 @@ class ListEntry extends Equatable {
   Map<String, dynamic> toJson() => {
         'id': id,
         if (subTarget != null) 's': subTarget,
+        if (isWrong) 'w': isWrong
       };
 
   @override
@@ -50,7 +64,7 @@ class MemoList {
     this.filename,
   )   : entries = [],
         level = 1,
-        score = 0,
+        _score = 0,
         lastQuizEntryCount = 0 {
     // Force set recordID
     recordID ??= null;
@@ -59,7 +73,8 @@ class MemoList {
   MemoList.fromJson(this.filename, Map<String, dynamic> json)
       : entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))),
         level = json['level'] ?? 1,
-        score = json['score'] ?? 0,
+        //_score = json['score'] ?? 0,
+        _score = globalStats.progressWatcher[filename]?.score ?? 0,
         lastQuizEntryCount = json['lqec'] ?? 0 {
     if (level < 1) level = 1;
 
@@ -80,8 +95,26 @@ class MemoList {
   List<ListEntry> entries;
   String filename;
   int level;
-  double score;
+  double _score;
   int lastQuizEntryCount;
+
+  double get score => _score;
+  set score(double value) {
+    _score = value;
+    notifyListeners(MemoListEvent.newScore);
+  }
+
+  static final List<MemoListEventListener> _listeners = [];
+  static void addListener(MemoListEventListener listener) =>
+      _listeners.add(listener);
+  static void removeListener(MemoListEventListener listener) =>
+      _listeners.remove(listener);
+
+  void notifyListeners(MemoListEvent event, [dynamic data]) {
+    for (var e in _listeners) {
+      e(this, event, data);
+    }
+  }
 
   String get name => extractName(filename);
   String? get recordID {
@@ -95,6 +128,7 @@ class MemoList {
     File file = File(filename);
     id ??= dummyRecordID;
 
+    String oldFilename = filename;
     String newFilename =
         '${filename.replaceFirst(RegExp('_${recordID ?? dummyRecordID}\$'), '')}_$id';
 
@@ -102,6 +136,8 @@ class MemoList {
     filename = file.absolute.path;
 
     assert(recordID == id || recordID == null && id == dummyRecordID);
+
+    notifyListeners(MemoListEvent.rename, oldFilename);
   }
 
   static String extractName(String filename) =>
@@ -110,7 +146,6 @@ class MemoList {
   Map<String, dynamic> toJson() => {
         'entries': entries.map((e) => e.toJson()).toList(),
         'level': level,
-        'score': score,
         'lqec': lastQuizEntryCount
       };
 
@@ -119,12 +154,14 @@ class MemoList {
   void rename(String newName) {
     final file = File(filename);
 
+    if (!file.existsSync()) return;
+
+    String oldFilename = filename;
     filename =
         join(dirname(filename), '${newName}_${recordID ?? dummyRecordID}');
 
-    if (file.existsSync()) {
-      file.renameSync(filename);
-    }
+    file.renameSync(filename);
+    notifyListeners(MemoListEvent.rename, oldFilename);
   }
 
   Future<void> setReminder(int id) async {
@@ -149,6 +186,8 @@ class MemoList {
       androidAllowWhileIdle: true,
     );
   }
+
+  Iterable<ListEntry> get wrongEntries => entries.where((e) => e.isWrong);
 }
 
 typedef VersionListReviver<T> = T Function(dynamic);
