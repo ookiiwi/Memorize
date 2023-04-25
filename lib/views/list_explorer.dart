@@ -522,41 +522,26 @@ class _ListExplorerSearch extends State<ListExplorerSearch> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: kToolbarHeight * 1.3,
-        title: SizedBox(
-          height: kToolbarHeight,
-          child: TextField(
-            autofocus: true,
-            controller: controller,
-            decoration: InputDecoration(
-              suffixIcon: IconButton(
-                onPressed: () => setState(() => controller.clear()),
-                icon: const Icon(Icons.clear),
-              ),
-              hintText: 'List name',
-              border: OutlineInputBorder(
-                borderSide: BorderSide.none,
-                borderRadius: BorderRadius.circular(30),
-              ),
-            ),
-            onChanged: (value) {
-              setState(() {
-                results = widget.dir.listSync().fold([], (p, e) {
-                  final type = e.statSync().type;
+        toolbarHeight: kToolbarTextFieldHeight,
+        title: AppBarTextField(
+          hintText: 'List name',
+          onChanged: (value) {
+            setState(() {
+              results = widget.dir.listSync().fold([], (p, e) {
+                final type = e.statSync().type;
 
-                  if (type == FileSystemEntityType.file) {
-                    final name = MemoList.extractName(e.path);
+                if (type == FileSystemEntityType.file) {
+                  final name = MemoList.extractName(e.path);
 
-                    if (name.toLowerCase().contains(value.toLowerCase())) {
-                      p.add(FileInfo(name, e.path, type));
-                    }
+                  if (name.toLowerCase().contains(value.toLowerCase())) {
+                    p.add(FileInfo(name, e.path, type));
                   }
+                }
 
-                  return p;
-                });
+                return p;
               });
-            },
-          ),
+            });
+          },
         ),
         actions: const [IconButton(onPressed: null, icon: SizedBox())],
       ),
