@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
@@ -12,6 +11,7 @@ import 'package:memorize/list.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/views/auth.dart';
+import 'package:memorize/widgets/bar.dart';
 import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
@@ -22,6 +22,7 @@ import 'package:memorize/widgets/selectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:xml/xml.dart';
+import 'package:flutter_ctq/flutter_ctq.dart';
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -552,6 +553,15 @@ class _EntryViewInfo extends State<EntryViewInfo> {
   }
 }
 
+typedef EntrySearchDelegate = Future<CTQFindResult> Function(String value);
+
+class EntrySearchLabel {
+  EntrySearchLabel({required this.delegate}) : result = Future.value([]);
+
+  final EntrySearchDelegate delegate;
+  Future<CTQFindResult> result;
+}
+
 class EntrySearch extends StatefulWidget {
   const EntrySearch({super.key, this.onItemSelected});
 
@@ -562,49 +572,90 @@ class EntrySearch extends StatefulWidget {
 }
 
 class _EntrySearch extends State<EntrySearch> {
-  Future<List<MapEntry<String, List<int>>>> findResultWord = Future.value([]);
-  Future<List<MapEntry<String, List<int>>>> findResultKanji = Future.value([]);
+  final _baseTarget = 'jpn-${appSettings.language}';
+
+  Map<String, Future<CTQFindResult>> findResult = {
+    'word': Future.value([]),
+    'kanji': Future.value([]),
+  };
+  Map<String, bool> wordSearchOptions = {
+    'Noun': true,
+    'Verb': true,
+    'Adverb': true,
+    'Adjective': true,
+    'Counter': true,
+  };
   String search = '';
   final controller = TextEditingController();
+
+  Widget buildSearchFilter() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(360),
+      child: Material(
+        color: Colors.transparent,
+        child: PopupMenuButton<MapEntry>(
+          position: PopupMenuPosition.under,
+          offset: const Offset(0, 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: IgnorePointer(
+            child: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.filter_list_rounded),
+            ),
+          ),
+          onSelected: (e) =>
+              setState(() => wordSearchOptions[e.key] = !e.value),
+          itemBuilder: (context) => List.from(
+            wordSearchOptions.entries.map(
+              (e) => PopupMenuItem(
+                value: e,
+                padding: const EdgeInsets.all(2.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IgnorePointer(
+                      child: Checkbox(
+                        shape: const CircleBorder(),
+                        value: e.value,
+                        onChanged: (_) {},
+                      ),
+                    ),
+                    Text(e.key),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0.0,
-        actions: [
-          AbsorbPointer(
-            child: IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const SizedBox(),
-            ),
-          )
-        ],
+        toolbarHeight: kToolbarTextFieldHeight,
+        actions: [buildSearchFilter()],
         centerTitle: true,
-        title: TextField(
-          controller: controller,
-          textAlignVertical: TextAlignVertical.center,
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.all(8.0),
-            hintText: 'Search',
-            suffix: GestureDetector(
-              onTap: () => setState(() => controller.clear()),
-              child: Transform.rotate(
-                angle: 45 * pi / 180,
-                child: const Icon(Icons.add),
-              ),
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-          ),
+        title: AppBarTextField(
+          hintText: 'Search',
           onChanged: (value) {
-            findResultWord =
-                DicoManager.find('jpn-${appSettings.language}', value);
-            findResultKanji =
-                DicoManager.find('jpn-${appSettings.language}-kanji', value);
             search = value;
+
+            findResult['word'] = DicoManager.find(
+              _baseTarget,
+              value,
+              cnt: 0,
+            );
+            findResult['kanji'] = DicoManager.find(
+              '$_baseTarget-kanji',
+              value,
+              cnt: 0,
+            );
 
             setState(() {});
           },
@@ -614,10 +665,10 @@ class _EntrySearch extends State<EntrySearch> {
         padding: const EdgeInsets.all(8.0),
         child: LabeledPageView.builder(
           key: const ValueKey(0),
-          labels: const ['WORD', 'KANJI'],
+          labels: findResult.keys.map((e) => e.toUpperCase()).toList(),
           itemBuilder: (context, i) {
             return DicoFindBuilder(
-              findResult: i == 0 ? findResultWord : findResultKanji,
+              findResult: findResult.values.elementAt(i),
               builder: (context, res) {
                 final List<ListEntry> entries = res.map((e) {
                   return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
@@ -626,30 +677,29 @@ class _EntrySearch extends State<EntrySearch> {
                 return MemoListView(
                   key: ValueKey('$search $i'),
                   entries: entries,
-                  onTap: widget.onItemSelected != null
-                      ? (entry) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => Stack(
-                                children: [
-                                  EntryView.fromEntries(entries: [entry]),
-                                  Positioned(
-                                    right: 20,
-                                    bottom: kBottomNavigationBarHeight + 10,
-                                    child: FloatingActionButton(
-                                      onPressed: () {
-                                        widget.onItemSelected!(entry);
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: const Icon(Icons.add),
-                                    ),
-                                  )
-                                ],
-                              ),
-                            ),
-                          );
-                        }
-                      : null,
+                  onTap: (entry) {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => Stack(
+                          children: [
+                            EntryView.fromEntries(entries: [entry]),
+                            if (widget.onItemSelected != null)
+                              Positioned(
+                                right: 20,
+                                bottom: kBottomNavigationBarHeight + 10,
+                                child: FloatingActionButton(
+                                  onPressed: () {
+                                    widget.onItemSelected!(entry);
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: const Icon(Icons.add),
+                                ),
+                              )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             );
