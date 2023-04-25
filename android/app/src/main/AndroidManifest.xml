@@ -39,4 +39,9 @@
             android:stopWithTask="false"/>
     </application>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>  
 </manifest>

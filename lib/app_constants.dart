@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:memorize/auth/auth.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
+import 'package:memorize/tts.dart' as tts;
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -73,6 +74,12 @@ Future<void> initConstants() async {
   } catch (e) {
     appSettings = AppSettings();
   }
+
+  tts.init();
+}
+
+Future<void> disposeConstants() async {
+  await tts.stop();
 }
 
 class IsoLanguage {

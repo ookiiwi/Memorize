@@ -23,6 +23,7 @@ import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:xml/xml.dart';
 import 'package:flutter_ctq/flutter_ctq.dart';
+import 'package:memorize/tts.dart' as tts;
 
 class ListViewer extends StatefulWidget {
   const ListViewer({super.key, required this.dir})
@@ -435,16 +436,23 @@ class _EntryView extends State<EntryView> {
   late List<ListEntry> entries =
       widget.list?.entries.toList() ?? widget.entries;
   late final PageController _controller;
+  int _initPage = 0;
 
   @override
   void initState() {
     super.initState();
 
-    _controller = PageController(
-      initialPage: widget.entries.length == 1
-          ? 0
-          : entries.toList().indexWhere((e) => e.id == widget.entryId),
-    );
+    _initPage = widget.entries.length == 1
+        ? 0
+        : entries.toList().indexWhere((e) => e.id == widget.entryId);
+
+    _controller = PageController(initialPage: _initPage);
+  }
+
+  @override
+  void dispose() {
+    tts.stop();
+    super.dispose();
   }
 
   @override
@@ -454,11 +462,36 @@ class _EntryView extends State<EntryView> {
         scrolledUnderElevation: 0.0,
         title: const Text('Entries'),
         actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: tts.isFlutterTtsInit,
+            builder: (context, value, _) {
+              return IconButton(
+                onPressed: value == false
+                    ? null
+                    : () {
+                        final entry =
+                            entries[_controller.page?.toInt() ?? _initPage];
+                        final getAudioTextFunc = getAudioText(entry.target);
+
+                        if (entry.data == null || getAudioTextFunc == null) {
+                          return;
+                        }
+
+                        final text = getAudioTextFunc(entry.data!);
+
+                        if (text != null) {
+                          tts.speak(text: text);
+                        }
+                      },
+                icon: const Icon(Icons.volume_up_rounded),
+              );
+            },
+          ),
           IconButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) {
-                  final entry = entries[_controller.page!.toInt()];
+                  final entry = entries[_controller.page?.toInt() ?? _initPage];
 
                   return EntryViewInfo(
                     entry: entry,
@@ -492,22 +525,24 @@ class _EntryView extends State<EntryView> {
                   padding:
                       const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
                   child: Provider.value(
-                    value: widget.list,
-                    builder: (context, _) => DicoGetBuilder(
-                      getResult: entries[i].data != null
-                          ? Future.value(entries[i].data)
-                          : DicoManager.get(entries[i].target, entries[i].id),
-                      builder: (context, doc) {
-                        entries[i] = entries[i].copyWith(data: doc);
+                      value: widget.list,
+                      builder: (context, _) {
+                        return DicoGetBuilder(
+                          getResult: entries[i].data != null
+                              ? Future.value(entries[i].data)
+                              : DicoManager.get(
+                                  entries[i].target, entries[i].id),
+                          builder: (context, doc) {
+                            entries[i] = entries[i].copyWith(data: doc);
 
-                        return getDetails(entries[i].target)!(
-                          xmlDoc: doc,
-                          target: entries[i].target,
-                          mode: DisplayMode.details,
+                            return getDetails(entries[i].target)!(
+                              xmlDoc: doc,
+                              target: entries[i].target,
+                              mode: DisplayMode.details,
+                            );
+                          },
                         );
-                      },
-                    ),
-                  ),
+                      }),
                 ),
               ),
             );

@@ -531,6 +531,10 @@ class EntryJpn extends StatelessWidget {
     );
   }
 
+  static String? getAudioText(XmlDocument doc) {
+    return doc.queryXPath(".//form[@type='r_ele']/orth").node?.text;
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (mode) {

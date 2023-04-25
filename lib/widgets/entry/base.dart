@@ -12,6 +12,7 @@ import 'package:xml/xml.dart';
 
 import 'package:memorize/widgets/entry/eng.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
+import 'package:memorize/tts.dart' as tts;
 
 enum DisplayMode { preview, details, quiz, detailsOptions, quizOptions }
 
@@ -25,23 +26,40 @@ typedef EntryConstructor = Widget Function(
     required XmlDocument xmlDoc,
     required String target,
     required DisplayMode mode});
+typedef GetAudioTextFunc = String? Function(XmlDocument);
 
-final _register = <String, Map<String, EntryConstructor>>{
-  'jpn': {'': EntryJpn.new, 'kanji': EntryJpnKanji.new},
-  'eng': {'': EntryEng.new}
+final _register = <String, Map<String, List>>{
+  'jpn': {
+    '': [EntryJpn.new, EntryJpn.getAudioText],
+    'kanji': [EntryJpnKanji.new]
+  },
+  'eng': {
+    '': [EntryEng.new]
+  }
 };
 
 const quizFlashcardOptions = {'': FlashcardOptions.values};
 
 EntryConstructor? getDetails(String target) {
   final part = target.split('-');
-  final details = _register[part[0]]?[''];
+  var details = _register[part[0]]?['']?.first;
 
   if (part.length > 2) {
-    return _register[part[0]]?[part[2]];
+    details = _register[part[0]]?[part[2]]?.first;
   }
 
-  return details;
+  return details as EntryConstructor?;
+}
+
+GetAudioTextFunc? getAudioText(String target) {
+  final part = target.split('-');
+  var details = _register[part[0]]?[''];
+
+  if (part.length > 2) {
+    details = _register[part[0]]?[part[2]];
+  }
+
+  return details?.length == 2 ? (details?[1]) : null;
 }
 
 abstract class Entry {
@@ -106,10 +124,22 @@ Widget buildDetailsField(
           spacing: 20,
           children: children,
         ),
-      if (!wrap)
-        Column(
-          children: children,
-        )
+      if (!wrap) Column(children: children)
     ],
   );
+}
+
+class DefaultAudioButton extends StatelessWidget {
+  const DefaultAudioButton({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+        onPressed: () {
+          tts.speak(text: text);
+        },
+        icon: const Icon(Icons.volume_up_rounded));
+  }
 }
