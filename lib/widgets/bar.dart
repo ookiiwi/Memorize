@@ -1,5 +1,51 @@
 import 'package:flutter/material.dart';
 
+/// Recommended toolbarHeight for textfield
+const kToolbarTextFieldHeight = kToolbarHeight * 1.3;
+
+class AppBarTextField extends StatefulWidget {
+  const AppBarTextField({
+    super.key,
+    this.controller,
+    this.onChanged,
+    this.height = kToolbarHeight,
+    this.hintText,
+  });
+
+  final String? hintText;
+  final double height;
+  final TextEditingController? controller;
+  final void Function(String value)? onChanged;
+
+  @override
+  State<StatefulWidget> createState() => _AppBarTextField();
+}
+
+class _AppBarTextField extends State<AppBarTextField> {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: kToolbarHeight,
+      child: TextField(
+        autofocus: true,
+        controller: widget.controller,
+        decoration: InputDecoration(
+          suffixIcon: IconButton(
+            onPressed: () => setState(() => widget.controller?.clear()),
+            icon: const Icon(Icons.clear),
+          ),
+          hintText: widget.hintText,
+          border: OutlineInputBorder(
+            borderSide: BorderSide.none,
+            borderRadius: BorderRadius.circular(30),
+          ),
+        ),
+        onChanged: widget.onChanged,
+      ),
+    );
+  }
+}
+
 class BottomNavBar extends StatefulWidget {
   const BottomNavBar(
       {super.key, this.items = const [], this.backgroundColor, this.onTap});
