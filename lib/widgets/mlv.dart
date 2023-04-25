@@ -27,7 +27,7 @@ class MemoListView extends StatefulWidget {
       this.entries = const [],
       this.controller,
       this.onTap,
-      //this.onLoad,
+      this.onLoad,
       this.onDelete,
       this.itemExtent = 50});
 
@@ -36,7 +36,7 @@ class MemoListView extends StatefulWidget {
   final double itemExtent;
   final MemoListViewController? controller;
   final void Function(ListEntry entry)? onTap;
-  //final void Function(int page, int cnt)? onLoad;
+  final void Function(int currentEntryCount)? onLoad;
   final void Function(ListEntry entry)? onDelete;
 
   @override
@@ -96,36 +96,6 @@ class _MemoListView extends State<MemoListView>
     controller?.removeListener(_controllerListener);
     bottomNavBar.removeListener(_bottomNavBarListener);
     super.dispose();
-  }
-
-  Widget dialog(BuildContext context, ListEntry entry) {
-    return Dialog(
-      child: ListView(
-        shrinkWrap: true,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.abc),
-            title: const Text('Dummy'),
-            onTap: Navigator.of(context).pop,
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete),
-            title: const Text('Remove'),
-            onTap: () {
-              setState(() {
-                widget.list!.entries.remove(entry);
-              });
-
-              widget.list!.save();
-
-              if (widget.onDelete != null) widget.onDelete!(entry);
-
-              Navigator.of(context).pop();
-            },
-          )
-        ],
-      ),
-    );
   }
 
   void openSelection(ListEntry entry) {
@@ -286,7 +256,10 @@ class _MemoListView extends State<MemoListView>
         entries: entries.getRange(start, end).toList(),
         builder: (context, entry) {
           return buildEntry(
-              context, entry, end == entries.length && entries.last == entry);
+            context,
+            entry,
+            end == entries.length && entries.last == entry,
+          );
         },
       ),
     );
@@ -300,14 +273,19 @@ class _MemoListView extends State<MemoListView>
     return LayoutBuilder(
       builder: (context, constraints) {
         return ListView.builder(
-          itemCount: itemCount,
-          shrinkWrap: true,
-          itemBuilder: (context, index) => itemBuilder(
-            context,
-            index,
-            constraints.maxHeight,
-          ),
-        );
+            itemCount: itemCount,
+            shrinkWrap: true,
+            itemBuilder: (context, index) {
+              if (index == itemCount - 2 && widget.onLoad != null) {
+                widget.onLoad!(entries.length);
+              }
+
+              return itemBuilder(
+                context,
+                index,
+                constraints.maxHeight - kBottomNavigationBarHeight,
+              );
+            });
       },
     );
   }
