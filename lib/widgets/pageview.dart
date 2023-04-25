@@ -68,7 +68,10 @@ class _LabeledPageView extends State<LabeledPageView> {
                       right: indicatorWidth * (labels.length - value - 1),
                     ),
                     height: 4,
-                    color: Theme.of(context).colorScheme.primary,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   );
                 });
           },
