@@ -17,7 +17,36 @@ class MemoHub extends StatefulWidget {
   State<StatefulWidget> createState() => _MemoHub();
 }
 
-class _MemoHub extends State<MemoHub> {
+class _MemoHub extends State<MemoHub> with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+  late Animation<double> _animation;
+  final textController = TextEditingController();
+  final _search = ValueNotifier<String?>(null);
+  bool _openSearch = false;
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _animation = CurvedAnimation(
+      parent: _controller!,
+      curve: Curves.linearToEaseOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -28,20 +57,58 @@ class _MemoHub extends State<MemoHub> {
       ),
       body: ListView(
         shrinkWrap: true,
+        physics: _openSearch
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
+          Container(
+            height: kToolbarHeight,
+            margin: const EdgeInsets.all(16.0),
             child: TextField(
+              focusNode: _focus,
+              controller: textController,
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded),
+                prefixIcon: !_openSearch
+                    ? const Icon(Icons.search_rounded)
+                    : BackButton(onPressed: () {
+                        setState(() {
+                          _openSearch = false;
+                        });
+
+                        _controller?.reverse();
+                        _focus.unfocus();
+                      }),
                 hintText: 'Search a list',
+                suffixIcon: IconButton(
+                  onPressed: () {
+                    setState(() {
+                      textController.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.clear),
+                ),
                 border: OutlineInputBorder(
                   borderSide: BorderSide.none,
                   borderRadius: BorderRadius.circular(40),
                 ),
               ),
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const ListSearch())),
+              onChanged: (value) => _search.value = value,
+              onTap: () {
+                setState(() {
+                  _openSearch = true;
+                });
+                _controller?.forward();
+              },
+            ),
+          ),
+          SizeTransition(
+            sizeFactor: _animation,
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height -
+                  kToolbarHeight -
+                  kToolbarHeight -
+                  kBottomNavigationBarHeight,
+              child: ListSearch(searchValue: _search),
             ),
           ),
           const SectionOverview(title: 'Popular lists'),
@@ -91,7 +158,9 @@ class SectionOverview extends StatelessWidget {
 }
 
 class ListSearch extends StatefulWidget {
-  const ListSearch({super.key});
+  const ListSearch({super.key, required this.searchValue});
+
+  final ValueNotifier<String?> searchValue;
 
   @override
   State<StatefulWidget> createState() => _ListSearch();
@@ -99,14 +168,58 @@ class ListSearch extends StatefulWidget {
 
 class _ListSearch extends State<ListSearch> {
   var results = <RecordModel>[];
+  int _page = 1;
+  bool _lastPage = false;
+  String _prevSearch = '';
 
-  void fetch(String value) async {
+  @override
+  void initState() {
+    super.initState();
+
+    widget.searchValue.addListener(_searchListener);
+  }
+
+  @override
+  void dispose() {
+    widget.searchValue.removeListener(_searchListener);
+    super.dispose();
+  }
+
+  void _searchListener() {
+    final value = widget.searchValue.value;
+
+    if (!mounted) return;
+
+    if (value != _prevSearch) {
+      results.clear();
+      _page = 1;
+    }
+
+    if (value == null) {
+      setState(() {});
+      return;
+    }
+
+    fetch(value).catchError((err) {
+      print('error: $err');
+    });
+
+    _prevSearch = value;
+  }
+
+  Future<void> fetch(String value) async {
     value = value.trim().replaceAll(RegExp(r'\s'), '_');
 
     final ret = await pb.collection('memo_lists').getList(
-        filter: 'list ~ "$value%" || list ~ "${value.toLowerCase()}%"');
+        page: _page,
+        filter: 'list ~ "%$value%" || list ~ "%${value.toLowerCase()}%"');
 
-    results = ret.items;
+    results.addAll(ret.items);
+
+    if (ret.items.isEmpty || _page >= ret.totalPages) {
+      _lastPage = true;
+    }
+
     if (mounted) {
       setState(() {});
     }
@@ -132,40 +245,36 @@ class _ListSearch extends State<ListSearch> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        scrolledUnderElevation: 0,
-        toolbarHeight: kToolbarHeight * 1.3,
-        title: SizedBox(
-          height: kTextTabBarHeight * 1.1,
-          child: TextField(
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded),
-              hintText: 'Search a list',
-              border: OutlineInputBorder(
-                borderSide: BorderSide.none,
-                borderRadius: BorderRadius.circular(40),
-              ),
-            ),
-            onChanged: fetch,
-          ),
-        ),
-        centerTitle: true,
-        actions: const [IconButton(onPressed: null, icon: SizedBox())],
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
+      itemCount: results.length + (results.isNotEmpty ? 1 : 0),
+      separatorBuilder: (context, index) => const Divider(
+        thickness: 0.1,
+        indent: 16,
+        endIndent: 16,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.only(bottom: kBottomNavigationBarHeight),
-        itemCount: results.length,
-        itemBuilder: (context, index) {
-          final listname = results[index].data['name'];
+      itemBuilder: (context, index) {
+        if (index >= results.length) {
+          if (_lastPage) {
+            return null;
+          }
 
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 30),
-            onTap: () => openList(results[index]),
-            title: Text(listname),
-          );
-        },
-      ),
+          ++_page;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _searchListener();
+          });
+
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final listname = results[index].data['name'];
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 30),
+          onTap: () => openList(results[index]),
+          title: Text(listname),
+        );
+      },
     );
   }
 }
