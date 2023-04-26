@@ -588,13 +588,39 @@ class _EntryViewInfo extends State<EntryViewInfo> {
   }
 }
 
-typedef EntrySearchDelegate = Future<CTQFindResult> Function(String value);
+typedef EntrySearchDelegate = Future<CTQFindResult> Function(String value,
+    [int? page]);
 
 class EntrySearchLabel {
-  EntrySearchLabel({required this.delegate}) : result = Future.value([]);
+  EntrySearchLabel({required this.delegate})
+      : entries = [],
+        lastLoadedPage = 0,
+        isSearchEnd = false;
 
   final EntrySearchDelegate delegate;
-  Future<CTQFindResult> result;
+  List<ListEntry> entries;
+  int lastLoadedPage;
+  bool isSearchEnd;
+
+  void clear() {
+    entries = [];
+    lastLoadedPage = 0;
+    isSearchEnd = false;
+  }
+
+  Future<CTQFindResult> search(String value) {
+    if (isSearchEnd || value.isEmpty) {
+      return Future.value([]);
+    }
+
+    return delegate(value, lastLoadedPage++).then((value) {
+      if (value.isEmpty) {
+        isSearchEnd = true;
+      }
+
+      return value;
+    });
+  }
 }
 
 class EntrySearch extends StatefulWidget {
@@ -609,11 +635,17 @@ class EntrySearch extends StatefulWidget {
 class _EntrySearch extends State<EntrySearch> {
   final _baseTarget = 'jpn-${appSettings.language}';
 
-  Map<String, Future<CTQFindResult>> findResult = {
-    'word': Future.value([]),
-    'kanji': Future.value([]),
+  late final Map<String, EntrySearchLabel> labels = {
+    'word': EntrySearchLabel(
+      delegate: (value, [page]) =>
+          DicoManager.find(_baseTarget, value, page: page ?? 0),
+    ),
+    'kanji': EntrySearchLabel(
+      delegate: (value, [page]) =>
+          DicoManager.find('$_baseTarget-kanji', value, page: page ?? 0),
+    ),
   };
-  Map<String, bool> wordSearchOptions = {
+  final Map<String, bool> wordSearchOptions = {
     'Noun': true,
     'Verb': true,
     'Adverb': true,
@@ -678,19 +710,13 @@ class _EntrySearch extends State<EntrySearch> {
         centerTitle: true,
         title: AppBarTextField(
           hintText: 'Search',
+          controller: controller,
           onChanged: (value) {
             search = value;
 
-            findResult['word'] = DicoManager.find(
-              _baseTarget,
-              value,
-              cnt: 0,
-            );
-            findResult['kanji'] = DicoManager.find(
-              '$_baseTarget-kanji',
-              value,
-              cnt: 0,
-            );
+            labels.forEach((key, value) {
+              value.clear();
+            });
 
             setState(() {});
           },
@@ -700,18 +726,24 @@ class _EntrySearch extends State<EntrySearch> {
         padding: const EdgeInsets.all(8.0),
         child: LabeledPageView.builder(
           key: const ValueKey(0),
-          labels: findResult.keys.map((e) => e.toUpperCase()).toList(),
+          labels: labels.keys.map((e) => e.toUpperCase()).toList(),
           itemBuilder: (context, i) {
             return DicoFindBuilder(
-              findResult: findResult.values.elementAt(i),
+              findResult: labels.values.elementAt(i).search(search),
               builder: (context, res) {
-                final List<ListEntry> entries = res.map((e) {
+                labels.values.elementAt(i).entries.addAll(res.map((e) {
                   return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
-                }).toList();
+                }));
 
                 return MemoListView(
                   key: ValueKey('$search $i'),
-                  entries: entries,
+                  entries: labels.values.elementAt(i).entries,
+                  onLoad: (currentEntryCount) {
+                    if (labels.values.elementAt(i).isSearchEnd) return;
+
+                    WidgetsBinding.instance
+                        .addPostFrameCallback((_) => setState(() {}));
+                  },
                   onTap: (entry) {
                     Navigator.of(context).push(
                       MaterialPageRoute(
