@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kanjivg_compress/kanjivg_compress.dart';
 import 'package:memorize/auth/auth.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
@@ -23,6 +26,7 @@ late final GlobalStats globalStats;
 late final AppSettings appSettings;
 final auth = Auth();
 final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+late final KanjiSvgReader kanjivgReader;
 
 Future<void> initConstants() async {
   await dotenv.load();
@@ -76,10 +80,36 @@ Future<void> initConstants() async {
   }
 
   tts.init();
+
+  final kanjivgFilePath = '$applicationDocumentDirectory/kanjivg/kanjivg';
+
+  final file = File(kanjivgFilePath);
+
+  if (!file.existsSync()) {
+    await copyFile('assets/kanjivg', kanjivgFilePath);
+  }
+
+  kanjivgReader = KanjiSvgReader(kanjivgFilePath);
 }
 
 Future<void> disposeConstants() async {
+  kanjivgReader.dispose();
   await tts.stop();
+}
+
+Future<void> copyFile(String assetPath, String filePath) async {
+  if (FileSystemEntity.typeSync(filePath) == FileSystemEntityType.notFound) {
+    final data = (await rootBundle.load(assetPath));
+    final buffer = data.buffer;
+    final bytes = buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    final file = File(filePath);
+
+    if (!file.existsSync()) {
+      file.createSync(recursive: true);
+    }
+
+    file.writeAsBytesSync(bytes);
+  }
 }
 
 class IsoLanguage {
