@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/list.dart';
@@ -12,6 +13,7 @@ import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:provider/provider.dart';
 import 'package:ruby_text/ruby_text.dart';
+import 'package:svg_drawing_animation/svg_drawing_animation.dart';
 import 'package:xml/xml.dart';
 import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 import 'package:collection/collection.dart';
@@ -623,11 +625,17 @@ class EntryJpnKanji extends StatelessWidget {
     );
   }
 
-  Widget buildMainForm(BuildContext context, [double? fontSize]) {
-    final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!;
+  Widget buildMainForm(BuildContext context,
+      {double? fontSize, bool enableSvg = true}) {
+    final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!.text!;
+    final svg = enableSvg ? kanjivgReader.get(k) : null;
+
+    if (svg != null) {
+      return KanjivgButton(provider: SvgProvider.string(svg));
+    }
 
     return Text(
-      k.text!,
+      k,
       style:
           Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: fontSize),
     );
@@ -658,7 +666,7 @@ class EntryJpnKanji extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           FittedBox(
-            child: buildMainForm(context, 20),
+            child: buildMainForm(context, fontSize: 20, enableSvg: false),
           ),
           Expanded(
             child: Padding(
@@ -734,7 +742,7 @@ class EntryJpnKanji extends StatelessWidget {
         crossAxisAlignment:
             centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
-          if (kanji) Center(child: buildMainForm(context, 60)),
+          if (kanji) Center(child: buildMainForm(context, fontSize: 60)),
           const SizedBox(height: 10),
           if (reading) Center(child: buildReadings(context)),
           if (sense) ...buildSenses(context, 20),
@@ -757,5 +765,55 @@ class EntryJpnKanji extends StatelessWidget {
       case DisplayMode.quizOptions:
         return buildQuizOptions(context, QuizMode.flashCard);
     }
+  }
+}
+
+class KanjivgButton extends StatefulWidget {
+  const KanjivgButton({super.key, required this.provider});
+
+  final SvgProvider provider;
+
+  @override
+  State<StatefulWidget> createState() => _KanjivgButton();
+}
+
+class _KanjivgButton extends State<KanjivgButton>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      value: 1.0,
+      duration: const Duration(seconds: 5),
+    );
+
+    _animation = CurvedAnimation(
+      parent: _controller!,
+      curve: Curves.linear,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        _controller?.reset();
+        _controller?.forward();
+      },
+      child: SvgDrawingAnimation(
+        widget.provider,
+        animation: _animation,
+      ),
+    );
   }
 }
