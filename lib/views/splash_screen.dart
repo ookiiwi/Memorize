@@ -13,7 +13,7 @@ Future<void> loadData() async {
   await initConstants();
   await auth.load();
   await DicoManager.open();
-  await Entry.init();
+  await initEntry();
   await Dict.fetchTargetList();
 
   if (auth.isLogged) {
