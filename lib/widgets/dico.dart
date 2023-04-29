@@ -5,43 +5,6 @@ import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
 import 'package:xml/xml.dart';
 
-class DicoFindBuilder extends StatefulWidget {
-  const DicoFindBuilder(
-      {super.key, required this.findResult, required this.builder});
-
-  final Future<List<MapEntry<String, List<int>>>> findResult;
-  final Widget Function(BuildContext, List<MapEntry<int, String>>) builder;
-
-  @override
-  State<StatefulWidget> createState() => _DicoFindBuilder();
-}
-
-class _DicoFindBuilder extends State<DicoFindBuilder> {
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<dynamic>(
-      future: widget.findResult,
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          assert(snapshot.data != null);
-          final List<MapEntry<int, String>> res =
-              List<MapEntry<String, List<int>>>.from(snapshot.data!)
-                  .expand((e) => e.value.map((i) => MapEntry(i, e.key)))
-                  .toList();
-
-          return widget.builder(context, res);
-        } else if (snapshot.hasError) {
-          return Center(
-            child: Text('Error in DicoFindBuilder: ${snapshot.error}'),
-          );
-        }
-
-        return const Center(child: CircularProgressIndicator());
-      },
-    );
-  }
-}
-
 class DicoGetBuilder extends StatefulWidget {
   const DicoGetBuilder(
       {super.key, required this.getResult, required this.builder});
