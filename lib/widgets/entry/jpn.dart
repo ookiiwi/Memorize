@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
@@ -290,7 +291,10 @@ class EntryJpn extends StatelessWidget {
         final posStr = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
           '',
           (p, c) {
-            final tmp = c.text!.replaceAll(RegExp(r'\(\w+\)'), '').trim();
+            final tmp = c.text!
+                .replaceAll(RegExp(r'\(\w+\)'), '')
+                .trim()
+                .replaceFirst(RegExp(r'^(n|adv|adj|v|male|)\.'), '');
             final str = tmp[0].toUpperCase() +
                 (tmp.length == 1 ? '' : tmp.substring(1));
 
@@ -631,7 +635,11 @@ class EntryJpnKanji extends StatelessWidget {
     final svg = enableSvg ? kanjivgReader.get(k) : null;
 
     if (svg != null) {
-      return KanjivgButton(provider: SvgProvider.string(svg));
+      final color =
+          Theme.of(context).textTheme.bodyLarge!.color!.hex.substring(0, 6);
+      return KanjivgButton(
+          provider: SvgProvider.string(
+              svg.replaceFirst('stroke:#00000', 'stroke:$color')));
     }
 
     return Text(
@@ -783,21 +791,6 @@ class _KanjivgButton extends State<KanjivgButton>
   late Animation<double> _animation;
 
   @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      value: 1.0,
-      duration: const Duration(seconds: 5),
-    );
-
-    _animation = CurvedAnimation(
-      parent: _controller!,
-      curve: Curves.linear,
-    );
-  }
-
-  @override
   void dispose() {
     _controller?.dispose();
     super.dispose();
@@ -806,14 +799,39 @@ class _KanjivgButton extends State<KanjivgButton>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        _controller?.reset();
-        _controller?.forward();
-      },
-      child: SvgDrawingAnimation(
-        widget.provider,
-        animation: _animation,
-      ),
-    );
+        onTap: () {
+          _controller?.reset();
+          _controller?.forward();
+        },
+        child: FutureBuilder(
+          future: widget.provider.resolve(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (_controller == null) {
+              final pathLength = SvgDrawingAnimation.getPathLengthSum(
+                snapshot.data! as dynamic,
+              );
+
+              _controller = AnimationController(
+                vsync: this,
+                value: 1.0,
+                duration: Duration(milliseconds: 1000 * pathLength ~/ 80),
+              );
+
+              _animation = CurvedAnimation(
+                parent: _controller!,
+                curve: Curves.linear,
+              );
+            }
+
+            return SvgDrawingAnimation(
+              widget.provider,
+              animation: _animation,
+            );
+          },
+        ));
   }
 }
