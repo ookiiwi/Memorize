@@ -34,6 +34,8 @@ class _AppBarTextField extends State<AppBarTextField> {
             onPressed: () => setState(() => widget.controller?.clear()),
             icon: const Icon(Icons.clear),
           ),
+          fillColor: Theme.of(context).primaryColor.withOpacity(0.02),
+          filled: true,
           hintText: widget.hintText,
           border: OutlineInputBorder(
             borderSide: BorderSide.none,
