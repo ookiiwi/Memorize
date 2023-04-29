@@ -525,6 +525,7 @@ class _ListExplorerSearch extends State<ListExplorerSearch> {
         toolbarHeight: kToolbarTextFieldHeight,
         title: AppBarTextField(
           hintText: 'List name',
+          controller: controller,
           onChanged: (value) {
             setState(() {
               results = widget.dir.listSync().fold([], (p, e) {
