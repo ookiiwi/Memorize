@@ -18,7 +18,6 @@ import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pageview.dart';
-import 'package:memorize/widgets/selectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:xml/xml.dart';
@@ -102,8 +101,6 @@ class _ListViewer extends State<ListViewer> {
 
   bool get isListInit => list.name.isNotEmpty;
 
-  final _selectionController = SelectionController();
-
   @override
   void initState() {
     super.initState();
@@ -148,8 +145,6 @@ class _ListViewer extends State<ListViewer> {
     ).whenComplete(() {
       if (mounted) setState(() {});
     });
-
-    _selectionController.isEnabled = false;
   }
 
   void showRenameDialog(BuildContext mainContext) {
@@ -306,7 +301,6 @@ class _ListViewer extends State<ListViewer> {
             EntryViewer(
               key: ValueKey(list.filename),
               list: list,
-              selectionController: _selectionController,
               onDeleteEntry: (_) => setState(() {}),
               mlvController: mlvController,
             ),
@@ -321,23 +315,20 @@ class _ListViewer extends State<ListViewer> {
 }
 
 class EntryViewer extends StatefulWidget {
-  const EntryViewer(
-      {super.key,
-      required this.list,
-      this.selectionController,
-      this.onDeleteEntry,
-      this.mlvController})
-      : entries = const [];
+  const EntryViewer({
+    super.key,
+    required this.list,
+    this.onDeleteEntry,
+    this.mlvController,
+  }) : entries = const [];
 
   const EntryViewer.fromEntries({super.key, this.entries = const []})
       : list = null,
-        selectionController = null,
         onDeleteEntry = null,
         mlvController = null;
 
   final MemoList? list;
   final Iterable<ListEntry> entries;
-  final SelectionController? selectionController;
   final void Function(ListEntry entry)? onDeleteEntry;
   final MemoListViewController? mlvController;
 
@@ -347,7 +338,6 @@ class EntryViewer extends StatefulWidget {
 
 class _EntryViewer extends State<EntryViewer> {
   late final list = widget.list;
-  late final selectionController = widget.selectionController;
   late final mlvController = widget.list != null
       ? (widget.mlvController ?? MemoListViewController())
       : null;
@@ -372,35 +362,32 @@ class _EntryViewer extends State<EntryViewer> {
         child: Column(
           children: [
             Expanded(
-              child: AnimatedBuilder(
-                animation: selectionController ?? ValueNotifier(null),
-                builder: (context, _) => MemoListView(
-                  list: list,
-                  entries: widget.entries.toList(),
-                  onDelete: widget.onDeleteEntry,
-                  controller: mlvController,
-                  onTap: (entry) {
-                    mlvController?.isSelectionEnabled = false;
+              child: MemoListView(
+                list: list,
+                entries: widget.entries.toList(),
+                onDelete: widget.onDeleteEntry,
+                controller: mlvController,
+                onTap: (entry) {
+                  mlvController?.isSelectionEnabled = false;
 
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) {
-                          return widget.list != null
-                              ? EntryView(
-                                  list: widget.list,
-                                  entryId: entry.id,
-                                )
-                              : EntryView.fromEntries(
-                                  entries: entries.toList(),
-                                  entryId: entry.id,
-                                );
-                        },
-                      ),
-                    ).then((value) {
-                      if (mounted) setState(() {});
-                    });
-                  },
-                ),
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) {
+                        return widget.list != null
+                            ? EntryView(
+                                list: widget.list,
+                                entryId: entry.id,
+                              )
+                            : EntryView.fromEntries(
+                                entries: entries.toList(),
+                                entryId: entry.id,
+                              );
+                      },
+                    ),
+                  ).then((value) {
+                    if (mounted) setState(() {});
+                  });
+                },
               ),
             ),
           ],
@@ -634,23 +621,34 @@ class EntrySearch extends StatefulWidget {
 
 class _EntrySearch extends State<EntrySearch> {
   final _baseTarget = 'jpn-${appSettings.language}';
+  String? _wordFilter;
 
   late final Map<String, EntrySearchLabel> labels = {
     'word': EntrySearchLabel(
-      delegate: (value, [page]) =>
-          DicoManager.find(_baseTarget, value, page: page ?? 0),
+      delegate: (value, [page]) => DicoManager.find(
+        _baseTarget,
+        value,
+        page: page ?? 0,
+        filter: _wordFilter,
+        filterPathIdx: 3,
+      ),
     ),
     'kanji': EntrySearchLabel(
-      delegate: (value, [page]) =>
-          DicoManager.find('$_baseTarget-kanji', value, page: page ?? 0),
+      delegate: (value, [page]) => DicoManager.find(
+        '$_baseTarget-kanji',
+        value,
+        page: page ?? 0,
+      ),
     ),
   };
-  final Map<String, bool> wordSearchOptions = {
-    'Noun': true,
-    'Verb': true,
-    'Adverb': true,
-    'Adjective': true,
-    'Counter': true,
+  final Map<String, String> wordSearchOptions = {
+    'Noun': 'n.%',
+    'Verb': 'v.%',
+    'Particle': 'particle',
+    'Adverb': 'adv.%',
+    'Adjective': 'adj.%',
+    'Counter': 'counter',
+    'Conjunction': 'conjunction',
   };
   String search = '';
   final controller = TextEditingController();
@@ -660,7 +658,7 @@ class _EntrySearch extends State<EntrySearch> {
       borderRadius: BorderRadius.circular(360),
       child: Material(
         color: Colors.transparent,
-        child: PopupMenuButton<MapEntry>(
+        child: PopupMenuButton<MapEntry<String, String>>(
           position: PopupMenuPosition.under,
           offset: const Offset(0, 20),
           shape: RoundedRectangleBorder(
@@ -672,25 +670,25 @@ class _EntrySearch extends State<EntrySearch> {
               icon: const Icon(Icons.filter_list_rounded),
             ),
           ),
-          onSelected: (e) =>
-              setState(() => wordSearchOptions[e.key] = !e.value),
+          onSelected: (e) => setState(() {
+            if (_wordFilter == e.value) {
+              _wordFilter = null;
+            } else {
+              _wordFilter = e.value;
+            }
+
+            labels['word']?.clear();
+            _search(labels['word']!, search);
+          }),
           itemBuilder: (context) => List.from(
             wordSearchOptions.entries.map(
               (e) => PopupMenuItem(
                 value: e,
-                padding: const EdgeInsets.all(2.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IgnorePointer(
-                      child: Checkbox(
-                        shape: const CircleBorder(),
-                        value: e.value,
-                        onChanged: (_) {},
-                      ),
-                    ),
-                    Text(e.key),
-                  ],
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  e.key,
+                  style: TextStyle(
+                      color: e.value == _wordFilter ? Colors.amber : null),
                 ),
               ),
             ),
@@ -698,6 +696,27 @@ class _EntrySearch extends State<EntrySearch> {
         ),
       ),
     );
+  }
+
+  void _search(EntrySearchLabel label, String value, [bool isKanji = false]) {
+    if (label.isSearchEnd) return;
+
+    label.search(search).then(
+          (value) => setState(
+            () {
+              final res =
+                  value.expand((e) => e.value.map((i) => MapEntry(i, e.key)));
+              label.entries.addAll(
+                res.map(
+                  (e) => ListEntry(
+                    e.key,
+                    subTarget: isKanji ? 'kanji' : null,
+                  ),
+                ),
+              );
+            },
+          ),
+        );
   }
 
   @override
@@ -712,10 +731,12 @@ class _EntrySearch extends State<EntrySearch> {
           hintText: 'Search',
           controller: controller,
           onChanged: (value) {
-            search = value;
+            search = value.replaceFirst(RegExp(r'%$'), r'\%');
+            search += '%';
 
             labels.forEach((key, value) {
               value.clear();
+              _search(value, search, key == 'kanji');
             });
 
             setState(() {});
@@ -728,47 +749,45 @@ class _EntrySearch extends State<EntrySearch> {
           key: const ValueKey(0),
           labels: labels.keys.map((e) => e.toUpperCase()).toList(),
           itemBuilder: (context, i) {
-            return DicoFindBuilder(
-              findResult: labels.values.elementAt(i).search(search),
-              builder: (context, res) {
-                labels.values.elementAt(i).entries.addAll(res.map((e) {
-                  return ListEntry(e.key, subTarget: i == 1 ? 'kanji' : null);
-                }));
+            final label = labels.values.elementAt(i);
+            final keyValue = '$search $i ${i == 0 ? _wordFilter : ''}';
 
-                return MemoListView(
-                  key: ValueKey('$search $i'),
-                  entries: labels.values.elementAt(i).entries,
-                  onLoad: (currentEntryCount) {
-                    if (labels.values.elementAt(i).isSearchEnd) return;
-
-                    WidgetsBinding.instance
-                        .addPostFrameCallback((_) => setState(() {}));
-                  },
-                  onTap: (entry) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => Stack(
-                          children: [
-                            EntryView.fromEntries(entries: [entry]),
-                            if (widget.onItemSelected != null)
-                              Positioned(
-                                right: 20,
-                                bottom: kBottomNavigationBarHeight + 10,
-                                child: FloatingActionButton(
-                                  onPressed: () {
-                                    widget.onItemSelected!(entry);
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Icon(Icons.add),
-                                ),
-                              )
-                          ],
-                        ),
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: MemoListView(
+                key: ValueKey('mlv $keyValue'),
+                entries: label.entries,
+                onLoad: label.isSearchEnd || search.isEmpty
+                    ? null
+                    : (currentEntryCount) {
+                        if (!label.isSearchEnd) {
+                          _search(label, search, i == 1);
+                        }
+                      },
+                onTap: (entry) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => Stack(
+                        children: [
+                          EntryView.fromEntries(entries: [entry]),
+                          if (widget.onItemSelected != null)
+                            Positioned(
+                              right: 20,
+                              bottom: kBottomNavigationBarHeight + 10,
+                              child: FloatingActionButton(
+                                onPressed: () {
+                                  widget.onItemSelected!(entry);
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Icon(Icons.add),
+                              ),
+                            )
+                        ],
                       ),
-                    );
-                  },
-                );
-              },
+                    ),
+                  );
+                },
+              ),
             );
           },
         ),
