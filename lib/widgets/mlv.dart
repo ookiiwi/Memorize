@@ -21,15 +21,16 @@ class MemoListViewController extends ChangeNotifier {
 }
 
 class MemoListView extends StatefulWidget {
-  const MemoListView(
-      {super.key,
-      this.list,
-      this.entries = const [],
-      this.controller,
-      this.onTap,
-      this.onLoad,
-      this.onDelete,
-      this.itemExtent = 50});
+  const MemoListView({
+    super.key,
+    this.list,
+    this.entries = const [],
+    this.controller,
+    this.onTap,
+    this.onLoad,
+    this.onDelete,
+    this.itemExtent = 50,
+  });
 
   final MemoList? list;
   final List<ListEntry> entries;
@@ -245,23 +246,20 @@ class _MemoListView extends State<MemoListView>
     );
   }
 
-  Widget itemBuilder(BuildContext context, int index, double maxHeight) {
+  Widget itemBuilder(BuildContext context, int index) {
     int start = (index * pageSize).clamp(0, entries.length);
     int end = (start + pageSize).clamp(0, entries.length);
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: index == 0 ? maxHeight : 0.0),
-      child: DicoGetListViewBuilder(
-        key: UniqueKey(),
-        entries: entries.getRange(start, end).toList(),
-        builder: (context, entry) {
-          return buildEntry(
-            context,
-            entry,
-            end == entries.length && entries.last == entry,
-          );
-        },
-      ),
+    return DicoGetListViewBuilder(
+      key: UniqueKey(),
+      entries: entries.getRange(start, end).toList(),
+      builder: (context, entry) {
+        return buildEntry(
+          context,
+          entry,
+          end == entries.length && entries.last == entry,
+        );
+      },
     );
   }
 
@@ -270,23 +268,19 @@ class _MemoListView extends State<MemoListView>
     final itemCount =
         (entries.length ~/ pageSize) + (entries.length % pageSize != 0 ? 1 : 0);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return ListView.builder(
-            itemCount: itemCount,
-            shrinkWrap: true,
-            itemBuilder: (context, index) {
-              if (index == itemCount - 2 && widget.onLoad != null) {
-                widget.onLoad!(entries.length);
-              }
+    return ListView.builder(
+        itemCount: itemCount + (widget.onLoad != null ? 1 : 0),
+        shrinkWrap: true,
+        itemBuilder: (context, index) {
+          if (index == itemCount) {
+            widget.onLoad!(entries.length);
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              return itemBuilder(
-                context,
-                index,
-                constraints.maxHeight - kBottomNavigationBarHeight,
-              );
-            });
-      },
-    );
+          return itemBuilder(
+            context,
+            index,
+          );
+        });
   }
 }
