@@ -10,9 +10,7 @@ import 'package:memorize/helpers/furigana.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
-import 'package:memorize/widgets/entry/eng.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
-import 'package:memorize/tts.dart' as tts;
 
 enum DisplayMode { preview, details, quiz, detailsOptions, quizOptions }
 
@@ -33,9 +31,6 @@ final _register = <String, Map<String, List>>{
     '': [EntryJpn.new, EntryJpn.getAudioText],
     'kanji': [EntryJpnKanji.new]
   },
-  'eng': {
-    '': [EntryEng.new]
-  }
 };
 
 const quizFlashcardOptions = {'': FlashcardOptions.values};
@@ -62,39 +57,34 @@ GetAudioTextFunc? getAudioText(String target) {
   return details?.length == 2 ? (details?[1]) : null;
 }
 
-abstract class Entry {
-  late final XmlDocument xmlDoc;
-  late final String target;
+FutureOr<void> initEntry() {
+  final localTargets = Dict.listTargets().join(",");
 
-  static FutureOr<void> init() {
-    final localTargets = Dict.listTargets().join(",");
+  if (RegExp(r"jpn-\w{3}(-\w+)?").hasMatch(localTargets)) {
+    final filepath =
+        join(applicationDocumentDirectory, 'maptable', 'kanji.json');
+    File file = File(filepath);
 
-    if (RegExp(r"jpn-\w{3}(-\w+)?").hasMatch(localTargets)) {
-      final filepath =
-          join(applicationDocumentDirectory, 'maptable', 'kanji.json');
-      File file = File(filepath);
+    void initMaptable() {
+      final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
+        if (key is String) {
+          return List<String>.from(value as List);
+        }
 
-      void initMaptable() {
-        final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
-          if (key is String) {
-            return List<String>.from(value as List);
-          }
+        return value;
+      });
 
-          return value;
-        });
+      maptable = Map<String, List<String>>.from(tmp);
+    }
 
-        maptable = Map<String, List<String>>.from(tmp);
-      }
-
-      if (!file.existsSync()) {
-        Dio()
-            .download('http://192.168.1.13:8080/maptable/kanji.json', filepath)
-            .then((value) {
-          initMaptable();
-        });
-      } else {
+    if (!file.existsSync()) {
+      Dio()
+          .download('http://192.168.1.13:8080/maptable/kanji.json', filepath)
+          .then((value) {
         initMaptable();
-      }
+      });
+    } else {
+      initMaptable();
     }
   }
 }
@@ -127,19 +117,4 @@ Widget buildDetailsField(
       if (!wrap) Column(children: children)
     ],
   );
-}
-
-class DefaultAudioButton extends StatelessWidget {
-  const DefaultAudioButton({super.key, required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-        onPressed: () {
-          tts.speak(text: text);
-        },
-        icon: const Icon(Icons.volume_up_rounded));
-  }
 }
