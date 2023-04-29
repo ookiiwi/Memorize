@@ -190,7 +190,7 @@ class Dict {
           e();
         }
 
-        return Entry.init();
+        return initEntry();
       });
 
       _dlManager[target] =
@@ -354,19 +354,22 @@ class DicoManager {
     });
   }
 
-  static Future<List<MapEntry<String, List<int>>>> find(
+  static Future<CTQFindResult> find(
     String target,
     String key, {
     int page = 0,
     int cnt = 20,
     bool exactMatch = false,
+    String? filter,
+    int filterPathIdx = 0,
   }) {
     _sendPort!.send(_DicoIsolateFindArgs(
       target,
       key,
       offset: page * cnt,
       cnt: cnt,
-      exactMatch: exactMatch,
+      filter: filter,
+      filterPathIdx: filterPathIdx,
     ));
 
     return _events!.next.then((value) {
@@ -499,9 +502,10 @@ class _DicoManagerIsolate {
 
       final ret = _readers[arg.target]!.find(
         arg.key,
-        exactMatch: arg.exactMatch,
         offset: arg.offset,
         count: arg.cnt,
+        filter: arg.filter ?? "",
+        filterPathIdx: arg.filterPathIdx,
       );
 
       p.send(ret);
@@ -589,12 +593,14 @@ class _DicoIsolateFindArgs {
     this.key, {
     this.offset = 0,
     this.cnt = 20,
-    this.exactMatch = false,
+    this.filter,
+    this.filterPathIdx = 0,
   });
 
   final String target;
   final String key;
   final int offset;
   final int cnt;
-  final bool exactMatch;
+  final String? filter;
+  final int filterPathIdx;
 }
