@@ -5,9 +5,9 @@ import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:xml/xml.dart';
 import 'package:diffutil_dart/diffutil.dart' as diffutil;
 import 'package:quiver/collection.dart' as quiver;
 
@@ -27,7 +27,7 @@ class ListEntry extends Equatable {
     int? id,
     String? source,
     String? subTarget,
-    XmlDocument? data,
+    ParsedEntry? data,
     bool? isWrong,
   }) {
     return ListEntry(
@@ -40,7 +40,7 @@ class ListEntry extends Equatable {
 
   final int id;
   final String? subTarget;
-  final XmlDocument? data;
+  final ParsedEntry? data;
   final bool isWrong;
 
   String get target =>
@@ -73,7 +73,6 @@ class MemoList {
   MemoList.fromJson(this.filename, Map<String, dynamic> json)
       : entries = List.from(json['entries'].map((e) => ListEntry.fromJson(e))),
         level = json['level'] ?? 1,
-        //_score = json['score'] ?? 0,
         _score = globalStats.progressWatcher[filename]?.score ?? 0,
         lastQuizEntryCount = json['lqec'] ?? 0 {
     if (level < 1) level = 1;
