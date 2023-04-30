@@ -3,31 +3,31 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/list.dart';
-import 'package:xml/xml.dart';
+import 'package:memorize/widgets/entry/parser.dart';
 
 class DicoGetBuilder extends StatefulWidget {
   const DicoGetBuilder(
       {super.key, required this.getResult, required this.builder});
 
-  final FutureOr<XmlDocument> getResult;
-  final Widget Function(BuildContext, XmlDocument) builder;
+  final FutureOr<ParsedEntry> getResult;
+  final Widget Function(BuildContext, ParsedEntry) builder;
 
   @override
   State<StatefulWidget> createState() => _DicoGetBuilder();
 }
 
 class _DicoGetBuilder extends State<DicoGetBuilder> {
-  XmlDocument? doc;
+  ParsedEntry? doc;
 
   @override
   Widget build(BuildContext context) {
-    if (widget.getResult is XmlDocument) {
-      doc = widget.getResult as XmlDocument;
+    if (widget.getResult is ParsedEntry) {
+      doc = widget.getResult as ParsedEntry;
     }
 
     return FutureBuilder<dynamic>(
       initialData: doc,
-      future: doc == null ? widget.getResult as Future<XmlDocument> : null,
+      future: doc == null ? widget.getResult as Future<ParsedEntry> : null,
       builder: (context, snapshot) {
         if (snapshot.hasData) {
           doc ??= snapshot.data!;
@@ -73,7 +73,7 @@ class _DicoGetListViewBuilder extends State<DicoGetListViewBuilder> {
     for (var e in widget.entries) {
       final entry = DicoManager.get(e.target, e.id);
 
-      if (entry is Future<XmlDocument>) {
+      if (entry is Future<ParsedEntry>) {
         fRes.add(entry.then((value) => e.copyWith(data: value)));
       } else {
         results.add(e.copyWith(data: entry));
