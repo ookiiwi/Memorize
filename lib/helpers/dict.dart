@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:memorize/widgets/entry/base.dart';
+import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
@@ -261,19 +262,8 @@ class DicoCache {
   static const _maxEntries = 100;
 
   DicoCache();
-  DicoCache.fromJson(Map<String, Map<int, String>> json) {
-    json.forEach(
-      (key, value) => value.forEach(
-        (id, value) => set(
-          key,
-          id,
-          XmlDocument.parse(value),
-        ),
-      ),
-    );
-  }
 
-  final Map<String, Map<int, XmlDocument>> _cache = {};
+  final Map<String, Map<int, ParsedEntry>> _cache = {};
   final List<MapEntry<String, int>> _history = [];
 
   void _releaseResources([int releaseCnt = 10]) {
@@ -282,7 +272,7 @@ class DicoCache {
     _history.removeRange(0, releaseCnt);
   }
 
-  XmlDocument? get(String target, int id) {
+  ParsedEntry? get(String target, int id) {
     final ret = _cache[target]?[id];
 
     if (ret != null) {
@@ -295,7 +285,7 @@ class DicoCache {
     return ret;
   }
 
-  void set(String target, int id, XmlDocument entry) {
+  void set(String target, int id, ParsedEntry entry) {
     final hist = MapEntry(target, id);
 
     _history.remove(hist);
@@ -329,6 +319,8 @@ class DicoManager {
 
   static final dicoCache = DicoCache();
   static Isolate? _isolate;
+
+  static final Map<String, Map<int, Future<ParsedEntry>>> _getQueue = {};
 
   static Future<void> open() {
     assert(_receivePort == null);
@@ -394,23 +386,36 @@ class DicoManager {
     return _events!.next.then((value) {});
   }
 
-  static FutureOr<XmlDocument> get(String target, int id) {
+  static FutureOr<ParsedEntry> get(String target, int id) {
     final cache = dicoCache.get(target, id);
 
     if (cache != null) {
       return cache;
+    } else if (_getQueue[target]?.containsKey(id) == true) {
+      return _getQueue[target]![id]!;
     }
 
     _sendPort!.send(_DicoIsolateGetArg(target, id));
 
-    return _events!.next.then((value) {
+    final ret = _events!.next.then<ParsedEntry>((value) {
       if (value is Exception) {
         throw value;
+      } else if (value == null) {
+        throw "Cannot find $id for target $target";
       }
 
+      _getQueue[target]?.remove(id);
       dicoCache.set(target, id, value);
       return value;
     });
+
+    if (!_getQueue.containsKey(target)) {
+      _getQueue[target] = {};
+    }
+
+    _getQueue[target]![id] = ret;
+
+    return ret;
   }
 
   static void close() {
@@ -496,7 +501,7 @@ class _DicoManagerIsolate {
     }
   }
 
-  static void find(_DicoIsolateFindArgs arg, SendPort p) {
+  static void _find(_DicoIsolateFindArgs arg, SendPort p) {
     try {
       _checkOpen(arg.target);
 
@@ -514,16 +519,43 @@ class _DicoManagerIsolate {
     }
   }
 
-  static void get(_DicoIsolateGetArg arg, SendPort p) {
+  static FutureOr<ParsedEntry?> get(String target, int id,
+      [bool noRecurse = false]) {
+    _checkOpen(target);
+
+    final entry = _readers[target]!.get(id);
+
+    if (entry.isEmpty) {
+      return null;
+    }
+
+    final doc = XmlDocument.parse(entry);
+    return target.endsWith('-kanji')
+        ? ParsedEntryJpnKanji.parse(
+            doc,
+            _readers[target.replaceFirst('-kanji', '')]!.find,
+            noRecurse
+                ? null
+                : (int id) => get(target.replaceFirst('-kanji', ''), id, true),
+          )
+        : ParsedEntryJpn.parse(
+            doc,
+            noRecurse ? null : (int id) => get('$target-kanji', id, true),
+          );
+  }
+
+  static Future<void> _get(_DicoIsolateGetArg arg, SendPort p) async {
     try {
       final target = arg.target;
+      final ret = get(target, arg.id);
 
-      _checkOpen(target);
-
-      final ret = XmlDocument.parse(_readers[target]!.get(arg.id));
-
-      p.send(ret);
+      if (ret is Future) {
+        p.send(await ret);
+      } else {
+        p.send(ret);
+      }
     } catch (e) {
+      print('get (iso) error: $e');
       p.send(e);
     }
   }
@@ -540,9 +572,9 @@ class _DicoManagerIsolate {
 
     await for (final message in commandPort) {
       if (message is _DicoIsolateGetArg) {
-        get(message, p);
+        await _get(message, p);
       } else if (message is _DicoIsolateFindArgs) {
-        find(message, p);
+        _find(message, p);
       } else if (message is _DicoIsolateLoadArgs) {
         p.send(load(targets));
       } else if (message is _DicoIsolateTryLoadArgs) {
