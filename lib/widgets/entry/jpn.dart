@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
@@ -549,9 +549,7 @@ class EntryJpnKanji extends StatelessWidget {
     if (svg != null) {
       final color = textTheme.bodyLarge!.color!.hex.substring(0, 6);
       return KanjivgButton(
-        provider: SvgProvider.string(
-          svg.replaceFirst('stroke:#00000', 'stroke:$color'),
-        ),
+        svg: svg.replaceFirst('stroke:#00000', 'stroke:$color'),
       );
     }
 
@@ -732,9 +730,9 @@ class EntryJpnKanji extends StatelessWidget {
 }
 
 class KanjivgButton extends StatefulWidget {
-  const KanjivgButton({super.key, required this.provider});
+  const KanjivgButton({super.key, required this.svg});
 
-  final SvgProvider provider;
+  final String svg;
 
   @override
   State<StatefulWidget> createState() => _KanjivgButton();
@@ -744,6 +742,7 @@ class _KanjivgButton extends State<KanjivgButton>
     with SingleTickerProviderStateMixin {
   AnimationController? _controller;
   late Animation<double> _animation;
+  late final provider = SvgProvider.string(widget.svg);
 
   @override
   void dispose() {
@@ -751,18 +750,22 @@ class _KanjivgButton extends State<KanjivgButton>
     super.dispose();
   }
 
+  Widget loadingBuilder(BuildContext context) => SvgPicture.string(widget.svg);
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return SizedBox(
+      height: MediaQuery.of(context).size.width * 0.4,
+      child: GestureDetector(
         onTap: () {
           _controller?.reset();
           _controller?.forward();
         },
         child: FutureBuilder(
-          future: widget.provider.resolve(),
+          future: provider.resolve(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
+              return loadingBuilder(context);
             }
 
             if (_controller == null) {
@@ -783,10 +786,13 @@ class _KanjivgButton extends State<KanjivgButton>
             }
 
             return SvgDrawingAnimation(
-              widget.provider,
+              provider,
               animation: _animation,
+              loadingWidgetBuilder: loadingBuilder,
             );
           },
-        ));
+        ),
+      ),
+    );
   }
 }
