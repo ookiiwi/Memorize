@@ -3,29 +3,34 @@ import 'dart:async';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/list.dart';
 import 'package:memorize/views/quiz.dart';
-import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/options.dart';
+import 'package:memorize/widgets/entry/parser.dart';
 import 'package:provider/provider.dart';
 import 'package:ruby_text/ruby_text.dart';
 import 'package:svg_drawing_animation/svg_drawing_animation.dart';
-import 'package:xml/xml.dart';
-import 'package:xpath_selector_xml_parser/xpath_selector_xml_parser.dart';
 import 'package:collection/collection.dart';
 
 class EntryJpn extends StatelessWidget {
+  static final _senseParenthesesRE = RegExp(r'\(\w+\)');
+
   EntryJpn(
       {super.key,
-      required this.xmlDoc,
+      ParsedEntry? parsedEntry,
       required this.target,
       this.mode = DisplayMode.preview})
-      : options = EntryOptions.load(
+      : assert(parsedEntry != null ||
+            (mode == DisplayMode.detailsOptions ||
+                mode == DisplayMode.quizOptions)),
+        parsedEntry = parsedEntry as ParsedEntryJpn?,
+        options = EntryOptions.load(
           label: 'jpn${quizSuffix(mode)}',
           display: [
             'word',
@@ -41,371 +46,270 @@ class EntryJpn extends StatelessWidget {
           },
         );
 
-  final XmlDocument xmlDoc;
+  final ParsedEntryJpn? parsedEntry;
   final String target;
   final DisplayMode mode;
   final EntryOptions options;
 
-  List<Widget> buildWords(
-      {int offset = 0,
-      int? cnt,
-      double? fontSize,
-      bool noRuby = false,
-      bool includeRestr = false}) {
-    final k = xmlDoc
-        .queryXPath(".//form[@type='k_ele']/orth")
-        .nodes
-        .map((e) => e.text!)
-        .toList();
-    final r = xmlDoc.queryXPath(".//form[@type='r_ele']").nodes;
+  Widget buildWord(
+    String? word,
+    String reading, {
+    bool rubyLayout = true,
+    double? fontSize,
+  }) {
+    final showFurigana = (rubyLayout && word != null);
+    final furigana = showFurigana ? splitFurigana(word, reading) : [];
+    final textStyle = TextStyle(fontSize: fontSize);
 
-    assert(offset >= 0);
-    assert(cnt == null || cnt >= 0);
-
-    if (k.isEmpty) {
-      if (offset >= r.length) return [];
-
-      return r
-          .sublist(offset, cnt?.clamp(offset, r.length))
-          .map(
-            (e) => Text(
-              e.queryXPath('./orth').node!.text!,
-              style: TextStyle(fontSize: fontSize),
-            ),
-          )
-          .toList();
-    }
-
-    if (offset >= k.length) return [];
-
-    final priReading = r.first.queryXPath('./orth').node!.text!;
-    final restrReadings = <String, List<String>>{};
-
-    for (var e in r) {
-      final restrNodes = e.queryXPath("./lbl[@type='re_restr']").nodes;
-      if (restrNodes.isNotEmpty) {
-        for (var restr in restrNodes) {
-          final orth = e.queryXPath('./orth').node!.text!;
-
-          if (restrReadings.containsKey(restr.text)) {
-            restrReadings[restr.text!]!.add(orth);
-          } else {
-            restrReadings[restr.text!] = [orth];
-          }
-        }
-      }
-    }
-
-    Widget wrapWord(String word, String reading) {
-      if (!options.display['furigana']!) {
-        return Text(
-          word,
-          style: TextStyle(fontSize: fontSize),
-        );
-      }
-
-      final furi = noRuby ? [] : splitFurigana(word, reading);
-
-      if (furi.isEmpty) {
-        if (noRuby) {
-          return Text("$word 【$reading】", style: TextStyle(fontSize: fontSize));
-        } else {
-          furi.add(FuriganaText(word, reading));
-        }
-      }
-
+    if (showFurigana) {
       return RubyText(
-        List<RubyTextData>.from(
-          furi.map((e) => RubyTextData(e.text, ruby: e.furigana)),
-        ),
-        style: TextStyle(fontSize: fontSize),
+        furigana.isEmpty
+            ? [RubyTextData(word, ruby: reading)]
+            : furigana
+                .map((e) => RubyTextData(e.text, ruby: e.furigana))
+                .toList(),
+        style: textStyle,
       );
     }
 
-    final ret = k
-        .sublist(offset, cnt?.clamp(offset, k.length))
-        .map((e) => wrapWord(e, priReading))
-        .toList();
+    final text = word != null ? "$word 【$reading】" : reading;
+    return Text(text, style: textStyle);
+  }
 
-    if (includeRestr) {
-      for (var e in restrReadings.entries) {
-        for (var r in e.value) {
-          ret.add(wrapWord(e.key, r));
-        }
-      }
+  Widget buildSense(
+    BuildContext context,
+    Map<String, List<String>> sense, {
+    int? senseNumber,
+    bool pos = true,
+    bool ref = true,
+    bool dom = true,
+    bool note = true,
+    double? fontSize,
+    TextTheme? textTheme,
+  }) {
+    textTheme ??= Theme.of(context).textTheme;
+
+    final senseStr = sense['']!;
+    final posStr = sense['pos']?.fold<String>(
+      '',
+      (p, c) {
+        final tmp = c
+            .replaceAll(_senseParenthesesRE, '')
+            .trim()
+            .replaceFirst(RegExp(r'^(n|adv|adj|v|male|)\.'), '');
+        final str =
+            tmp[0].toUpperCase() + (tmp.length == 1 ? '' : tmp.substring(1));
+
+        return '$p${p.isEmpty ? '' : '; '}$str';
+      },
+    );
+    final refStr = sense['ref'];
+    final domStr = sense['dom'];
+    final noteStr = sense['note'];
+
+    Widget buildRichText() => RichText(
+          text: TextSpan(
+            children: [
+              if (senseNumber != null) TextSpan(text: '$senseNumber.   '),
+              if (dom && domStr?.isNotEmpty == true)
+                TextSpan(
+                  text: '$domStr   ',
+                  style: textTheme!.bodyMedium,
+                ),
+              TextSpan(
+                text: senseStr.join('; '),
+                style: textTheme!.bodyLarge?.copyWith(fontSize: fontSize),
+              ),
+              if (note && noteStr?.isNotEmpty == true)
+                TextSpan(
+                  text: '   ${noteStr!.join('; ')}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              if (ref && refStr?.isNotEmpty == true)
+                formatRef(context, textTheme, refStr!.first),
+            ],
+          ),
+        );
+
+    if (pos && posStr?.isNotEmpty == true) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              posStr!,
+              style: textTheme.bodySmall,
+            ),
+            buildRichText(),
+          ],
+        ),
+      );
+    }
+
+    return buildRichText();
+  }
+
+  FutureOr<ParsedEntryJpn?> getCrossRef(String key, String? info,
+      {void Function(int id)? onIdFound}) {
+    final findRes =
+        DicoManager.find(target, key, filter: info, filterPathIdx: 1, cnt: 1);
+
+    return findRes.then((value) {
+      if (value.isEmpty) return null;
+
+      final id = value.first.value.first;
+      if (onIdFound != null) onIdFound(id);
+
+      return DicoManager.get(target, id) as ParsedEntryJpn;
+    });
+  }
+
+  TextSpan formatRef(BuildContext context, TextTheme textTheme, String ref) {
+    final tmp = ref.split('・');
+    final String cleanRef = tmp.first.trim();
+    final String? xrefInfo = tmp.length > 1 ? tmp.last.trim() : null;
+
+    return TextSpan(
+      children: [
+        TextSpan(text: '   (See ', style: textTheme.bodyMedium),
+        TextSpan(
+          text: '$cleanRef)',
+          style: textTheme.bodyMedium
+              ?.copyWith(decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              final list = Provider.of<MemoList?>(context, listen: false);
+
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) {
+                  int id = 0;
+                  final xref = getCrossRef(
+                    cleanRef,
+                    int.tryParse(xrefInfo?.trim() ?? '') == null
+                        ? xrefInfo
+                        : null,
+                    onIdFound: (value) => id = value,
+                  );
+
+                  return FutureBuilder(
+                      future: Future.value(xref),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+
+                        if (snapshot.data == null) {
+                          Navigator.of(context).maybePop();
+                          return const Center(
+                            child: Text('Cannot find cross ref'),
+                          );
+                        }
+
+                        return SafeArea(
+                          child: Scaffold(
+                            appBar:
+                                AppBar(title: const Text('Cross reference')),
+                            body: Provider.value(
+                              value: list,
+                              builder: (context, _) {
+                                return SingleChildScrollView(
+                                  child: EntryJpn(
+                                    target: target,
+                                    parsedEntry:
+                                        snapshot.data as ParsedEntryJpn,
+                                    mode: DisplayMode.details,
+                                  ),
+                                );
+                              },
+                            ),
+                            floatingActionButton: list != null
+                                ? FloatingActionButton(
+                                    onPressed: () {
+                                      list.entries.add(ListEntry(id));
+                                      list.save();
+
+                                      Navigator.of(context).maybePop();
+                                    },
+                                    child: const Icon(Icons.add),
+                                  )
+                                : null,
+                            floatingActionButtonLocation:
+                                FloatingActionButtonLocation.endFloat,
+                          ),
+                        );
+                      });
+                }),
+              );
+            },
+        )
+      ],
+    );
+  }
+
+  Widget buildMainForm(BuildContext context, [double? fontSize]) {
+    final word = parsedEntry!.words.firstOrNull;
+    final reading = parsedEntry!.readings.first;
+
+    return FittedBox(
+      fit: BoxFit.fitWidth,
+      child: buildWord(word, reading, fontSize: fontSize),
+    );
+  }
+
+  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
+    final ret = <Widget>[];
+
+    // skip first main element
+    for (int i = 1; i < parsedEntry!.words.length; ++i) {
+      final word = parsedEntry!.words[i];
+      final reading = parsedEntry!.readings.elementAtOrNull(i) ??
+          parsedEntry!.readings.first;
+
+      ret.add(buildWord(word, reading, rubyLayout: false, fontSize: fontSize));
     }
 
     return ret;
   }
 
-  FutureOr<XmlDocument> getCrossRef(String key, String? info,
-      {void Function(int id)? onIdFound}) {
-    final findRes = DicoManager.find(
-      target,
-      key,
-      exactMatch: true,
-    );
-
-    return findRes.then((value) {
-      final id = value.first.value.first;
-      if (onIdFound != null) onIdFound(id);
-
-      return DicoManager.get(target, id);
-    });
-  }
-
-  TextSpan? formatRef(BuildContext context, dynamic node) {
-    final String? ref = node.queryXPath("./ref").node?.text;
-
-    if (ref != null) {
-      final tmp = ref.split('・');
-      final String cleanRef = tmp.first.trim();
-      final String? xrefInfo = tmp.length > 1 ? tmp.last.trim() : null;
-
-      return TextSpan(
-        children: [
-          TextSpan(
-              text: '   (See ', style: Theme.of(context).textTheme.bodyMedium),
-          TextSpan(
-            text: '$cleanRef)',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(decoration: TextDecoration.underline),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                final list = Provider.of<MemoList?>(context, listen: false);
-
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) {
-                    int id = 0;
-                    final xref = getCrossRef(cleanRef, xrefInfo,
-                        onIdFound: (value) => id = value);
-
-                    return FutureBuilder(
-                        future: Future.value(xref),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState !=
-                              ConnectionState.done) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          }
-
-                          return SafeArea(
-                            child: Scaffold(
-                              appBar:
-                                  AppBar(title: const Text('Cross reference')),
-                              body: Provider.value(
-                                value: list,
-                                builder: (context, _) {
-                                  return SingleChildScrollView(
-                                    child: EntryJpn(
-                                      target: target,
-                                      xmlDoc: snapshot.data as XmlDocument,
-                                      mode: DisplayMode.details,
-                                    ),
-                                  );
-                                },
-                              ),
-                              floatingActionButton: list != null
-                                  ? FloatingActionButton(
-                                      onPressed: () {
-                                        list.entries.add(ListEntry(id));
-                                        list.save();
-
-                                        Navigator.of(context).maybePop();
-                                      },
-                                      child: const Icon(Icons.add),
-                                    )
-                                  : null,
-                              floatingActionButtonLocation:
-                                  FloatingActionButtonLocation.endFloat,
-                            ),
-                          );
-                        });
-                  }),
-                );
-              },
-          )
-        ],
-      );
-    }
-
-    return null;
-  }
-
-  String formatDomain(dynamic node) {
-    final dom = node.queryXPath("./usg[@type='dom']").node?.text;
-
-    if (dom != null) {
-      return '[$dom]   ';
-    }
-
-    return '';
-  }
-
-  String formatNote(dynamic node) {
-    final List note = node.queryXPath("./note").nodes;
-
-    return note.firstWhereOrNull((e) => e.attributes.isEmpty)?.text ?? '';
-  }
-
-  String formatStagk(dynamic node) {
-    return '';
-  }
-
-  String formatStagr(dynamic node) {
-    return '';
-  }
-
-  String formatAnt(dynamic node) {
-    return '';
-  }
-
-  Widget buildMainForm(BuildContext context, [double? fontSize]) {
-    return FittedBox(
-      fit: BoxFit.fitWidth,
-      child: buildWords(cnt: 1, fontSize: fontSize).first,
-    );
-  }
-
-  List<Widget> buildOtherForms(BuildContext context, [double? fontSize]) {
-    final words = buildWords(
-        offset: 1, noRuby: true, includeRestr: true, fontSize: fontSize);
-
-    return words;
-  }
-
-  List<Widget> buildSenses(BuildContext context,
-      {double? fontSize,
-      bool pos = true,
-      bool domain = true,
-      bool note = true,
-      bool ref = true}) {
-    int i = 0;
-
-    final nodes = xmlDoc.queryXPath('.//sense').nodes;
-
-    return nodes.map(
-      (e) {
-        final posStr = e.queryXPath("./note[@type='pos']").nodes.fold<String>(
-          '',
-          (p, c) {
-            final tmp = c.text!
-                .replaceAll(RegExp(r'\(\w+\)'), '')
-                .trim()
-                .replaceFirst(RegExp(r'^(n|adv|adj|v|male|)\.'), '');
-            final str = tmp[0].toUpperCase() +
-                (tmp.length == 1 ? '' : tmp.substring(1));
-
-            return '$p${p.isEmpty ? '' : '; '}$str';
-          },
-        );
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (posStr.isNotEmpty && pos)
-                Text(
-                  posStr,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              RichText(
-                text: TextSpan(
-                  style: DefaultTextStyle.of(context)
-                      .style
-                      .copyWith(fontSize: fontSize),
-                  children: [
-                    if (nodes.length > 1) TextSpan(text: '${++i}.   '),
-                    if (domain)
-                      TextSpan(
-                        text: formatDomain(e),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    TextSpan(
-                      text: e
-                          .queryXPath("./cit[@type='trans']/quote")
-                          .nodes
-                          .fold<String>(
-                            '',
-                            (p, c) => '$p${p.isEmpty ? '' : ', '}${c.text}',
-                          ),
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(fontSize: fontSize),
-                    ),
-                    if (note)
-                      TextSpan(
-                        text: '   ${formatNote(e)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    if (ref) formatRef(context, e) ?? const TextSpan()
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    ).toList();
-  }
-
   List<Widget> buildNotes(BuildContext context, [double? fontSize]) {
-    final notes = xmlDoc.queryXPath(".//form").nodes
-      ..retainWhere((e) => e.children
-          .any((e) => e.name?.localName == 'lbl' && e.children.isNotEmpty));
+    final ret = <Widget>[];
 
-    return (notes.map((e) {
-      bool skip = false;
-      final orth = e.queryXPath('./orth').node!.text;
-      final tmp = e.queryXPath('./lbl').nodes;
-      final note =
-          tmp.firstWhere((e) => e.attributes['type'] != 're_restr', orElse: () {
-        skip = true;
-        return tmp.first;
-      }).text;
+    parsedEntry!.reNotes.forEach((key, value) {
+      value.forEach((_, value) {
+        ret.add(Text('$key: $value'));
+      });
+    });
 
-      if (skip) return null;
-
-      return Text('$orth: $note');
-    }).toList()
-      ..removeWhere((e) => e == null)) as List<Widget>;
+    return ret;
   }
 
   List<Widget> buildKanjiDecomposition(BuildContext context) {
-    final word = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node?.text;
     final ret = <Widget>[];
 
-    if (word == null) return [];
-
-    for (var c in word.characters) {
-      if (!isKanji(c)) continue;
-
-      final getRes = DicoManager.get('$target-kanji', c.runes.first);
-
+    for (var kanji in parsedEntry!.kanjis) {
       ret.add(
-        DicoGetBuilder(
-          getResult: getRes,
-          builder: (context, doc) {
-            return MaterialButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) {
-                      return EntryView.fromEntries(
-                        entries: [ListEntry(c.runes.first, subTarget: 'kanji')],
-                      );
-                    },
-                  ),
-                );
-              },
-              child: EntryJpnKanji(xmlDoc: doc, target: '$target-kanji'),
+        MaterialButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) {
+                  return EntryView.fromEntries(
+                    entries: [
+                      ListEntry(
+                        kanji.words.first.runes.first,
+                        subTarget: 'kanji',
+                      )
+                    ],
+                  );
+                },
+              ),
             );
           },
+          child: EntryJpnKanji(parsedEntry: kanji, target: '$target-kanji'),
         ),
       );
     }
@@ -414,12 +318,15 @@ class EntryJpn extends StatelessWidget {
   }
 
   Widget buildPreview(BuildContext context) {
-    final senses = buildSenses(
-      context,
-      pos: false,
-      domain: false,
-      note: false,
-      ref: false,
+    final senses = parsedEntry!.senses.map(
+      (e) => buildSense(
+        context,
+        e,
+        pos: false,
+        dom: false,
+        note: false,
+        ref: false,
+      ),
     );
 
     return Column(
@@ -428,23 +335,16 @@ class EntryJpn extends StatelessWidget {
       children: [
         buildMainForm(context),
         for (int i = 0; i < senses.length && i < 3; ++i)
-          LayoutBuilder(builder: (context, constraints) {
-            return ConstrainedBox(
-              constraints: constraints,
-              child: IntrinsicWidth(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 16),
-                        child: senses[i],
-                      ),
-                    ),
-                  ],
+          Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: senses.elementAt(i),
                 ),
               ),
-            );
-          })
+            ],
+          ),
       ],
     );
   }
@@ -521,7 +421,8 @@ class EntryJpn extends StatelessWidget {
                 ? buildMainForm(context)
                 : Center(child: buildMainForm(context, 40)),
           if (sense)
-            ...buildSenses(context, pos: pos, note: notes, ref: senseRef),
+            for (var e in parsedEntry!.senses)
+              buildSense(context, e, pos: pos, note: notes, ref: senseRef),
           if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
           if (otherForms)
             buildDetailsField(context, 'Other forms', buildOtherForms(context)),
@@ -535,10 +436,6 @@ class EntryJpn extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static String? getAudioText(XmlDocument doc) {
-    return doc.queryXPath(".//form[@type='r_ele']/orth").node?.text;
   }
 
   @override
@@ -561,12 +458,23 @@ class EntryJpn extends StatelessWidget {
 class EntryJpnKanji extends StatelessWidget {
   EntryJpnKanji(
       {super.key,
-      required this.xmlDoc,
+      ParsedEntry? parsedEntry,
       required this.target,
       this.mode = DisplayMode.preview})
-      : options = EntryOptions.load(
+      : assert(parsedEntry != null ||
+            (mode == DisplayMode.detailsOptions ||
+                mode == DisplayMode.quizOptions)),
+        parsedEntry = parsedEntry as ParsedEntryJpnKanji?,
+        options = EntryOptions.load(
           label: 'jpn-kanji${quizSuffix(mode)}',
-          display: ['kanji', 'reading', 'sense', 'nanori', 'okurigana'],
+          display: [
+            'kanji',
+            'reading',
+            'sense',
+            'nanori',
+            'okurigana',
+            'readingCompounds'
+          ],
           quiz: {
             QuizMode.choice: [
               'kanji → sense',
@@ -577,27 +485,29 @@ class EntryJpnKanji extends StatelessWidget {
           },
         );
 
-  final XmlDocument xmlDoc;
+  final ParsedEntryJpnKanji? parsedEntry;
   final String target;
   final DisplayMode mode;
   final EntryOptions options;
 
-  Widget buildReadings(BuildContext context) {
-    const formExp = ".//form[@type='r_ele']";
-    final on = xmlDoc.queryXPath("$formExp/orth[@type='ja_on']").nodes;
-    final kun = xmlDoc.queryXPath("$formExp/orth[@type='ja_kun']").nodes;
-    final nanori = options.display['nanori'] == false
-        ? []
-        : xmlDoc.queryXPath("$formExp/orth[@type='nanori']").nodes;
+  Widget buildReadings(BuildContext context, [TextTheme? textTheme]) {
+    final on = Map.of(parsedEntry!.reOn);
+    final kun = Map.of(parsedEntry!.reKun);
+    final nanori =
+        options.display['nanori'] == true ? Map.of(parsedEntry!.reNanori) : {};
+
+    textTheme ??= Theme.of(context).textTheme;
 
     Widget decodeText(String text, Color color) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20), color: color),
+          borderRadius: BorderRadius.circular(20),
+          color: color,
+        ),
         child: Text(
           text,
-          style: Theme.of(context).textTheme.bodySmall,
+          style: textTheme?.bodySmall,
         ),
       );
     }
@@ -605,9 +515,9 @@ class EntryJpnKanji extends StatelessWidget {
     if (options.display['okurigana'] == false) {
       final exp = RegExp(r'.*(\..*|-.*)$');
 
-      kun.removeWhere((e) => exp.hasMatch(e.text!));
-      on.removeWhere((e) => exp.hasMatch(e.text!));
-      nanori.removeWhere((e) => exp.hasMatch(e.text!));
+      kun.removeWhere((k, v) => exp.hasMatch(k));
+      on.removeWhere((k, v) => exp.hasMatch(k));
+      nanori.removeWhere((k, v) => exp.hasMatch(k));
     }
 
     return Wrap(
@@ -618,77 +528,79 @@ class EntryJpnKanji extends StatelessWidget {
           [on, Colors.red.shade300],
           [nanori, Colors.green.shade300]
         ].expand(
-          (item) => (item[0] as List).map(
-            (e) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: decodeText(e.text!, item[1] as Color),
-            ),
-          ),
+          (item) => (item[0] as Map).keys.toList().map(
+                (e) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: decodeText(e, item[1] as Color),
+                ),
+              ),
         ),
       ),
     );
   }
 
   Widget buildMainForm(BuildContext context,
-      {double? fontSize, bool enableSvg = true}) {
-    final k = xmlDoc.queryXPath(".//form[@type='k_ele']/orth").node!.text!;
-    final svg = enableSvg ? kanjivgReader.get(k) : null;
+      {double? fontSize, bool enableSvg = true, TextTheme? textTheme}) {
+    final kanji = parsedEntry!.words.firstOrNull;
+    final svg = enableSvg && kanji != null ? kanjivgReader.get(kanji) : null;
+
+    textTheme ??= Theme.of(context).textTheme;
 
     if (svg != null) {
-      final color =
-          Theme.of(context).textTheme.bodyLarge!.color!.hex.substring(0, 6);
+      final color = textTheme.bodyLarge!.color!.hex.substring(0, 6);
       return KanjivgButton(
-          provider: SvgProvider.string(
-              svg.replaceFirst('stroke:#00000', 'stroke:$color')));
+        provider: SvgProvider.string(
+          svg.replaceFirst('stroke:#00000', 'stroke:$color'),
+        ),
+      );
     }
 
     return Text(
-      k,
-      style:
-          Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: fontSize),
+      parsedEntry!.words.first,
+      style: textTheme.bodyLarge?.copyWith(fontSize: fontSize),
     );
   }
 
-  List<Widget> buildSenses(BuildContext context, [double? fontSize]) {
-    final kun = xmlDoc.queryXPath(".//sense/cit[@type='trans']/quote").nodes;
+  Widget buildSenses(
+    BuildContext context, {
+    double? fontSize,
+    TextTheme? textTheme,
+  }) {
+    textTheme ??= Theme.of(context).textTheme;
 
-    return [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        child: Text(
-          kun.map((e) => e.text!).join(", "),
-          style: Theme.of(context)
-              .textTheme
-              .bodyLarge
-              ?.copyWith(fontSize: fontSize),
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: Text(
+        parsedEntry!.senses.join(", "),
+        style: textTheme.bodyLarge?.copyWith(fontSize: fontSize),
       ),
-    ];
+    );
   }
 
   Widget buildPreview(BuildContext context) {
-    return IntrinsicHeight(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FittedBox(
-            child: buildMainForm(context, fontSize: 20, enableSvg: false),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [buildReadings(context), buildSenses(context).first],
-              ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          child: buildMainForm(context, fontSize: 20, enableSvg: false),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildReadings(context),
+                buildSenses(context),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -730,16 +642,45 @@ class EntryJpnKanji extends StatelessWidget {
     );
   }
 
+  List<Widget> buildCompounds(
+      BuildContext context, Map<String, ParsedEntryJpn?> readings) {
+    final ret = <Widget>[];
+
+    readings.forEach((key, value) {
+      if (value != null) {
+        ret.add(
+          GestureDetector(
+            onTap: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (context) {
+              return EntryView.fromEntries(
+                  entries: [ListEntry(0, data: value)]);
+            })),
+            child: EntryJpn(
+              target: 'jpn-${appSettings.language}',
+              parsedEntry: value,
+            ),
+          ),
+        );
+      }
+    });
+
+    return ret;
+  }
+
   Widget compose(
     BuildContext context, {
     bool? kanji,
     bool? sense,
     bool? reading,
+    bool? readingCompounds,
     bool centered = false,
   }) {
     kanji ??= options.display['kanji']!;
     sense ??= options.display['sense']!;
     reading ??= options.display['reading']!;
+    readingCompounds ??= options.display['readingCompounds']!;
+
+    final textTheme = Theme.of(context).textTheme;
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -753,7 +694,21 @@ class EntryJpnKanji extends StatelessWidget {
           if (kanji) Center(child: buildMainForm(context, fontSize: 60)),
           const SizedBox(height: 10),
           if (reading) Center(child: buildReadings(context)),
-          if (sense) ...buildSenses(context, 20),
+          if (sense) buildSenses(context, fontSize: 20, textTheme: textTheme),
+          if (readingCompounds && parsedEntry!.reOn.isNotEmpty)
+            buildDetailsField(
+              context,
+              'On reading compounds',
+              buildCompounds(context, parsedEntry!.reOn),
+              wrap: false,
+            ),
+          if (readingCompounds && parsedEntry!.reKun.isNotEmpty)
+            buildDetailsField(
+              context,
+              'Kun reading compounds',
+              buildCompounds(context, parsedEntry!.reKun),
+              wrap: false,
+            )
         ],
       ),
     );
