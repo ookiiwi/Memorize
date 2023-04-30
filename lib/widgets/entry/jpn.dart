@@ -110,7 +110,11 @@ class EntryJpn extends StatelessWidget {
     Widget buildRichText() => RichText(
           text: TextSpan(
             children: [
-              if (senseNumber != null) TextSpan(text: '$senseNumber.   '),
+              if (senseNumber != null)
+                TextSpan(
+                  text: '$senseNumber.   ',
+                  style: textTheme!.bodySmall,
+                ),
               if (dom && domStr?.isNotEmpty == true)
                 TextSpan(
                   text: '$domStr   ',
@@ -421,8 +425,15 @@ class EntryJpn extends StatelessWidget {
                 ? buildMainForm(context)
                 : Center(child: buildMainForm(context, 40)),
           if (sense)
-            for (var e in parsedEntry!.senses)
-              buildSense(context, e, pos: pos, note: notes, ref: senseRef),
+            for (int i = 0; i < parsedEntry!.senses.length; ++i)
+              buildSense(
+                context,
+                parsedEntry!.senses[i],
+                pos: pos,
+                note: notes,
+                ref: senseRef,
+                senseNumber: parsedEntry!.senses.length > 1 ? i + 1 : null,
+              ),
           if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
           if (otherForms)
             buildDetailsField(context, 'Other forms', buildOtherForms(context)),
