@@ -7,10 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
-import 'package:path/path.dart';
-import 'package:xml/xml.dart';
-
 import 'package:memorize/widgets/entry/jpn.dart';
+import 'package:memorize/widgets/entry/parser.dart';
+import 'package:path/path.dart';
 
 enum DisplayMode { preview, details, quiz, detailsOptions, quizOptions }
 
@@ -19,42 +18,16 @@ String quizSuffix(DisplayMode mode) =>
 
 enum FlashcardOptions { word, sense }
 
-typedef EntryConstructor = Widget Function(
-    {Key? key,
-    required XmlDocument xmlDoc,
-    required String target,
-    required DisplayMode mode});
-typedef GetAudioTextFunc = String? Function(XmlDocument);
-
-final _register = <String, Map<String, List>>{
-  'jpn': {
-    '': [EntryJpn.new, EntryJpn.getAudioText],
-    'kanji': [EntryJpnKanji.new]
-  },
-};
-
 const quizFlashcardOptions = {'': FlashcardOptions.values};
 
-EntryConstructor? getDetails(String target) {
-  final part = target.split('-');
-  var details = _register[part[0]]?['']?.first;
+typedef EntryConstructor = Widget Function(
+    {Key? key,
+    ParsedEntry? parsedEntry,
+    required String target,
+    DisplayMode mode});
 
-  if (part.length > 2) {
-    details = _register[part[0]]?[part[2]]?.first;
-  }
-
-  return details as EntryConstructor?;
-}
-
-GetAudioTextFunc? getAudioText(String target) {
-  final part = target.split('-');
-  var details = _register[part[0]]?[''];
-
-  if (part.length > 2) {
-    details = _register[part[0]]?[part[2]];
-  }
-
-  return details?.length == 2 ? (details?[1]) : null;
+EntryConstructor? getEntryConstructor(String target) {
+  return (target.endsWith('-kanji') ? EntryJpnKanji.new : EntryJpn.new);
 }
 
 FutureOr<void> initEntry() {
@@ -114,7 +87,11 @@ Widget buildDetailsField(
           spacing: 20,
           children: children,
         ),
-      if (!wrap) Column(children: children)
+      if (!wrap)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        )
     ],
   );
 }
