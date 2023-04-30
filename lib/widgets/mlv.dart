@@ -54,7 +54,7 @@ class _MemoListView extends State<MemoListView>
 
   final scrollController = ScrollController();
 
-  final pageSize = 20;
+  final pageSize = 15;
 
   AnimationController? _controller;
   late Animation<double> _animation;
@@ -224,8 +224,8 @@ class _MemoListView extends State<MemoListView>
                     child: Center(
                       widthFactor: 1,
                       heightFactor: 1,
-                      child: getDetails(entry.target)!(
-                        xmlDoc: entry.data!,
+                      child: getEntryConstructor(entry.target)!(
+                        parsedEntry: entry.data!,
                         target: entry.target,
                         mode: DisplayMode.preview,
                       ),
