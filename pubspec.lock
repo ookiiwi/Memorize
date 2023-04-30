@@ -240,14 +240,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.5"
-  expressions:
-    dependency: transitive
-    description:
-      name: expressions
-      sha256: "75ca4343f9f8a38087bea130cf51395d737d87c6947cc19cbb8fb2732cae1a27"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.5"
   fake_async:
     dependency: transitive
     description:
@@ -410,7 +402,7 @@ packages:
     source: hosted
     version: "2.0.0"
   flutter_svg:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: flutter_svg
       sha256: "6ff9fa12892ae074092de2fa6a9938fb21dbabfdaa2ff57dc697ff912fc8d4b2"
@@ -836,14 +828,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.1"
-  rxdart:
-    dependency: transitive
-    description:
-      name: rxdart
-      sha256: "0c7c0cedd93788d996e33041ffecda924cc54389199cde4e6a34b440f50044cb"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.27.7"
   scroll_to_index:
     dependency: "direct main"
     description:
@@ -1193,22 +1177,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.3.0"
-  xpath_selector:
-    dependency: transitive
-    description:
-      name: xpath_selector
-      sha256: "6d8295565a34a6e2821a0721592e584c70421e52a0f54955e0c8e41963db7c90"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.2"
-  xpath_selector_xml_parser:
-    dependency: "direct main"
-    description:
-      name: xpath_selector_xml_parser
-      sha256: "51ae8df88c31d033745de301f327276e1f75a0ae11c95e7b8f725c08f7dff8bb"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.1"
   yaml:
     dependency: transitive
     description:

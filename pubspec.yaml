@@ -47,7 +47,6 @@ dependencies:
   objectid: ^2.1.0
   equatable: ^2.0.5
   go_router: ^6.2.0
-  xpath_selector_xml_parser: ^3.0.0
   google_fonts: ^4.0.3
   mrx_charts: ^0.1.3
   intl: ^0.18.0
@@ -76,6 +75,7 @@ dependencies:
   kanjivg_compress: 
     path: ../kanjivg_compress
   svg_drawing_animation: ^0.11.0
+  flutter_svg: ^1.1.6
 
 dev_dependencies:
   integration_test:
