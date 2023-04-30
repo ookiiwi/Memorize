@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,11 +17,11 @@ import 'package:memorize/widgets/dialog.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
+import 'package:memorize/widgets/entry/parser.dart';
 import 'package:memorize/widgets/mlv.dart';
 import 'package:memorize/widgets/pageview.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
-import 'package:xml/xml.dart';
 import 'package:flutter_ctq/flutter_ctq.dart';
 import 'package:memorize/tts.dart' as tts;
 
@@ -458,13 +459,14 @@ class _EntryView extends State<EntryView> {
                     : () {
                         final entry =
                             entries[_controller.page?.toInt() ?? _initPage];
-                        final getAudioTextFunc = getAudioText(entry.target);
 
-                        if (entry.data == null || getAudioTextFunc == null) {
+                        if (entry.data == null || entry.subTarget == 'kanji') {
                           return;
                         }
 
-                        final text = getAudioTextFunc(entry.data!);
+                        final text = (entry.data! as ParsedEntryJpn)
+                            .readings
+                            .firstOrNull;
 
                         if (text != null) {
                           tts.speak(text: text);
@@ -520,11 +522,12 @@ class _EntryView extends State<EntryView> {
                               : DicoManager.get(
                                   entries[i].target, entries[i].id),
                           builder: (context, doc) {
+                            final target = entries[i].target;
                             entries[i] = entries[i].copyWith(data: doc);
 
-                            return getDetails(entries[i].target)!(
-                              xmlDoc: doc,
-                              target: entries[i].target,
+                            return getEntryConstructor(target)!(
+                              parsedEntry: doc as dynamic,
+                              target: target,
                               mode: DisplayMode.details,
                             );
                           },
@@ -564,8 +567,7 @@ class _EntryViewInfo extends State<EntryViewInfo> {
               title: const Text('Entry id'),
               trailing: Text('${widget.entry.id}'),
             ),
-          getDetails(widget.entry.target)!(
-            xmlDoc: XmlDocument(),
+          getEntryConstructor(widget.entry.target)!(
             target: widget.entry.target,
             mode: DisplayMode.detailsOptions,
           ),
