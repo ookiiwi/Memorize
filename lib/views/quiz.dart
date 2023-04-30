@@ -12,7 +12,6 @@ import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
 import 'package:provider/provider.dart';
-import 'package:xml/xml.dart';
 
 enum QuizMode { flashCard, choice }
 
@@ -120,8 +119,8 @@ class _QuizLauncher extends State<QuizLauncher> {
                     builder: (context, doc) {
                       entries[i] = entries[i].copyWith(data: doc);
 
-                      return getDetails(entries[i].target)!(
-                        xmlDoc: entries[i].data!,
+                      return getEntryConstructor(entries[i].target)!(
+                        parsedEntry: entries[i].data! as dynamic,
                         target: entries[i].target,
                         mode: DisplayMode.quiz,
                       );
@@ -135,8 +134,8 @@ class _QuizLauncher extends State<QuizLauncher> {
                   builder: (context, doc) {
                     entries[i] = entries[i].copyWith(data: doc);
 
-                    return getDetails(entries[i].target)!(
-                      xmlDoc: entries[i].data!,
+                    return getEntryConstructor(entries[i].target)!(
+                      parsedEntry: entries[i].data! as dynamic,
                       target: entries[i].target,
                       mode: DisplayMode.details,
                     );
@@ -327,8 +326,7 @@ class _QuizLauncher extends State<QuizLauncher> {
                   )
                 ],
                 builder: (context, child) {
-                  return getDetails(_optionsTarget)!(
-                    xmlDoc: XmlDocument(),
+                  return getEntryConstructor(_optionsTarget)!(
                     target: _optionsTarget,
                     mode: DisplayMode.quizOptions,
                   );
