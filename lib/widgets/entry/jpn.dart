@@ -428,13 +428,16 @@ class EntryJpn extends StatelessWidget {
                 : Center(child: buildMainForm(context, 40)),
           if (sense)
             for (int i = 0; i < parsedEntry!.senses.length; ++i)
-              buildSense(
-                context,
-                parsedEntry!.senses[i],
-                pos: pos,
-                note: notes,
-                ref: senseRef,
-                senseNumber: parsedEntry!.senses.length > 1 ? i + 1 : null,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: buildSense(
+                  context,
+                  parsedEntry!.senses[i],
+                  pos: pos,
+                  note: notes,
+                  ref: senseRef,
+                  senseNumber: parsedEntry!.senses.length > 1 ? i + 1 : null,
+                ),
               ),
           if (notes) buildDetailsField(context, 'Notes', buildNotes(context)),
           if (otherForms)
