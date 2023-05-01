@@ -177,7 +177,7 @@ class ParsedEntryJpnKanji extends ParsedEntry {
     final value = childNode.value ?? childNode.innerText;
 
     Future<ParsedEntryJpn?> getCompound(String value) async {
-      if (getEntry == null) return null;
+      if (getEntry == null || value.startsWith('-')) return null;
 
       final findRes = findEntry(
         '${words.first}${(value.contains('.') || value.endsWith('-')) ? '%' : ''}',
