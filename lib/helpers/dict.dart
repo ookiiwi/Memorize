@@ -351,7 +351,6 @@ class DicoManager {
     String key, {
     int page = 0,
     int cnt = 20,
-    bool exactMatch = false,
     String? filter,
     int filterPathIdx = 0,
   }) {
