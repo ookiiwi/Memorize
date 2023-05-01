@@ -155,18 +155,20 @@ class EntryJpn extends StatelessWidget {
     return buildRichText();
   }
 
-  FutureOr<ParsedEntryJpn?> getCrossRef(String key, String? info,
+  Future<ParsedEntryJpn?> getCrossRef(String key, String? info,
       {void Function(int id)? onIdFound}) {
     final findRes =
         DicoManager.find(target, key, filter: info, filterPathIdx: 1, cnt: 1);
 
-    return findRes.then((value) {
+    return findRes.then((value) async {
       if (value.isEmpty) return null;
 
       final id = value.first.value.first;
       if (onIdFound != null) onIdFound(id);
 
-      return DicoManager.get(target, id) as ParsedEntryJpn;
+      final ret = (await DicoManager.get(target, id)) as ParsedEntryJpn;
+
+      return ret;
     });
   }
 
@@ -198,9 +200,10 @@ class EntryJpn extends StatelessWidget {
                   );
 
                   return FutureBuilder(
-                      future: Future.value(xref),
+                      future: xref,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState != ConnectionState.done) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return const Center(
                             child: CircularProgressIndicator(),
                           );
@@ -322,15 +325,14 @@ class EntryJpn extends StatelessWidget {
   }
 
   Widget buildPreview(BuildContext context) {
+    int i = 0;
     final senses = parsedEntry!.senses.map(
-      (e) => buildSense(
-        context,
-        e,
-        pos: false,
-        dom: false,
-        note: false,
-        ref: false,
-      ),
+      (e) => buildSense(context, e,
+          pos: false,
+          dom: false,
+          note: false,
+          ref: false,
+          senseNumber: parsedEntry!.senses.length > 1 ? ++i : null),
     );
 
     return Column(
