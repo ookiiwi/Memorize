@@ -128,6 +128,7 @@ class _QuizLauncher extends State<QuizLauncher> {
               },
               answerBuilder: (context, i) {
                 return DicoGetBuilder(
+                  key: ValueKey(i),
                   getResult: entries[i].data != null
                       ? entries[i].data!
                       : DicoManager.get(entries[i].target, entries[i].id),
@@ -621,7 +622,7 @@ class _Quiz extends State<Quiz> {
       )),
       Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text('${page + 1}/$itemCount'),
+        child: Text('${(page + 1).clamp(0, itemCount)}/$itemCount'),
       ),
       Padding(
         padding: const EdgeInsets.all(8.0),
