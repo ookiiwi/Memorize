@@ -39,15 +39,14 @@ class Lexicon {
   }
 
   void _add(LexiconItem item) {
-    int lb = lowerBound<LexiconItem>(_items, item,
-        compare: (a, b) => a.id.compareTo(b.id));
+    final lb = lowerBound<LexiconItem>(
+      _items,
+      item,
+      compare: (a, b) => a.id.compareTo(b.id),
+    );
 
     if (lb == _items.length || _items[lb].id != item.id) {
       _items.insert(lb, item);
-
-      if (item.entry != null && item.subTarget == null) {
-        // TODO: register pos
-      }
     } else {
       _items[lb].tags.addAll(item.tags);
     }
@@ -189,6 +188,13 @@ class LexiconMeta {
   List<String> get tags => _tags.toList();
   List<int> get tagsColors => _tagsColors.toList();
 
+  void clear() {
+    _tags.clear();
+    _tagsColors.clear();
+    collections.clear();
+    tagsMapping.clear();
+  }
+
   int addTag(String value, Color color, {String collection = ''}) {
     final idx = _tags.add(value);
     _tagsColors.add(color.value);
@@ -256,6 +262,10 @@ class GrowingList<T> {
   T operator [](int index) {
     return _list[index];
   }
+
+  void clear() => _list.clear();
+
+  bool contains(T element) => _list.contains(element);
 
   int add(T element) {
     final idx = _list.indexOf(element);
