@@ -20,6 +20,7 @@ import 'package:collection/collection.dart';
 
 class EntryJpn extends StatelessWidget {
   static final _senseParenthesesRE = RegExp(r'\(\w+\)');
+  static final posPrefixRE = RegExp(r'^(n|adv|adj|v|male|)\.');
 
   EntryJpn(
       {super.key,
@@ -96,7 +97,7 @@ class EntryJpn extends StatelessWidget {
         final tmp = c
             .replaceAll(_senseParenthesesRE, '')
             .trim()
-            .replaceFirst(RegExp(r'^(n|adv|adj|v|male|)\.'), '');
+            .replaceFirst(posPrefixRE, '');
         final str =
             tmp[0].toUpperCase() + (tmp.length == 1 ? '' : tmp.substring(1));
 
