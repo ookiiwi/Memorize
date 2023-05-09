@@ -259,11 +259,16 @@ class EntryJpn extends StatelessWidget {
 
   Widget buildMainForm(BuildContext context, [double? fontSize]) {
     final word = parsedEntry!.words.firstOrNull;
-    final reading = parsedEntry!.readings.first;
+    final reading = parsedEntry!.readings.firstOrNull ??
+        parsedEntry!.reRestr.entries
+            .firstWhereOrNull((e) => e.value.contains(word))
+            ?.key;
+
+    assert(reading != null);
 
     return FittedBox(
       fit: BoxFit.fitWidth,
-      child: buildWord(word, reading, fontSize: fontSize),
+      child: buildWord(word, reading!, fontSize: fontSize),
     );
   }
 
@@ -271,13 +276,29 @@ class EntryJpn extends StatelessWidget {
     final ret = <Widget>[];
 
     // skip first main element
-    for (int i = 1; i < parsedEntry!.words.length; ++i) {
-      final word = parsedEntry!.words[i];
-      final reading = parsedEntry!.readings.elementAtOrNull(i) ??
-          parsedEntry!.readings.first;
+    if (parsedEntry!.readings.isNotEmpty) {
+      for (int i = 1; i < parsedEntry!.words.length; ++i) {
+        final word = parsedEntry!.words[i];
+        final reading = parsedEntry!.readings.elementAtOrNull(i) ??
+            parsedEntry!.readings.first;
 
-      ret.add(buildWord(word, reading, rubyLayout: false, fontSize: fontSize));
+        ret.add(
+            buildWord(word, reading, rubyLayout: false, fontSize: fontSize));
+      }
     }
+
+    parsedEntry!.reRestr.forEach((key, value) {
+      for (var e in value) {
+        ret.add(
+          buildWord(
+            e.isNotEmpty ? e : null,
+            key,
+            rubyLayout: false,
+            fontSize: fontSize,
+          ),
+        );
+      }
+    });
 
     return ret;
   }
@@ -339,7 +360,7 @@ class EntryJpn extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildMainForm(context),
+        buildMainForm(context, 20),
         for (int i = 0; i < senses.length && i < 3; ++i)
           Row(
             children: [
@@ -598,7 +619,11 @@ class EntryJpnKanji extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         FittedBox(
-          child: buildMainForm(context, fontSize: 20, enableSvg: false),
+          child: buildMainForm(
+            context,
+            fontSize: 20,
+            enableSvg: false,
+          ),
         ),
         Expanded(
           child: Padding(

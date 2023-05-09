@@ -27,23 +27,21 @@ class ParsedEntryJpn extends ParsedEntry {
         entry.senses.add({});
       }
 
-      for (var childNode in node.children) {
-        if (localName == 'form') {
-          final type = node.attributes.first;
+      if (localName == 'form') {
+        final type = node.attributes.first;
 
-          assert(type.localName == 'type');
+        assert(type.localName == 'type');
 
-          switch (type.value) {
-            case 'k_ele':
-              entry._parseKEle(childNode);
-              break;
-            case 'r_ele':
-              entry._parseREle(childNode);
-              break;
-          }
-        } else if (localName == 'sense') {
-          entry._parseSense(childNode);
+        switch (type.value) {
+          case 'k_ele':
+            entry._parseKEle(node);
+            break;
+          case 'r_ele':
+            entry._parseREle(node);
+            break;
         }
+      } else if (localName == 'sense') {
+        entry._parseSense(node);
       }
     }
 
@@ -63,36 +61,44 @@ class ParsedEntryJpn extends ParsedEntry {
   }
 
   final List<String> readings = [];
-  final Map<String, List<String>> restr = {};
+  final Map<String, Set<String>> reRestr = {};
   final Map<String, Map<String, String>> reNotes = {};
   final List<Map<String, List<String>>> senses = [];
   final List<ParsedEntryJpnKanji> kanjis = [];
 
   void _parseKEle(XmlNode elt) {
     for (var node in elt.children) {
-      if (node.parentElement?.localName == 'orth') {
-        words.add(node.value!);
+      if (node.descendants.firstOrNull?.parentElement?.localName == 'orth') {
+        words.add(node.value ?? node.innerText);
       }
     }
   }
 
   void _parseREle(XmlNode elt) {
+    String? orth;
+    Set<String> restr = {};
+
     for (var node in elt.children) {
-      final localName = node.parentElement?.localName;
-      final att = node.parentElement?.attributes.firstOrNull;
+      final localName = node.descendants.firstOrNull?.parentElement?.localName;
+      final att =
+          node.descendants.firstOrNull?.parentElement?.attributes.firstOrNull;
+      final value = node.value ?? node.innerText;
 
       if (localName == 'orth') {
-        readings.add(node.value ?? node.innerText);
+        orth = value;
       } else if (localName == 'lbl') {
         if (att?.value == 're_restr') {
-          if (!restr.containsKey(readings.last)) {
-            restr[readings.last] = [];
-          }
-          restr[readings.last]?.add(node.innerText);
-        } else if (att != null) {
-          reNotes[readings.last]?[att.value] = node.innerText;
+          restr.add(value);
+        } else if (att?.value == 're_nokanji') {
+          restr.add('');
         }
       }
+    }
+
+    if (restr.isNotEmpty && orth != null) {
+      reRestr[orth] = restr;
+    } else if (orth != null) {
+      readings.add(orth);
     }
   }
 
@@ -110,8 +116,9 @@ class ParsedEntryJpn extends ParsedEntry {
     }
 
     for (var node in elt.children) {
-      final localName = node.parentElement?.localName;
-      final att = node.parentElement?.attributes.firstOrNull;
+      final localName = node.descendants.firstOrNull?.parentElement?.localName;
+      final att =
+          node.descendants.firstOrNull?.parentElement?.attributes.firstOrNull;
 
       if (localName == 'cit' && att?.value == 'trans') {
         setField('', node);
