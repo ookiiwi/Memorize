@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 /// Recommended toolbarHeight for textfield
@@ -9,11 +11,15 @@ class AppBarTextField extends StatefulWidget {
     this.controller,
     this.onChanged,
     this.height = kToolbarHeight,
+    this.contentPadding,
     this.hintText,
+    this.autoFocus = true,
   });
 
   final String? hintText;
   final double height;
+  final EdgeInsets? contentPadding;
+  final bool autoFocus;
   final TextEditingController? controller;
   final void Function(String value)? onChanged;
 
@@ -25,9 +31,9 @@ class _AppBarTextField extends State<AppBarTextField> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: kToolbarHeight,
+      height: widget.height,
       child: TextField(
-        autofocus: true,
+        autofocus: widget.autoFocus,
         controller: widget.controller,
         decoration: InputDecoration(
           suffixIcon: IconButton(
@@ -37,6 +43,7 @@ class _AppBarTextField extends State<AppBarTextField> {
           fillColor: Theme.of(context).primaryColor.withOpacity(0.02),
           filled: true,
           hintText: widget.hintText,
+          contentPadding: widget.contentPadding,
           border: OutlineInputBorder(
             borderSide: BorderSide.none,
             borderRadius: BorderRadius.circular(30),
@@ -99,6 +106,78 @@ class _BottomNavBar extends State<BottomNavBar> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: _buildItems(),
+      ),
+    );
+  }
+}
+
+class BottomNavBar2 extends StatefulWidget {
+  const BottomNavBar2(
+      {super.key, required this.items, this.onTap, this.selectedItem = 0})
+      : assert(items.length >= 2);
+
+  final int selectedItem;
+  final List<BottomNavigationBarItem> items;
+  final void Function(BottomNavigationBarItem, int)? onTap;
+
+  @override
+  State<StatefulWidget> createState() => _BottomNavBar2();
+}
+
+class _BottomNavBar2 extends State<BottomNavBar2> {
+  late BottomNavigationBarItem _selected = widget.items[widget.selectedItem];
+  final borderRadius = const Radius.circular(30);
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      height: kBottomNavigationBarHeight,
+      child: ClipRRect(
+        borderRadius: BorderRadius.only(
+          topLeft: borderRadius,
+          topRight: borderRadius,
+        ),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 1, sigmaY: 1),
+          child: Container(
+            color: colorScheme.background.withOpacity(0.5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: widget.items.map((e) {
+                return IconButton(
+                  color: _selected == e
+                      ? colorScheme.background
+                      : colorScheme.onBackground,
+                  style: IconButton.styleFrom(
+                    backgroundColor:
+                        _selected != e ? null : colorScheme.onBackground,
+                  ),
+                  onPressed: () {
+                    if (widget.onTap != null) {
+                      widget.onTap!(e, widget.items.indexOf(e));
+                    }
+                    setState(() => _selected = e);
+                  },
+                  icon: Row(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 5),
+                        child: e.icon,
+                      ),
+                      if (e.label != null && _selected == e)
+                        Text(
+                          e.label!,
+                          style: TextStyle(color: colorScheme.background),
+                        )
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
       ),
     );
   }
