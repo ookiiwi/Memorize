@@ -1,13 +1,12 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:appinio_swiper/appinio_swiper.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/list.dart';
+import 'package:memorize/lexicon.dart';
 import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/views/list.dart';
+import 'package:memorize/views/lexicon.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -24,9 +23,10 @@ class QuizOpt {
 }
 
 class QuizLauncher extends StatefulWidget {
-  const QuizLauncher({super.key, required this.list});
+  const QuizLauncher({super.key, required this.items, this.title = 'Untitled'});
 
-  final MemoList list;
+  final String title;
+  final List<LexiconItem> items;
 
   @override
   State<StatefulWidget> createState() => _QuizLauncher();
@@ -51,8 +51,7 @@ class _QuizLauncher extends State<QuizLauncher> {
 
   Map<String, String?> entryOptionsError = {};
 
-  MemoList get list => widget.list;
-  List<ListEntry> get entries => list.entries;
+  List<LexiconItem> get items => widget.items;
 
   final Set<int> _rights = {};
   final Set<int> _wrongs = {};
@@ -107,104 +106,53 @@ class _QuizLauncher extends State<QuizLauncher> {
       MaterialPageRoute(
         builder: (context) {
           return Quiz(
-              mode: _mode,
-              timer: _timer,
-              random: _random,
-              itemCount: list.entries.length,
-              questionBuilder: (context, i) {
-                return DicoGetBuilder(
-                    getResult: entries[i].data != null
-                        ? entries[i].data!
-                        : DicoManager.get(entries[i].target, entries[i].id),
-                    builder: (context, doc) {
-                      entries[i] = entries[i].copyWith(data: doc);
-
-                      return getEntryConstructor(entries[i].target)!(
-                        parsedEntry: entries[i].data! as dynamic,
-                        target: entries[i].target,
-                        mode: DisplayMode.quiz,
-                      );
-                    });
-              },
-              answerBuilder: (context, i) {
-                return DicoGetBuilder(
-                  key: ValueKey(i),
-                  getResult: entries[i].data != null
-                      ? entries[i].data!
-                      : DicoManager.get(entries[i].target, entries[i].id),
+            mode: _mode,
+            timer: _timer,
+            random: _random,
+            itemCount: items.length,
+            questionBuilder: (context, i) {
+              return DicoGetBuilder(
+                  getResult: items[i].entry != null
+                      ? items[i].entry!
+                      : DicoManager.get(items[i].target, items[i].id),
                   builder: (context, doc) {
-                    entries[i] = entries[i].copyWith(data: doc);
+                    items[i].entry = doc;
 
-                    return getEntryConstructor(entries[i].target)!(
-                      parsedEntry: entries[i].data! as dynamic,
-                      target: entries[i].target,
-                      mode: DisplayMode.details,
+                    return getEntryConstructor(items[i].target)!(
+                      parsedEntry: items[i].entry! as dynamic,
+                      target: items[i].target,
+                      mode: DisplayMode.quiz,
                     );
+                  });
+            },
+            answerBuilder: (context, i) {
+              return DicoGetBuilder(
+                key: ValueKey(i),
+                getResult: items[i].entry != null
+                    ? items[i].entry!
+                    : DicoManager.get(items[i].target, items[i].id),
+                builder: (context, doc) {
+                  items[i].entry = doc;
+
+                  return getEntryConstructor(items[i].target)!(
+                    parsedEntry: items[i].entry! as dynamic,
+                    target: items[i].target,
+                    mode: DisplayMode.details,
+                  );
+                },
+              );
+            },
+            onTapInfo: (value) {
+              return Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) {
+                    return EntryViewInfo(item: items[value]);
                   },
-                );
-              },
-              onTapInfo: (value) {
-                return Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) {
-                      final entry = entries[value];
-
-                      return EntryViewInfo(
-                        entry: entry,
-                      );
-                    },
-                  ),
-                );
-              },
-              onAnswer: (value, i) => value ? _rights.add(i) : _wrongs.add(i),
-              onEnd: (value) async {
-                for (int i = 0; i < entries.length; ++i) {
-                  if (_rights.contains(i)) {
-                    entries[i] = entries[i].copyWith(isWrong: false);
-                  } else if (_wrongs.contains(i)) {
-                    entries[i] = entries[i].copyWith(isWrong: true);
-                  }
-                }
-
-                if (value < list.score) {
-                  list.level -= 4;
-                } else if (value == 100) {
-                  list.level += 1;
-                }
-
-                if (list.level < 1) {
-                  list.level = 1;
-                }
-
-                if (list.lastQuizEntryCount != list.entries.length) {
-                  final value = entries.length - list.lastQuizEntryCount;
-
-                  globalStats.incrementEntries(value);
-                }
-
-                list
-                  ..score = value
-                  ..lastQuizEntryCount = entries.length
-                  ..save();
-
-                globalStats.save();
-
-                final pendingRequests = await flutterLocalNotificationsPlugin
-                    .pendingNotificationRequests();
-                int id = pendingRequests.length;
-
-                final pending = pendingRequests.firstWhereOrNull((e) {
-                  final payload = jsonDecode(e.payload!);
-                  return payload[0] == list.filename;
-                });
-
-                if (pending != null) {
-                  await flutterLocalNotificationsPlugin.cancel(pending.id);
-                  --id;
-                }
-
-                await list.setReminder(id);
-              });
+                ),
+              );
+            },
+            onAnswer: (value, i) => value ? _rights.add(i) : _wrongs.add(i),
+          );
         },
       ),
     );
@@ -221,11 +169,17 @@ class _QuizLauncher extends State<QuizLauncher> {
     final onPrimaryColor = Theme.of(context).colorScheme.onPrimaryContainer;
 
     return Scaffold(
-      appBar: AppBar(title: Text(list.name)),
+      appBar: AppBar(
+        scrolledUnderElevation: 0,
+        title: Text(widget.title),
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
           padding: const EdgeInsets.only(
-              bottom: kBottomNavigationBarHeight + 10, left: 10, right: 10),
+            bottom: kBottomNavigationBarHeight + 10,
+            left: 10,
+            right: 10,
+          ),
           child: Column(
             children: [
               ConstrainedBox(
@@ -277,10 +231,10 @@ class _QuizLauncher extends State<QuizLauncher> {
                     itemBuilder: (context, i) {
                       final e = targets.elementAt(i);
                       final parts = e.split('-');
-                      String title = IsoLanguage.getFullname(parts[1]);
+                      String title = 'WORDS';
 
                       if (parts.length > 2) {
-                        title += '(${parts[2]})';
+                        title = 'KANJI';
                       }
 
                       return TextButton(

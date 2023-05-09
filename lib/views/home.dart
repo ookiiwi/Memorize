@@ -137,7 +137,7 @@ class ProgressDetails extends StatelessWidget {
 
           return ListTile(
             title: Text(MemoList.extractName(e.key)),
-            trailing: Text('${e.value.score}'),
+            trailing: Text('${e.value.score}%'),
             onTap: () => context.push('/list', extra: MemoList.open(e.key)),
           );
         },

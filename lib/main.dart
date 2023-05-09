@@ -6,22 +6,21 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/lexicon.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
+import 'package:memorize/views/explorer.dart';
+import 'package:memorize/views/lexicon.dart';
 import 'package:memorize/views/memo_hub.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/views/splash_screen.dart';
 import 'package:go_router/go_router.dart';
-import 'package:memorize/file_system.dart';
 import 'package:memorize/views/home.dart';
-import 'package:memorize/views/list.dart';
-import 'package:memorize/views/list_explorer.dart';
 import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['home', 'lists', 'memo_hub', 'settings'];
-const _appBarIconSize = 36.0;
+const _routes = ['', 'explorer', 'lexicon', 'memo_hub', 'settings'];
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 final ValueNotifier<Widget?> bottomNavBar = ValueNotifier(null);
 
@@ -39,8 +38,8 @@ final router = GoRouter(initialLocation: '/splash', routes: [
   ShellRoute(
     navigatorKey: routerNavKey,
     builder: (context, state, child) {
-      final appBarIconColor = Theme.of(context).colorScheme.onBackground;
-      final appBarColor = Theme.of(context).colorScheme.background;
+      final route = RegExp(r'\/([^\/\s]+)').firstMatch(state.location)?[1] ??
+          _routes.first;
 
       BackButtonInterceptor.remove(_onWillPop);
       BackButtonInterceptor.add(_onWillPop);
@@ -48,58 +47,48 @@ final router = GoRouter(initialLocation: '/splash', routes: [
       return Scaffold(
         extendBody: true,
         body: SafeArea(bottom: false, child: child),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                appBarColor.withOpacity(0.0),
-                appBarColor.withOpacity(0.8),
-                appBarColor,
-              ],
+        bottomNavigationBar: BottomNavBar2(
+          selectedItem: _routes.indexOf(route),
+          onTap: (item, i) {
+            final location = '/${_routes[i]}';
+
+            if (GoRouter.of(context).location == location) {
+              GoRouter.of(context).refresh();
+            }
+
+            final file = File(lastRootLocationFilename);
+            file.writeAsStringSync(location);
+
+            context.go(location);
+          },
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_rounded),
+              label: 'Home',
             ),
-          ),
-          child: ValueListenableBuilder<Widget?>(
-            valueListenable: bottomNavBar,
-            builder: (context, value, _) {
-              if (value != null) {
-                return value;
-              }
-
-              return BottomNavBar(
-                backgroundColor: Colors.transparent,
-                onTap: (i) {
-                  final location = '/${_routes[i]}';
-
-                  if (GoRouter.of(context).location == location) {
-                    GoRouter.of(context).refresh();
-                  }
-
-                  final file = File(lastRootLocationFilename);
-                  file.writeAsStringSync(location);
-
-                  context.go(location);
-                },
-                items: [
-                  Icon(Icons.home_rounded,
-                      color: appBarIconColor, size: _appBarIconSize),
-                  Icon(Icons.list_rounded,
-                      color: appBarIconColor, size: _appBarIconSize),
-                  Icon(Icons.search_rounded,
-                      color: appBarIconColor, size: _appBarIconSize),
-                  Icon(Icons.settings,
-                      color: appBarIconColor, size: _appBarIconSize),
-                ],
-              );
-            },
-          ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.more_vert_rounded),
+              label: 'Explorer',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.translate_rounded),
+              label: 'Lexicon',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.search_rounded),
+              label: 'MemoHub',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings_rounded),
+              label: 'Settings',
+            ),
+          ],
         ),
       );
     },
     routes: [
       GoRoute(
-        path: '/home',
+        path: '/',
         pageBuilder: (context, state) =>
             const NoTransitionPage(child: HomePage()),
         routes: [
@@ -117,40 +106,58 @@ final router = GoRouter(initialLocation: '/splash', routes: [
         ],
       ),
       GoRoute(
-          path: '/lists',
-          pageBuilder: (context, state) => const NoTransitionPage(
-                child: ListExplorer(),
-              ),
+        path: '/explorer',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: Explorer()),
+        routes: [
+          GoRoute(
+            path: 'listview',
+            pageBuilder: (context, state) {
+              final Map<String, dynamic>? extra =
+                  state.extra as Map<String, dynamic>?;
+
+              return NoTransitionPage(
+                child: LexiconListView(
+                  title: extra?['title'],
+                  items: (extra?['items'] as List<LexiconItem>?) ?? [],
+                ),
+              );
+            },
+          )
+        ],
+      ),
+      GoRoute(
+          path: '/lexicon',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: LexiconView()),
           routes: [
             GoRoute(
-              path: 'search',
-              pageBuilder: (context, state) => NoTransitionPage(
-                child: ListExplorerSearch(dir: state.extra as Directory),
-              ),
-            )
+              path: 'itemView',
+              pageBuilder: (context, state) {
+                final args = state.extra as Map<String, dynamic>;
+                return NoTransitionPage(
+                  child: LexiconItemView(
+                    key: args['key'],
+                    initialIndex: args['initialIndex'] ?? 0,
+                    lexicon: args['lexicon'],
+                  ),
+                );
+              },
+            ),
           ]),
       GoRoute(
-          path: '/list',
-          builder: (context, state) {
-            assert(state.extra != null);
-
-            final extra = state.extra;
-
-            if (extra is FileInfo) {
-              return ListViewer.fromFile(fileinfo: extra);
-            } else if (extra is MemoList) {
-              return ListViewer.fromList(list: extra);
-            } else if (extra is String) {
-              return ListViewer(dir: extra);
-            }
-
-            throw Exception('Invalid list arguments');
-          }),
-      GoRoute(
         path: '/quiz_launcher',
-        pageBuilder: (context, state) => NoTransitionPage(
-          child: QuizLauncher(list: state.extra as MemoList),
-        ),
+        pageBuilder: (context, state) {
+          final Map<String, dynamic> extra =
+              state.extra as Map<String, dynamic>;
+
+          return NoTransitionPage(
+            child: QuizLauncher(
+              title: extra['title'],
+              items: extra['items'],
+            ),
+          );
+        },
       ),
       GoRoute(
           path: '/memo_hub',

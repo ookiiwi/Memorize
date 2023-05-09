@@ -11,6 +11,7 @@ import 'package:memorize/auth/auth.dart';
 import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/tts.dart' as tts;
+import 'package:memorize/lexicon.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -27,6 +28,9 @@ late final AppSettings appSettings;
 final auth = Auth();
 final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 late final KanjiSvgReader kanjivgReader;
+late final Lexicon wordLexicon;
+late final Lexicon kanjiLexicon;
+late final LexiconMeta lexiconMeta;
 
 Future<void> initConstants() async {
   await dotenv.load();
@@ -90,6 +94,40 @@ Future<void> initConstants() async {
   }
 
   kanjivgReader = KanjiSvgReader(kanjivgFilePath);
+
+  final lexiconPath = '$applicationDocumentDirectory/lexicon';
+
+  wordLexicon = Lexicon([
+    LexiconItem(1400800),
+    LexiconItem(1586720),
+    LexiconItem(1061520),
+    LexiconItem(1185780),
+    LexiconItem(1443000),
+    LexiconItem(1596390),
+    LexiconItem(1538170),
+    LexiconItem(1490220),
+  ]); //_tryLoadLexicon('$lexiconPath/word');
+  kanjiLexicon = Lexicon([
+    LexiconItem(24859, subTarget: 'kanji'),
+    LexiconItem(20154, subTarget: 'kanji'),
+    LexiconItem(30007, subTarget: 'kanji'),
+    LexiconItem(22899, subTarget: 'kanji'),
+    LexiconItem(23376, subTarget: 'kanji'),
+    LexiconItem(26412, subTarget: 'kanji'),
+  ]); //_tryLoadLexicon('$lexiconPath/kanji');
+
+  lexiconMeta = LexiconMeta();
+}
+
+Lexicon _tryLoadLexicon(String path) {
+  final file = File(path);
+
+  if (!file.existsSync()) {
+    // ignore: prefer_const_constructors
+    return Lexicon();
+  }
+
+  return Lexicon.decode(file.readAsBytesSync());
 }
 
 Future<void> disposeConstants() async {
