@@ -35,7 +35,7 @@ final kanaExpansion = <String, String>{
 
 Set<String> expandKana(String kana) {
   final ret = <String>{
-    kanaKit.toHiragana(kana.replaceFirst(RegExp(r'\..*$'), ''))
+    kanaKit.toHiragana(kana.replaceFirst(RegExp(r'((\..*)|-)$'), ''))
   };
 
   kana = kanaKit.toHiragana(kana);
