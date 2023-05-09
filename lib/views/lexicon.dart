@@ -14,6 +14,7 @@ import 'package:memorize/widgets/bar.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/tts.dart' as tts;
+import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -26,6 +27,14 @@ class LexiconView extends StatefulWidget {
 }
 
 class _Lexicon extends State<LexiconView> {
+  static const _posPrefixMapping = {
+    'n': 'Noun',
+    'adv': 'Adverb',
+    'adj': 'Adjective',
+    'v': 'Verb',
+    'male': 'Male'
+  };
+
   final labels = {'WORDS': ScrollController(), 'KANJI': ScrollController()};
   final _textController = TextEditingController();
   Lexicon? _wordLexicon;
@@ -63,6 +72,28 @@ class _Lexicon extends State<LexiconView> {
     });
   }
 
+  void _setTagPos(LexiconItem item) {
+    if (item.subTarget != null || item.entry == null) return;
+
+    for (var e in (item.entry! as ParsedEntryJpn).senses) {
+      for (var pos in e['pos'] ?? <String>[]) {
+        final prefix =
+            _posPrefixMapping[EntryJpn.posPrefixRE.firstMatch(pos)?[1]];
+        final cleanPos = pos.replaceFirst(EntryJpn.posPrefixRE, '').trim();
+
+        if (prefix != null) {
+          final i = lexiconMeta.addTag(prefix, lexiconMeta.getRandomTagColor());
+          lexiconMeta.tagItem(i, item);
+        }
+
+        final i = lexiconMeta.addTag(
+            '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}',
+            lexiconMeta.getRandomTagColor());
+        lexiconMeta.tagItem(i, item);
+      }
+    }
+  }
+
   Widget lexiconBuilder(BuildContext context, int index, String label) {
     final isKanji = label == 'KANJI';
     final lexicon = isKanji
@@ -82,52 +113,66 @@ class _Lexicon extends State<LexiconView> {
       ),
       child: DefaultTextStyle.merge(
         style: TextStyle(color: textColor),
-        child: ListView.builder(
-          //key: PageStorageKey(label),
-          controller: labels[label],
-          itemCount: lexicon.length,
-          shrinkWrap: true,
-          padding: const EdgeInsets.only(
-            top: kToolbarHeight + 10,
-            bottom: kBottomNavigationBarHeight,
-            left: 10,
-            right: 10,
-          ),
-          itemBuilder: (context, i) {
-            if (_kanjiLexicon != null && _wordLexicon != null) {
-              if (label == 'KANJI' && !kanjiLexicon.containsId(lexicon[i].id) ||
-                  label == 'WORDS' && !wordLexicon.containsId(lexicon[i].id)) {
-                return _addEntryWrapper(
+        child: Scrollbar(
+          radius: const Radius.circular(360),
+          child: ListView.builder(
+            //key: PageStorageKey(label),
+            controller: labels[label],
+            itemCount: lexicon.length,
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(
+              top: kToolbarHeight + 10,
+              bottom: kBottomNavigationBarHeight,
+              left: 10,
+              right: 10,
+            ),
+            itemBuilder: (context, i) {
+              if (_kanjiLexicon != null && _wordLexicon != null) {
+                if (label == 'KANJI' &&
+                        !kanjiLexicon.containsId(lexicon[i].id) ||
+                    label == 'WORDS' &&
+                        !wordLexicon.containsId(lexicon[i].id)) {
+                  return _addEntryWrapper(
                     context,
                     LexiconItemWidget(
                       item: lexicon[i],
                       onTap: (item) => _onLexiconItemTap(lexicon, i),
-                    ), onAdd: () {
-                  label == 'KANJI'
-                      ? kanjiLexicon.add(lexicon[i])
-                      : wordLexicon.add(lexicon[i]);
+                    ),
+                    onAdd: () {
+                      _setTagPos(lexicon[i]);
 
-                  showDialog(
-                    context: context,
-                    builder: (context) =>
-                        buildTagColorPicker(context, lexicon[i]),
+                      setState(() {
+                        label == 'KANJI'
+                            ? kanjiLexicon.add(lexicon[i])
+                            : wordLexicon.add(lexicon[i]);
+                      });
+
+                      showDialog(
+                        context: context,
+                        builder: (context) =>
+                            buildTagColorPicker(context, lexicon[i]),
+                      );
+                    },
                   );
-                });
+                }
               }
-            }
 
-            return LexiconItemWidget(
-              item: lexicon[i],
-              onTap: (item) => _onLexiconItemTap(lexicon, i),
-              onLongPress: (item) {
-                showDialog(
+              return LexiconItemWidget(
+                item: lexicon[i],
+                onTap: (item) => _onLexiconItemTap(lexicon, i),
+                onWidgetLoaded:
+                    label != 'KANJI' ? () => _setTagPos(lexicon[i]) : null,
+                onLongPress: (item) {
+                  showDialog(
                     context: context,
                     builder: (context) {
                       return buildLongPressDialog(context, item);
-                    });
-              },
-            );
-          },
+                    },
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -244,6 +289,7 @@ class _Lexicon extends State<LexiconView> {
 
               wordLexicon.clear();
               kanjiLexicon.clear();
+              lexiconMeta.clear();
 
               Directory(feRoot).listSync().forEach((e) {
                 if (!p.basename(e.path).startsWith('.') &&
@@ -500,8 +546,6 @@ class _LexiconItemView extends State<LexiconItemView> {
                 builder: (context) {
                   final item = lexicon[_controller.page?.toInt() ?? _initPage];
 
-                  print('item tags up: ${item.tags}');
-
                   return EntryViewInfo(
                     item: item,
                   );
@@ -565,11 +609,16 @@ class _LexiconItemView extends State<LexiconItemView> {
 
 class LexiconItemWidget extends StatelessWidget {
   const LexiconItemWidget(
-      {super.key, required this.item, this.onTap, this.onLongPress});
+      {super.key,
+      required this.item,
+      this.onTap,
+      this.onLongPress,
+      this.onWidgetLoaded});
 
   final LexiconItem item;
   final void Function(LexiconItem item)? onTap;
   final void Function(LexiconItem item)? onLongPress;
+  final VoidCallback? onWidgetLoaded;
 
   @override
   Widget build(BuildContext context) {
@@ -604,6 +653,10 @@ class LexiconItemWidget extends StatelessWidget {
                   getResult: DicoManager.get(target, item.id),
                   builder: (context, entry) {
                     item.entry = entry;
+
+                    if (onWidgetLoaded != null) {
+                      onWidgetLoaded!();
+                    }
 
                     return getEntryConstructor(target)!(
                       target: target,
@@ -831,8 +884,13 @@ class _TagColorPicker extends State<TagColorPicker> {
                               colorScheme.onPrimaryContainer.withOpacity(0.3),
                         ),
                         onPressed: () {
+                          title = title.trim();
+
                           if (title.isEmpty) {
                             errorText.value = errorMsg;
+                            return;
+                          } else if (lexiconMeta.tags.contains(title)) {
+                            errorText.value = 'Already exists';
                             return;
                           }
 
@@ -880,7 +938,6 @@ class _EntryViewInfo extends State<EntryViewInfo> {
   Widget build(BuildContext context) {
     final tags = lexiconMeta.tags;
     final colors = lexiconMeta.tagsColors;
-    print('items tags: ${item.tags}');
 
     return Scaffold(
       appBar: AppBar(
