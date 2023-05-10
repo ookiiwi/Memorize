@@ -186,6 +186,8 @@ class LexiconMeta {
     tagsMapping.clear();
   }
 
+  bool containsTag(String value) => _tags.contains(value);
+
   int addTag(String value, Color color, {String collection = ''}) {
     final idx = _tags.add(value);
     collections[collection] ??= [];
