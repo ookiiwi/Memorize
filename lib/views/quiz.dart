@@ -102,7 +102,7 @@ class _QuizLauncher extends State<QuizLauncher> {
   }
 
   void launchQuiz(BuildContext context) {
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         builder: (context) {
           return Quiz(
@@ -365,6 +365,7 @@ class _Quiz extends State<Quiz> {
   bool _isQuestions = true;
   late final _timerDuration = Duration(seconds: widget.timer);
 
+  bool _showAnswer = false;
   bool _showScore = false;
   int _score = 0;
 
@@ -531,6 +532,8 @@ class _Quiz extends State<Quiz> {
                   ),
                 );
               } else {
+                _showAnswer = true;
+
                 if (page < 0) {
                   page = 0;
                 }
@@ -576,7 +579,7 @@ class _Quiz extends State<Quiz> {
       )),
       Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text('${(page + 1).clamp(0, itemCount)}/$itemCount'),
+        child: Text('${(page + 1).clamp(1, itemCount)}/$itemCount'),
       ),
       Padding(
         padding: const EdgeInsets.all(8.0),
@@ -630,28 +633,26 @@ class _Quiz extends State<Quiz> {
                 }) ??
             false;
       },
-      child: SafeArea(
-        child: Scaffold(
-          extendBody: true,
-          appBar: AppBar(
-            title: const Text('Quiz'),
-            actions: widget.onTapInfo != null && page == 0
-                ? [
-                    IconButton(
-                      onPressed: () => widget.onTapInfo!(page).then((value) {
-                        if (mounted) {
-                          setState(() {});
-                        }
-                      }),
-                      icon: const Icon(Icons.info_outline_rounded),
-                    )
-                  ]
-                : null,
-          ),
-          body: _showScore
-              ? QuizScore(score: _score, total: itemCount)
-              : buildPageView(context),
+      child: Scaffold(
+        extendBody: true,
+        appBar: AppBar(
+          title: const Text('Quiz'),
+          actions: widget.onTapInfo != null && _showAnswer
+              ? [
+                  IconButton(
+                    onPressed: () => widget.onTapInfo!(page).then((value) {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    }),
+                    icon: const Icon(Icons.info_outline_rounded),
+                  )
+                ]
+              : null,
         ),
+        body: _showScore
+            ? QuizScore(score: _score, total: itemCount)
+            : buildPageView(context),
       ),
     );
   }
