@@ -75,6 +75,11 @@ class _Lexicon extends State<LexiconView> {
 
   void _setTagPos(LexiconItem item) {
     if (item.isKanji || item.entry == null) return;
+    final tags = lexiconMeta.tags;
+
+    int addTag(String tag) => !lexiconMeta.containsTag(tag)
+        ? lexiconMeta.addTag(tag, lexiconMeta.getRandomTagColor())
+        : tags.indexOf(tag);
 
     for (var e in (item.entry! as ParsedEntryJpn).senses) {
       for (var pos in e['pos'] ?? <String>[]) {
@@ -85,23 +90,19 @@ class _Lexicon extends State<LexiconView> {
             '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}';
         final verbGroup = _verbRe.firstMatch(capitalizedPos)?[1];
 
-        if (prefix != null && !lexiconMeta.containsTag(prefix)) {
-          final i = lexiconMeta.addTag(prefix, lexiconMeta.getRandomTagColor());
+        if (prefix != null) {
+          final i = addTag(prefix);
           lexiconMeta.tagItem(i, item);
         }
 
-        if (!lexiconMeta.containsTag(capitalizedPos)) {
-          final i = lexiconMeta.addTag(
-              capitalizedPos, lexiconMeta.getRandomTagColor());
+        {
+          final i = addTag(capitalizedPos);
           lexiconMeta.tagItem(i, item);
         }
 
         if (verbGroup != null) {
-          if (!lexiconMeta.containsTag(verbGroup)) {
-            final i =
-                lexiconMeta.addTag(verbGroup, lexiconMeta.getRandomTagColor());
-            lexiconMeta.tagItem(i, item);
-          }
+          final i = addTag(verbGroup);
+          lexiconMeta.tagItem(i, item);
         }
       }
     }
