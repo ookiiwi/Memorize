@@ -80,16 +80,19 @@ class _Lexicon extends State<LexiconView> {
         final prefix =
             _posPrefixMapping[EntryJpn.posPrefixRE.firstMatch(pos)?[1]];
         final cleanPos = pos.replaceFirst(EntryJpn.posPrefixRE, '').trim();
+        final capitalizedPos =
+            '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}';
 
-        if (prefix != null) {
+        if (prefix != null && !lexiconMeta.containsTag(prefix)) {
           final i = lexiconMeta.addTag(prefix, lexiconMeta.getRandomTagColor());
           lexiconMeta.tagItem(i, item);
         }
 
-        final i = lexiconMeta.addTag(
-            '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}',
-            lexiconMeta.getRandomTagColor());
-        lexiconMeta.tagItem(i, item);
+        if (!lexiconMeta.containsTag(capitalizedPos)) {
+          final i = lexiconMeta.addTag(
+              capitalizedPos, lexiconMeta.getRandomTagColor());
+          lexiconMeta.tagItem(i, item);
+        }
       }
     }
   }
@@ -957,27 +960,28 @@ class _EntryViewInfo extends State<EntryViewInfo> {
             target: widget.item.target,
             mode: DisplayMode.detailsOptions,
           ),
-          const SizedBox(height: 10),
-          ListTile(
-            title: const Text('Tags'),
-            subtitle: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Wrap(
-                spacing: 4.0,
-                runSpacing: 4.0,
-                children: [
-                  for (var i in item.tags)
-                    TagWidget(
-                      tag: tags[i],
-                      color: Color(colors[i]),
-                      overflow: null,
-                      textStyle:
-                          TextStyle(color: colorScheme.onPrimaryContainer),
-                    ),
-                ],
+          if (item.tags.isNotEmpty) const SizedBox(height: 10),
+          if (item.tags.isNotEmpty)
+            ListTile(
+              title: const Text('Tags'),
+              subtitle: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Wrap(
+                  spacing: 4.0,
+                  runSpacing: 4.0,
+                  children: [
+                    for (var i in item.tags)
+                      TagWidget(
+                        tag: tags[i],
+                        color: Color(colors[i]),
+                        overflow: null,
+                        textStyle:
+                            TextStyle(color: colorScheme.onPrimaryContainer),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
         ]),
       ),
     );
