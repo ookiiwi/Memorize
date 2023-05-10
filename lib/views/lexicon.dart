@@ -73,7 +73,7 @@ class _Lexicon extends State<LexiconView> {
   }
 
   void _setTagPos(LexiconItem item) {
-    if (item.subTarget != null || item.entry == null) return;
+    if (item.isKanji || item.entry == null) return;
 
     for (var e in (item.entry! as ParsedEntryJpn).senses) {
       for (var pos in e['pos'] ?? <String>[]) {
@@ -127,11 +127,11 @@ class _Lexicon extends State<LexiconView> {
               right: 10,
             ),
             itemBuilder: (context, i) {
+              final isKanji = label == 'KANJI';
+
               if (_kanjiLexicon != null && _wordLexicon != null) {
-                if (label == 'KANJI' &&
-                        !kanjiLexicon.containsId(lexicon[i].id) ||
-                    label == 'WORDS' &&
-                        !wordLexicon.containsId(lexicon[i].id)) {
+                if (isKanji && !kanjiLexicon.containsId(lexicon[i].id) ||
+                    !isKanji && !wordLexicon.containsId(lexicon[i].id)) {
                   return _addEntryWrapper(
                     context,
                     LexiconItemWidget(
@@ -142,7 +142,7 @@ class _Lexicon extends State<LexiconView> {
                       _setTagPos(lexicon[i]);
 
                       setState(() {
-                        label == 'KANJI'
+                        isKanji
                             ? kanjiLexicon.add(lexicon[i])
                             : wordLexicon.add(lexicon[i]);
                       });
@@ -151,7 +151,10 @@ class _Lexicon extends State<LexiconView> {
                         context: context,
                         builder: (context) =>
                             buildTagColorPicker(context, lexicon[i]),
-                      );
+                      ).then((value) {
+                        // TODO: check if <>LexiconSaved == true
+                        saveLexicon(isKanji);
+                      });
                     },
                   );
                 }
@@ -217,7 +220,7 @@ class _Lexicon extends State<LexiconView> {
       ret.add(
         LexiconItem(
           e,
-          subTarget: target.endsWith('-kanji') ? 'kanji' : null,
+          isKanji: target.endsWith('-kanji'),
           entry: entry is Future ? (await entry) : entry,
         ),
       );
@@ -305,7 +308,7 @@ class _Lexicon extends State<LexiconView> {
                     if (e.subTarget == 'kanji') {
                       final item = LexiconItem(
                         e.id,
-                        subTarget: 'kanji',
+                        isKanji: true,
                         tags: {tagIdx},
                       );
 
@@ -524,7 +527,7 @@ class _LexiconItemView extends State<LexiconItemView> {
                         final item =
                             lexicon[_controller.page?.toInt() ?? _initPage];
 
-                        if (item.entry == null || item.subTarget == 'kanji') {
+                        if (item.entry == null || item.isKanji) {
                           return;
                         }
 
@@ -623,8 +626,7 @@ class LexiconItemWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(20);
-    final target =
-        'jpn-${appSettings.language}${item.subTarget == 'kanji' ? '-kanji' : ''}';
+    final target = item.target;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
