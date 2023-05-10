@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -31,6 +33,9 @@ late final KanjiSvgReader kanjivgReader;
 late final Lexicon wordLexicon;
 late final Lexicon kanjiLexicon;
 late final LexiconMeta lexiconMeta;
+late final String _lexiconFileDir;
+final wordLexiconSaved = ValueNotifier(true);
+final kanjiLexiconSaved = ValueNotifier(true);
 
 Future<void> initConstants() async {
   await dotenv.load();
@@ -55,10 +60,6 @@ Future<void> initConstants() async {
 
   await flutterLocalNotificationsPlugin.initialize(initSettings,
       onDidReceiveNotificationResponse: (response) {
-    print('notif response ${response.id}');
-    print('notif response ${response.payload}');
-    print('notif response ${response.input}');
-
     final payload = List.from(jsonDecode(response.payload!));
     final filename = payload[0];
 
@@ -95,31 +96,72 @@ Future<void> initConstants() async {
 
   kanjivgReader = KanjiSvgReader(kanjivgFilePath);
 
-  final lexiconPath = '$applicationDocumentDirectory/lexicon';
+  _lexiconFileDir = '$applicationDocumentDirectory/lexicon';
 
-  wordLexicon = Lexicon([
-    LexiconItem(1400800),
-    LexiconItem(1586720),
-    LexiconItem(1061520),
-    LexiconItem(1185780),
-    LexiconItem(1443000),
-    LexiconItem(1596390),
-    LexiconItem(1538170),
-    LexiconItem(1490220),
-  ]); //_tryLoadLexicon('$lexiconPath/word');
-  kanjiLexicon = Lexicon([
-    LexiconItem(24859, subTarget: 'kanji'),
-    LexiconItem(20154, subTarget: 'kanji'),
-    LexiconItem(30007, subTarget: 'kanji'),
-    LexiconItem(22899, subTarget: 'kanji'),
-    LexiconItem(23376, subTarget: 'kanji'),
-    LexiconItem(26412, subTarget: 'kanji'),
-  ]); //_tryLoadLexicon('$lexiconPath/kanji');
+  lexiconMeta = await _tryLoadLexiconMeta('$_lexiconFileDir/meta');
 
-  lexiconMeta = LexiconMeta();
+  wordLexicon =
+      //Lexicon([
+      //  LexiconItem(1400800),
+      //  LexiconItem(1586720),
+      //  LexiconItem(1061520),
+      //  LexiconItem(1185780),
+      //  LexiconItem(1443000),
+      //  LexiconItem(1596390),
+      //  LexiconItem(1538170),
+      //  LexiconItem(1490220),
+      //]);
+      await _tryLoadLexicon('$_lexiconFileDir/word');
+  kanjiLexicon =
+      //Lexicon([
+      //  LexiconItem(24859, isKanji: true),
+      //  LexiconItem(20154, isKanji: true),
+      //  LexiconItem(30007, isKanji: true),
+      //  LexiconItem(22899, isKanji: true),
+      //  LexiconItem(23376, isKanji: true),
+      //  LexiconItem(26412, isKanji: true),
+      //]);
+      await _tryLoadLexicon('$_lexiconFileDir/kanji', true);
 }
 
-Lexicon _tryLoadLexicon(String path) {
+void saveLexicon([bool kanji = false]) {
+  final file = File('$_lexiconFileDir/${kanji ? 'kanji' : 'word'}');
+
+  if (!file.existsSync()) {
+    file.createSync(recursive: true);
+  }
+
+  final bytes = kanji ? kanjiLexicon.encode() : wordLexicon.encode();
+  kanji ? kanjiLexiconSaved.value = false : wordLexiconSaved.value = false;
+
+  file.writeAsBytes(bytes).then((value) {
+    final file = File('$_lexiconFileDir/meta');
+
+    debugPrint('Lexicon(${file.path}) size: ${file.lengthSync()}');
+
+    file.writeAsBytes(lexiconMeta.encode()).then((value) {
+      debugPrint('LexiconMeta size: ${file.lengthSync()}');
+
+      kanji ? kanjiLexiconSaved.value = true : wordLexiconSaved.value = true;
+    });
+  });
+}
+
+Future<LexiconMeta> _tryLoadLexiconMeta(String path) async {
+  final file = File(path);
+
+  if (!file.existsSync()) {
+    return LexiconMeta();
+  }
+
+  final bytes = await file.readAsBytes();
+
+  debugPrint('Load LexiconMeta of ${file.lengthSync()} bytes');
+
+  return LexiconMeta.decode(bytes);
+}
+
+Future<Lexicon> _tryLoadLexicon(String path, [bool kanjiOnly = false]) async {
   final file = File(path);
 
   if (!file.existsSync()) {
@@ -127,7 +169,10 @@ Lexicon _tryLoadLexicon(String path) {
     return Lexicon();
   }
 
-  return Lexicon.decode(file.readAsBytesSync());
+  final bytes = await file.readAsBytes();
+
+  debugPrint('Load Lexicon(${file.path}) of ${file.lengthSync()} bytes');
+  return Lexicon.decode(bytes, kanjiOnly);
 }
 
 Future<void> disposeConstants() async {
