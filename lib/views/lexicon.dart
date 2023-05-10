@@ -27,6 +27,7 @@ class LexiconView extends StatefulWidget {
 }
 
 class _Lexicon extends State<LexiconView> {
+  static final _verbRe = RegExp(r'(\w+ verb) .*');
   static const _posPrefixMapping = {
     'n': 'Noun',
     'adv': 'Adverb',
@@ -82,6 +83,7 @@ class _Lexicon extends State<LexiconView> {
         final cleanPos = pos.replaceFirst(EntryJpn.posPrefixRE, '').trim();
         final capitalizedPos =
             '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}';
+        final verbGroup = _verbRe.firstMatch(capitalizedPos)?[1];
 
         if (prefix != null && !lexiconMeta.containsTag(prefix)) {
           final i = lexiconMeta.addTag(prefix, lexiconMeta.getRandomTagColor());
@@ -92,6 +94,14 @@ class _Lexicon extends State<LexiconView> {
           final i = lexiconMeta.addTag(
               capitalizedPos, lexiconMeta.getRandomTagColor());
           lexiconMeta.tagItem(i, item);
+        }
+
+        if (verbGroup != null) {
+          if (!lexiconMeta.containsTag(verbGroup)) {
+            final i =
+                lexiconMeta.addTag(verbGroup, lexiconMeta.getRandomTagColor());
+            lexiconMeta.tagItem(i, item);
+          }
         }
       }
     }
