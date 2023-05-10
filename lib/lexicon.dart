@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
+import 'package:binarize/binarize.dart';
 import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
@@ -12,8 +12,8 @@ class Lexicon {
   Lexicon([List<LexiconItem>? items]) : _items = items ?? [] {
     _items.sort((a, b) => a.id.compareTo(b.id));
   }
-  Lexicon.decode(Uint8List bytes) : _items = [] {
-    _decode(bytes);
+  Lexicon.decode(Uint8List bytes, [bool kanjiOnly = false]) : _items = [] {
+    _decode(bytes, kanjiOnly);
   }
 
   final List<LexiconItem> _items;
@@ -92,54 +92,36 @@ class Lexicon {
   void removeWhere(bool Function(LexiconItem item) test) =>
       _items.removeWhere(test);
 
-  void _decode(Uint8List bytes) {
-    int offset = 0;
-    final byteData = bytes.buffer.asByteData();
-    final itemCount = byteData.getUint32(offset);
-
-    offset += 4;
+  void _decode(Uint8List bytes, [bool kanjiOnly = false]) {
+    final reader = Payload.read(gzip.decode(bytes));
+    final itemCount = reader.get(uint32);
 
     for (int i = 0; i < itemCount; ++i) {
-      int id = 0;
-      Set<int> tags = {};
+      final item = LexiconItem(
+        reader.get(uint64),
+        tags: reader.get(list(uint16, lengthType: uint16)).toSet(),
+        isKanji: kanjiOnly,
+      );
 
-      int tagCnt = 0;
-
-      id = byteData.getUint64(offset);
-      offset += 8;
-
-      tagCnt = byteData.getUint8(offset++);
-
-      for (int i = 0; i < tagCnt; ++i) {
-        tags.add(byteData.getUint8(offset++));
+      for (var e in item.tags) {
+        lexiconMeta.tagItem(e, item);
       }
 
-      _items.add(LexiconItem(id, tags: tags));
+      _items.add(item);
     }
   }
 
   List<int> encode() {
-    List<int> bytes = [
-      ...((ByteData(4)..setUint32(0, _items.length)).buffer.asUint8List())
-    ];
+    final writer = Payload.write();
+
+    writer.set(uint32, _items.length);
 
     for (var e in _items) {
-      int offset = 0;
-      var data = ByteData(8 + 1 + e.tags.length); // lists length is max 255
-
-      data.setUint64(offset, e.id);
-      offset += 8;
-
-      data.setUint8(offset++, e.tags.length);
-
-      for (var tag in e.tags) {
-        data.setUint8(offset++, tag);
-      }
-
-      bytes.addAll(data.buffer.asUint8List());
+      writer.set(uint64, e.id);
+      writer.set(list(uint16, lengthType: uint16), e.tags.toList());
     }
 
-    return gzip.encode(bytes);
+    return gzip.encode(binarize(writer));
   }
 }
 
@@ -147,17 +129,16 @@ class LexiconItem {
   LexiconItem(
     this.id, {
     Set<int>? tags,
-    this.subTarget,
+    this.isKanji = false,
     this.entry,
   }) : tags = tags ?? {};
 
   final int id;
   final Set<int> tags;
-  final String? subTarget;
+  final bool isKanji;
   ParsedEntry? entry;
 
-  String get target =>
-      'jpn-${appSettings.language}${subTarget != null ? '-$subTarget' : ''}';
+  String get target => 'jpn-${appSettings.language}${isKanji ? '-kanji' : ''}';
 }
 
 class LexiconMeta {
@@ -173,16 +154,26 @@ class LexiconMeta {
   LexiconMeta(
       {List<String>? tags,
       List<int>? tagsColors,
-      Map<String, Set<int>>? collections})
+      Map<String, List<int>>? collections})
       : assert(tags?.length == tagsColors?.length),
         _tags = GrowingList('', list: tags ?? []),
         _tagsColors = tagsColors ?? [],
         collections = collections ?? {},
         tagsMapping = {};
 
+  factory LexiconMeta.decode(Uint8List bytes) {
+    final reader = Payload.read(gzip.decode(bytes));
+
+    return LexiconMeta(
+      tags: reader.get(list(string32, lengthType: uint16)),
+      tagsColors: reader.get(list(uint32, lengthType: uint16)),
+      collections: reader.get(map(string16, list(uint16, lengthType: uint16))),
+    );
+  }
+
   final GrowingList<String> _tags;
   final List<int> _tagsColors;
-  final Map<String, Set<int>> collections;
+  final Map<String, List<int>> collections;
   final Map<int, Set<LexiconMetaItemInfo>> tagsMapping;
 
   List<String> get tags => _tags.toList();
@@ -197,9 +188,11 @@ class LexiconMeta {
 
   int addTag(String value, Color color, {String collection = ''}) {
     final idx = _tags.add(value);
-    _tagsColors.add(color.value);
-    collections[collection] ??= {};
-    collections[collection]!.add(idx);
+    collections[collection] ??= [];
+
+    if (!collections[collection]!.contains(idx)) {
+      collections[collection]!.add(idx);
+    }
 
     if (_tagsColors.length <= idx) {
       _tagsColors.add(color.value);
@@ -234,13 +227,23 @@ class LexiconMeta {
 
     return Color(color);
   }
+
+  List<int> encode() {
+    final writer = Payload.write();
+
+    writer.set(list(string32, lengthType: uint16), _tags.toList());
+    writer.set(list(uint32, lengthType: uint16), _tagsColors.toList());
+    writer.set(map(string16, list(uint16, lengthType: uint16)), collections);
+
+    return gzip.encode(binarize(writer));
+  }
 }
 
 class LexiconMetaItemInfo extends Equatable {
   const LexiconMetaItemInfo(this.id, [this.isKanji = false]);
   LexiconMetaItemInfo.fromItem(LexiconItem item)
       : id = item.id,
-        isKanji = item.subTarget == 'kanji';
+        isKanji = item.isKanji;
 
   final int id;
   final bool isKanji;

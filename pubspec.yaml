@@ -76,6 +76,7 @@ dependencies:
     path: ../kanjivg_compress
   svg_drawing_animation: ^0.11.0
   flutter_svg: ^1.1.6
+  binarize: ^1.5.0
 
 dev_dependencies:
   integration_test:
