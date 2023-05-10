@@ -28,6 +28,16 @@ class AppBarTextField extends StatefulWidget {
 }
 
 class _AppBarTextField extends State<AppBarTextField> {
+  bool _prevIsEmpty = true;
+  late final _controller = widget.controller ?? TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _prevIsEmpty = _controller.text.isEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -36,10 +46,15 @@ class _AppBarTextField extends State<AppBarTextField> {
         autofocus: widget.autoFocus,
         controller: widget.controller,
         decoration: InputDecoration(
-          suffixIcon: IconButton(
-            onPressed: () => setState(() => widget.controller?.clear()),
-            icon: const Icon(Icons.clear),
-          ),
+          suffixIcon: _prevIsEmpty
+              ? null
+              : IconButton(
+                  onPressed: () => setState(() {
+                    _controller.clear();
+                    _prevIsEmpty = true;
+                  }),
+                  icon: const Icon(Icons.clear),
+                ),
           fillColor: Theme.of(context).primaryColor.withOpacity(0.02),
           filled: true,
           hintText: widget.hintText,
@@ -49,7 +64,15 @@ class _AppBarTextField extends State<AppBarTextField> {
             borderRadius: BorderRadius.circular(30),
           ),
         ),
-        onChanged: widget.onChanged,
+        onChanged: (value) {
+          if (_prevIsEmpty != value.isEmpty) {
+            setState(() => _prevIsEmpty = value.isEmpty);
+          }
+
+          if (widget.onChanged != null) {
+            widget.onChanged!(value);
+          }
+        },
       ),
     );
   }
