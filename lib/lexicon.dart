@@ -6,6 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/sm.dart';
 import 'package:memorize/widgets/entry/parser.dart';
 
 class Lexicon {
@@ -100,6 +101,11 @@ class Lexicon {
       final item = LexiconItem(
         reader.get(uint64),
         tags: reader.get(list(uint16, lengthType: uint16)).toSet(),
+        sm2: SM2(
+          repetitions: reader.get(uint16),
+          interval: reader.get(uint16),
+          easeFactor: reader.get(float32),
+        ),
         isKanji: kanjiOnly,
       );
 
@@ -119,26 +125,37 @@ class Lexicon {
     for (var e in _items) {
       writer.set(uint64, e.id);
       writer.set(list(uint16, lengthType: uint16), e.tags.toList());
+      writer.set(uint16, e.sm2.repetitions);
+      writer.set(uint16, e.sm2.interval);
+      writer.set(float32, e.sm2.easeFactor);
     }
 
     return gzip.encode(binarize(writer));
   }
 }
 
-class LexiconItem {
+class LexiconItem extends Equatable {
   LexiconItem(
     this.id, {
     Set<int>? tags,
     this.isKanji = false,
     this.entry,
+    this.sm2 = const SM2(),
   }) : tags = tags ?? {};
 
   final int id;
   final Set<int> tags;
   final bool isKanji;
+  SM2 sm2;
   ParsedEntry? entry;
 
   String get target => 'jpn-${appSettings.language}${isKanji ? '-kanji' : ''}';
+
+  @override
+  List<Object?> get props => [id, tags, isKanji];
+
+  @override
+  String toString() => '$runtimeType($id, $tags, $isKanji, $sm2)';
 }
 
 class LexiconMeta {
