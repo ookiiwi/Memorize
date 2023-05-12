@@ -1,8 +1,10 @@
 import 'dart:math';
 
 import 'package:collection/collection.dart';
+import 'package:flip_card/flip_card.dart';
+import 'package:flip_card/flip_card_controller.dart';
 import 'package:flutter/material.dart';
-import 'package:appinio_swiper/appinio_swiper.dart';
+import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/lexicon.dart';
 import 'package:memorize/helpers/dict.dart';
@@ -52,9 +54,6 @@ class _QuizLauncher extends State<QuizLauncher> {
   Map<String, String?> entryOptionsError = {};
 
   List<LexiconItem> get items => widget.items;
-
-  final Set<int> _rights = {};
-  final Set<int> _wrongs = {};
 
   late final _optIcons = [
     QuizOpt(Icons.shuffle, (isSelected) => _random = isSelected, () => _random),
@@ -151,7 +150,18 @@ class _QuizLauncher extends State<QuizLauncher> {
                 ),
               );
             },
-            onAnswer: (value, i) => value ? _rights.add(i) : _wrongs.add(i),
+            onAnswer: (quality, i) {
+              items[i].sm2 = items[i].sm2.compute(quality);
+
+              print('item $i: ${items[i]}');
+            },
+            onEnd: (score) {
+              for (var e in items) {
+                print('schedule item: $e');
+
+                agenda.schedule(e);
+              }
+            },
           );
         },
       ),
@@ -346,7 +356,7 @@ class Quiz extends StatefulWidget {
   final Widget Function(BuildContext, int) questionBuilder;
   final Widget Function(BuildContext, int) answerBuilder;
   final Future<void> Function(int)? onTapInfo;
-  final void Function(bool value, int i)? onAnswer;
+  final void Function(int quality, int itemIndex)? onAnswer;
 
   /// Score in range 0 - 100 (e.g 60.2)
   final void Function(double score)? onEnd;
@@ -359,17 +369,16 @@ class _Quiz extends State<Quiz> {
   static const _questionPageTransDuration = Duration(milliseconds: 300);
   static const _questionPageTransCurve = Curves.easeInOut;
 
+  late final colorScheme = Theme.of(context).colorScheme;
   final _controller = PageController();
-  final _answersCtrl = AppinioSwiperController();
-  ScrollPhysics _physics = const AlwaysScrollableScrollPhysics();
-  bool _isQuestions = true;
+  final Map<int, FlipCardController> _flipCardControllers = {
+    0: FlipCardController()
+  };
   late final _timerDuration = Duration(seconds: widget.timer);
 
-  bool _showAnswer = false;
-  bool _showScore = false;
-  int _score = 0;
+  final _showAnswerForPage = ValueNotifier(-1);
 
-  int page = -1;
+  int page = 0;
   int get itemCount => widget.itemCount;
 
   late final List<int> indexes = List.generate(
@@ -381,8 +390,6 @@ class _Quiz extends State<Quiz> {
   @override
   void initState() {
     super.initState();
-
-    if (widget.timer > 0) _physics = const NeverScrollableScrollPhysics();
 
     if (widget.random) {
       final random = Random();
@@ -400,6 +407,13 @@ class _Quiz extends State<Quiz> {
       assert(indexes.toSet().length == indexes.length);
       assert(indexes.isSorted((a, b) => a.compareTo(b)) == false);
     }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+
+    super.dispose();
   }
 
   Widget buildCard(BuildContext context, Widget child,
@@ -452,147 +466,113 @@ class _Quiz extends State<Quiz> {
         : Card(color: cardColor, child: card);
   }
 
-  List<Widget> buildQuestionsNav() {
-    return [
-      AbsorbPointer(
-        absorbing: widget.timer > 0,
-        child: FloatingActionButton(
-          heroTag: "prevButton",
-          elevation: 0,
-          backgroundColor: widget.timer > 0
-              ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-              : null,
-          onPressed: () => _controller.previousPage(
-            duration: _questionPageTransDuration,
-            curve: _questionPageTransCurve,
-          ),
-          child: const Icon(Icons.keyboard_arrow_left_rounded),
-        ),
-      ),
-      FloatingActionButton(
-        heroTag: "nextButton",
-        onPressed: () => _controller.nextPage(
-          duration: _questionPageTransDuration,
-          curve: _questionPageTransCurve,
-        ),
-        child: const Icon(Icons.keyboard_arrow_right_rounded),
-      ),
-    ];
-  }
-
   List<Widget> buildAnswersNav() {
     return [
-      FloatingActionButton(
-        heroTag: "wrongButton",
-        onPressed: () => _answersCtrl.swipeLeft(),
-        child: Transform.rotate(
-          angle: 45 * pi / 180,
-          child: const Icon(Icons.add),
+      for (int i = 0; i < 6; ++i)
+        FloatingActionButton(
+          heroTag: "quality$i",
+          onPressed: () {
+            if (widget.onAnswer != null) {
+              widget.onAnswer!(i, page);
+            }
+
+            if (page == itemCount - 1) {
+              if (widget.onEnd != null) {
+                widget.onEnd!(0);
+              }
+
+              context
+                ..pop()
+                ..pop();
+
+              return;
+            }
+
+            _flipCardControllers[page + 1] = FlipCardController();
+
+            _controller
+                .nextPage(
+                  duration: _questionPageTransDuration,
+                  curve: _questionPageTransCurve,
+                )
+                .then((value) => _flipCardControllers.remove(page - 1));
+          },
+          child: Text('$i'),
         ),
-      ),
-      FloatingActionButton(
-        heroTag: "rigthButton",
-        onPressed: () => _answersCtrl.swipeRight(),
-        child: const Icon(Icons.circle_outlined),
-      ),
     ];
   }
 
   Widget buildPageView(BuildContext context) {
     return Column(children: [
       Expanded(
-          child: Provider.value(
-        value: widget.mode,
-        builder: (context, _) {
-          return PageView.builder(
-            controller: _controller,
-            physics: _physics,
-            itemCount: itemCount + 1,
-            onPageChanged: (value) => setState(
-              () {
-                if (value == itemCount) {
-                  _physics = const NeverScrollableScrollPhysics();
-                  _isQuestions = false;
-                  page = 0;
-                } else {
-                  page = value.clamp(0, itemCount - 1);
-                }
-              },
-            ),
-            itemBuilder: (context, i) {
-              if (i < itemCount) {
-                return Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: buildCard(
-                    context,
-                    widget.questionBuilder(context, indexes[i]),
-                    center: true,
-                    timer: widget.timer,
-                    scrollWrap: true,
-                  ),
-                );
-              } else {
-                _showAnswer = true;
-
-                if (page < 0) {
-                  page = 0;
-                }
-
-                return AppinioSwiper(
-                  cardsCount: itemCount,
-                  onEnd: () {
-                    if (widget.onEnd != null) {
-                      widget.onEnd!(double.parse(
-                          (100 / itemCount * _score).toStringAsPrecision(3)));
-                    }
-                  },
-                  controller: _answersCtrl,
-                  onSwipe: (i, dir) => setState(() {
-                    if (page != itemCount - 1) {
-                      ++page;
-                    } else {
-                      _showScore = true;
-                    }
-
-                    if (widget.onAnswer != null) {
-                      widget.onAnswer!(
-                        dir == AppinioSwiperDirection.right,
-                        indexes[i - 1],
-                      );
-                    }
-
-                    _score += (dir == AppinioSwiperDirection.left ? -1 : 1)
-                        .clamp(0, itemCount);
-                  }),
-                  cardsBuilder: (context, i) {
-                    return buildCard(
-                      context,
-                      widget.answerBuilder(context, indexes[i]),
-                      scrollWrap: true,
-                    );
-                  },
-                );
-              }
-            },
-          );
-        },
-      )),
-      Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Text('${(page + 1).clamp(1, itemCount)}/$itemCount'),
+        child: Provider.value(
+          value: widget.mode,
+          builder: (context, _) {
+            return PageView.builder(
+                controller: _controller,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: itemCount,
+                onPageChanged: (value) => setState(() => page = value),
+                itemBuilder: (context, i) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: FlipCard(
+                      controller: _flipCardControllers[i],
+                      flipOnTouch: false,
+                      front: buildCard(
+                        context,
+                        widget.questionBuilder(context, indexes[i]),
+                        center: true,
+                        timer: widget.timer,
+                        scrollWrap: true,
+                      ),
+                      back: buildCard(
+                        context,
+                        widget.answerBuilder(context, indexes[i]),
+                        scrollWrap: true,
+                      ),
+                    ),
+                  );
+                });
+          },
+        ),
       ),
       Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: (_isQuestions ? buildQuestionsNav() : buildAnswersNav())
-              .map(
-                (e) => Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: e,
+        child: Text('${(page + 1)}/$itemCount'),
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: ValueListenableBuilder<int>(
+          valueListenable: _showAnswerForPage,
+          builder: (context, value, child) {
+            if (value != page) {
+              return Align(
+                alignment: Alignment.bottomRight,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    backgroundColor: colorScheme.primaryContainer,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 12.0),
+                  ),
+                  onPressed: () {
+                    _flipCardControllers[page]!.toggleCard();
+                    ++_showAnswerForPage.value;
+                  },
+                  child: Text(
+                    'Answer',
+                    style: TextStyle(
+                        color: colorScheme.onPrimaryContainer, fontSize: 18),
+                  ),
                 ),
-              )
-              .toList(),
+              );
+            }
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: buildAnswersNav(),
+            );
+          },
         ),
       ),
     ]);
@@ -602,8 +582,6 @@ class _Quiz extends State<Quiz> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        if (_showScore) return true;
-
         return await showDialog(
                 context: context,
                 builder: (context) {
@@ -637,41 +615,21 @@ class _Quiz extends State<Quiz> {
         extendBody: true,
         appBar: AppBar(
           title: const Text('Quiz'),
-          actions: widget.onTapInfo != null && _showAnswer
-              ? [
-                  IconButton(
-                    onPressed: () => widget.onTapInfo!(page).then((value) {
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    }),
-                    icon: const Icon(Icons.info_outline_rounded),
-                  )
-                ]
-              : null,
+          actions: [
+            IconButton(
+              onPressed:
+                  widget.onTapInfo != null && _showAnswerForPage.value == page
+                      ? () => widget.onTapInfo!(page).then((value) {
+                            if (mounted) {
+                              setState(() {});
+                            }
+                          })
+                      : null,
+              icon: const Icon(Icons.info_outline_rounded),
+            )
+          ],
         ),
-        body: _showScore
-            ? QuizScore(score: _score, total: itemCount)
-            : buildPageView(context),
-      ),
-    );
-  }
-}
-
-class QuizScore extends StatelessWidget {
-  QuizScore({super.key, required int score, required int total})
-      : assert(total != 0) {
-    this.score = (100 / total * score).toStringAsPrecision(3);
-  }
-
-  late final String score;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        "$score/100",
-        style: const TextStyle(fontSize: 40),
+        body: buildPageView(context),
       ),
     );
   }
