@@ -7,8 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
-import 'package:memorize/list.dart';
-import 'package:memorize/views/list.dart';
+import 'package:memorize/lexicon.dart';
+import 'package:memorize/views/lexicon.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -187,8 +187,6 @@ class EntryJpn extends StatelessWidget {
               ?.copyWith(decoration: TextDecoration.underline),
           recognizer: TapGestureRecognizer()
             ..onTap = () {
-              final list = Provider.of<MemoList?>(context, listen: false);
-
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) {
                   int id = 0;
@@ -221,30 +219,22 @@ class EntryJpn extends StatelessWidget {
                           child: Scaffold(
                             appBar:
                                 AppBar(title: const Text('Cross reference')),
-                            body: Provider.value(
-                              value: list,
-                              builder: (context, _) {
-                                return SingleChildScrollView(
-                                  child: EntryJpn(
-                                    target: target,
-                                    parsedEntry:
-                                        snapshot.data as ParsedEntryJpn,
-                                    mode: DisplayMode.details,
-                                  ),
-                                );
-                              },
+                            body: SingleChildScrollView(
+                              child: EntryJpn(
+                                target: target,
+                                parsedEntry: snapshot.data as ParsedEntryJpn,
+                                mode: DisplayMode.details,
+                              ),
                             ),
-                            floatingActionButton: list != null
-                                ? FloatingActionButton(
-                                    onPressed: () {
-                                      list.entries.add(ListEntry(id));
-                                      list.save();
+                            floatingActionButton: FloatingActionButton(
+                              onPressed: () {
+                                wordLexicon.add(LexiconItem(id));
+                                saveLexicon();
 
-                                      Navigator.of(context).maybePop();
-                                    },
-                                    child: const Icon(Icons.add),
-                                  )
-                                : null,
+                                Navigator.of(context).maybePop();
+                              },
+                              child: const Icon(Icons.add),
+                            ),
                             floatingActionButtonLocation:
                                 FloatingActionButtonLocation.endFloat,
                           ),
@@ -326,13 +316,15 @@ class EntryJpn extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) {
-                  return EntryView.fromEntries(
-                    entries: [
-                      ListEntry(
-                        kanji.words.first.runes.first,
-                        subTarget: 'kanji',
-                      )
-                    ],
+                  final id = kanji.words.first.runes.first;
+
+                  return LexiconItemView(
+                    lexicon: Lexicon(
+                      [
+                        kanjiLexicon.findId(id) ??
+                            LexiconItem(id, isKanji: true)
+                      ],
+                    ),
                   );
                 },
               ),
@@ -690,11 +682,17 @@ class EntryJpnKanji extends StatelessWidget {
       if (value != null) {
         ret.add(
           GestureDetector(
-            onTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (context) {
-              return EntryView.fromEntries(
-                  entries: [ListEntry(0, data: value)]);
-            })),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) {
+                  return LexiconItemView(
+                    lexicon: Lexicon(
+                      [LexiconItem(0, entry: value)],
+                    ),
+                  );
+                },
+              ),
+            ),
             child: EntryJpn(
               target: 'jpn-${appSettings.language}',
               parsedEntry: value,
