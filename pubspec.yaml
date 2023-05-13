@@ -77,6 +77,7 @@ dependencies:
   svg_drawing_animation: ^0.11.0
   flutter_svg: ^1.1.6
   binarize: ^1.5.0
+  flip_card: ^0.7.0
 
 dev_dependencies:
   integration_test:
