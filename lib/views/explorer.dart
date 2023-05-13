@@ -29,11 +29,112 @@ class _Explorer extends State<Explorer> {
     });
   }
 
+  Widget buildPage(BuildContext context, String label) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final tags = lexiconMeta.tags.asMap().entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+    final isPOS = label == 'POS';
+
+    return Scrollbar(
+      radius: const Radius.circular(360),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(
+          top: kToolbarHeight + 10,
+          bottom: kBottomNavigationBarHeight,
+          left: 10,
+          right: 10,
+        ),
+        itemCount: tags.length,
+        itemBuilder: (context, index) {
+          final tagIndex = tags[index].key;
+          final tag = tags[index].value;
+
+          List<LexiconItem> getItems() {
+            return lexiconMeta.tagsMapping[tagIndex]!
+                .map((e) => e.isKanji
+                    ? kanjiLexicon.findId(e.id)!
+                    : wordLexicon.findId(e.id)!)
+                .toList();
+          }
+
+          final searchNoRes = (_searchedTag.isNotEmpty &&
+              !tag.toLowerCase().contains(_searchedTag));
+          final isTagPos = lexiconMeta.posIndexes.contains(tagIndex);
+
+          if (searchNoRes ||
+              !((isPOS && isTagPos) || (!isPOS && !isTagPos)) ||
+              (lexiconMeta.tagsMapping[tagIndex]?.isEmpty != false)) {
+            return const SizedBox();
+          }
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              color: colorScheme.primaryContainer,
+            ),
+            child: ClipRRect(
+              borderRadius: borderRadius,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    context.push(
+                      '/explorer/listview',
+                      extra: {'title': tag, 'items': getItems()},
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TagWidget(
+                                tag: tag,
+                                color: Color(lexiconMeta.tagsColors[tagIndex]),
+                                textStyle: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${lexiconMeta.tagsMapping[tagIndex]?.length ?? 0} elements',
+                                style: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: colorScheme.background,
+                          ),
+                          onPressed: () {
+                            context.push('/quiz_launcher',
+                                extra: {'title': tag, 'items': getItems()});
+                          },
+                          child: const Text('Play'),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final tags = lexiconMeta.tags;
-
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0,
@@ -65,98 +166,11 @@ class _Explorer extends State<Explorer> {
           ),
         ],
       ),
-      body: Scrollbar(
-        radius: const Radius.circular(360),
-        child: ListView.builder(
-          padding: const EdgeInsets.only(
-            top: 10,
-            bottom: kBottomNavigationBarHeight,
-            left: 10,
-            right: 10,
-          ),
-          itemCount: tags.length,
-          itemBuilder: (context, index) {
-            List<LexiconItem> getItems() {
-              return lexiconMeta.tagsMapping[index]!
-                  .map((e) => e.isKanji
-                      ? kanjiLexicon.findId(e.id)!
-                      : wordLexicon.findId(e.id)!)
-                  .toList();
-            }
-
-            if (_searchedTag.isNotEmpty &&
-                !tags[index].toLowerCase().contains(_searchedTag)) {
-              return const SizedBox();
-            }
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                color: colorScheme.primaryContainer,
-              ),
-              child: ClipRRect(
-                borderRadius: borderRadius,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      context.push(
-                        '/explorer/listview',
-                        extra: {
-                          'title': lexiconMeta.tags[index],
-                          'items': getItems()
-                        },
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TagWidget(
-                                  tag: lexiconMeta.tags[index],
-                                  color: Color(lexiconMeta.tagsColors[index]),
-                                  textStyle: TextStyle(
-                                    color: colorScheme.onPrimaryContainer,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  '${lexiconMeta.tagsMapping[index]?.length ?? 0} elements',
-                                  style: TextStyle(
-                                    color: colorScheme.onPrimaryContainer,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8.0),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              backgroundColor: colorScheme.background,
-                            ),
-                            onPressed: () {
-                              context.push('/quiz_launcher', extra: {
-                                'title': lexiconMeta.tags[index],
-                                'items': getItems()
-                              });
-                            },
-                            child: const Text('Play'),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
+      body: LexiconPageView(
+        labels: const ['TAG', 'POS'],
+        lexiconBuilder: (context, index, label) {
+          return buildPage(context, label);
+        },
       ),
     );
   }
