@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:collection/collection.dart';
@@ -18,7 +19,8 @@ import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
-import 'package:quiver/iterables.dart';
+import 'package:quiver/iterables.dart' as quiver;
+import 'package:widget_mask/widget_mask.dart';
 
 class LexiconView extends StatefulWidget {
   const LexiconView({super.key});
@@ -41,6 +43,7 @@ class _Lexicon extends State<LexiconView> {
   final _textController = TextEditingController();
   Lexicon? _wordLexicon;
   Lexicon? _kanjiLexicon;
+  String _selectedLabel = 'WORDS';
 
   String _lastSearch = '';
 
@@ -79,7 +82,7 @@ class _Lexicon extends State<LexiconView> {
     final tags = lexiconMeta.tags;
 
     int addTag(String tag) => !lexiconMeta.containsTag(tag)
-        ? lexiconMeta.addTag(tag, lexiconMeta.getRandomTagColor())
+        ? lexiconMeta.addTag(tag, lexiconMeta.getRandomTagColor(), isPOS: true)
         : tags.indexOf(tag);
 
     for (var e in (item.entry! as ParsedEntryJpn).senses) {
@@ -354,7 +357,22 @@ class _Lexicon extends State<LexiconView> {
 
               setState(() {});
             },
-          )
+          ),
+          PopupMenuItem(
+            onTap: () {
+              final controller = labels[_selectedLabel];
+              final itemCount = _selectedLabel == 'WORDS'
+                  ? wordLexicon.length
+                  : kanjiLexicon.length;
+
+              controller?.animateTo(
+                controller.position.maxScrollExtent,
+                duration: Duration(seconds: itemCount ~/ 20),
+                curve: Curves.linear,
+              );
+            },
+            child: const Text('Scroll to end'),
+          ),
         ];
       },
     );
@@ -385,6 +403,7 @@ class _Lexicon extends State<LexiconView> {
         bottom: false,
         child: LexiconPageView(
           labels: labels.keys.toList(),
+          onLabelChanged: (label) => _selectedLabel = label,
           lexiconBuilder: lexiconBuilder,
         ),
       ),
@@ -396,10 +415,12 @@ class LexiconPageView extends StatefulWidget {
   const LexiconPageView({
     super.key,
     this.labels = const [],
+    this.onLabelChanged,
     required this.lexiconBuilder,
   });
 
   final List<String> labels;
+  final void Function(String label)? onLabelChanged;
   final Widget Function(BuildContext context, int index, String label)
       lexiconBuilder;
 
@@ -408,71 +429,107 @@ class LexiconPageView extends StatefulWidget {
 }
 
 class _LexiconPageView extends State<LexiconPageView> {
+  late final colorScheme = Theme.of(context).colorScheme;
+  final borderRadius = BorderRadius.circular(26);
+  late final screenSize = MediaQuery.of(context).size;
   late final _selectedLabel = ValueNotifier(widget.labels.firstOrNull);
   final _pageController = PageController();
+  final _offset = ValueNotifier(0.0);
+  double _headerWidth = 0.0;
+
+  Size _textSize(String text, [TextStyle? style]) {
+    final TextPainter textPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+    )..layout(minWidth: 0, maxWidth: double.infinity);
+    return textPainter.size;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pageController.addListener(
+        () => _offset.value = _pageController.page ?? _offset.value);
+
+    for (var e in widget.labels) {
+      _headerWidth = max(_headerWidth, _textSize(e).width);
+    }
+
+    _headerWidth += 32.0;
+  }
+
+  Widget buildHeaderBody(BuildContext context, [Color? textColor]) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: widget.labels
+          .map(
+            (e) => SizedBox(
+              width: _headerWidth,
+              child: TextButton(
+                onPressed: () {
+                  setState(() => _selectedLabel.value = e);
+                  _pageController.animateToPage(
+                    widget.labels.indexOf(e),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.decelerate,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5.0),
+                  child: Text(
+                    e,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: textColor,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget buildHeader(BuildContext context) {
+    return AnimatedBuilder(
+        animation: Listenable.merge([_offset, _selectedLabel]),
+        builder: (context, child) {
+          assert(widget.labels.isNotEmpty);
+
+          return Container(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              color: colorScheme.background.withOpacity(0.5),
+            ),
+            child: WidgetMask(
+              blendMode: BlendMode.xor,
+              childSaveLayer: true,
+              mask: Container(
+                margin: EdgeInsets.only(
+                  left: _headerWidth * _offset.value,
+                  right:
+                      _headerWidth * (widget.labels.length - _offset.value - 1),
+                ),
+                height: double.infinity,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: borderRadius,
+                  color: Colors.black,
+                ),
+              ),
+              child: buildHeaderBody(context),
+            ),
+          );
+        });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final borderRadius = BorderRadius.circular(26);
-
-    Widget buildHeader(BuildContext context) {
-      return Container(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          color: colorScheme.background.withOpacity(0.5),
-        ),
-        child: ValueListenableBuilder<String?>(
-          valueListenable: _selectedLabel,
-          builder: (context, value, child) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: widget.labels
-                  .map(
-                    (e) => Padding(
-                      padding: EdgeInsets.only(
-                        right: e != widget.labels.lastOrNull ? 10 : 0,
-                      ),
-                      child: TextButton(
-                        style: value == e
-                            ? TextButton.styleFrom(
-                                backgroundColor: colorScheme.primaryContainer,
-                              )
-                            : TextButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                              ),
-                        onPressed: () {
-                          setState(() => _selectedLabel.value = e);
-                          _pageController.animateToPage(
-                            widget.labels.indexOf(e),
-                            duration: const Duration(milliseconds: 500),
-                            curve: Curves.decelerate,
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(5.0),
-                          child: Text(
-                            e,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              color: value == e
-                                  ? colorScheme.onPrimaryContainer
-                                  : colorScheme.onBackground,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            );
-          },
-        ),
-      );
-    }
-
     if (widget.labels.isEmpty) {
       return widget.lexiconBuilder(context, 0, '');
     }
@@ -487,17 +544,39 @@ class _LexiconPageView extends State<LexiconPageView> {
             index,
             widget.labels[index],
           ),
-          onPageChanged: (value) => _selectedLabel.value = widget.labels[value],
+          onPageChanged: (value) {
+            _selectedLabel.value = widget.labels[value];
+
+            if (widget.onLabelChanged != null) {
+              widget.onLabelChanged!(_selectedLabel.value!);
+            }
+          },
         ),
-        Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 10),
+        Positioned(
+          top: 10,
+          right: (screenSize.width - _headerWidth * widget.labels.length) * 0.5,
+          child: Container(
+            alignment: Alignment.topCenter,
             child: ClipRRect(
               borderRadius: borderRadius,
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 1, sigmaY: 1),
-                child: buildHeader(context),
+                child: Center(
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: borderRadius,
+                            color: Colors.transparent,
+                          ),
+                          child: buildHeaderBody(context, Colors.white),
+                        ),
+                      ),
+                      Positioned(child: buildHeader(context)),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -717,7 +796,7 @@ class _TagColorPicker extends State<TagColorPicker> {
   LexiconItem get item => widget.item;
 
   Widget buildColorPicker(BuildContext context) {
-    final tags = zip([lexiconMeta.tags, lexiconMeta.tagsColors]).toList()
+    final tags = quiver.zip([lexiconMeta.tags, lexiconMeta.tagsColors]).toList()
       ..sort((a, b) => (a[0] as String).compareTo((b[0] as String)));
 
     return Column(
