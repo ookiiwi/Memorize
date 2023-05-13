@@ -273,8 +273,6 @@ class _DatePicker extends State<DatePicker> {
 
   Widget buildDays(BuildContext context) {
     final dateFormat = DateFormat.E();
-    _daysPageController ??=
-        PageController(initialPage: DateUtils.monthDelta(DateTime.now(), date));
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -293,6 +291,8 @@ class _DatePicker extends State<DatePicker> {
         Expanded(
           child: PageView.builder(
               controller: _daysPageController,
+              onPageChanged: (value) => navDate =
+                  DateUtils.addMonthsToMonthDate(DateTime.now(), value),
               itemBuilder: (context, index) {
                 final pageDate =
                     DateUtils.addMonthsToMonthDate(DateTime.now(), index);
@@ -378,6 +378,16 @@ class _DatePicker extends State<DatePicker> {
     }
   }
 
+  Widget buildDateButton(BuildContext context) {
+    return TextButton(
+      onPressed: () => _showDays.value = !_showDays.value,
+      child: Text(
+        dateFormat.format(navDate).toString(),
+        style: const TextStyle(fontSize: 20),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -393,12 +403,22 @@ class _DatePicker extends State<DatePicker> {
                 icon: const Icon(Icons.arrow_back_ios_rounded),
               ),
             ),
-            TextButton(
-              onPressed: () => _showDays.value = !_showDays.value,
-              child: Text(
-                dateFormat.format(navDate).toString(),
-                style: const TextStyle(fontSize: 20),
-              ),
+            ValueListenableBuilder<bool>(
+              valueListenable: _showDays,
+              builder: (context, value, child) {
+                if (value) {
+                  _daysPageController ??= PageController(
+                    initialPage: DateUtils.monthDelta(DateTime.now(), date),
+                  );
+
+                  return AnimatedBuilder(
+                    animation: _daysPageController!,
+                    builder: (context, child) => buildDateButton(context),
+                  );
+                }
+
+                return buildDateButton(context);
+              },
             ),
             buildNavBtn(
               context,
