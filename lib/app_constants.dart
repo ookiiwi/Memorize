@@ -101,7 +101,6 @@ Future<void> initConstants() async {
   _agendaFilepath = '$applicationDocumentDirectory/agenda/agenda';
 
   lexiconMeta = await _tryLoadLexiconMeta('$_lexiconFileDir/meta');
-  agenda = _tryLoadAgenda();
 
   wordLexicon =
       //Lexicon([
@@ -125,6 +124,8 @@ Future<void> initConstants() async {
       //  LexiconItem(26412, isKanji: true),
       //]);
       await _tryLoadLexicon('$_lexiconFileDir/kanji', true);
+
+  agenda = _tryLoadAgenda();
 }
 
 void saveAgenda() {
