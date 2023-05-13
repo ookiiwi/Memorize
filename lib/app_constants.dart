@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,8 +8,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kanjivg_compress/kanjivg_compress.dart';
+import 'package:memorize/agenda.dart';
 import 'package:memorize/auth/auth.dart';
-import 'package:memorize/list.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/tts.dart' as tts;
 import 'package:memorize/lexicon.dart';
@@ -36,6 +35,13 @@ late final LexiconMeta lexiconMeta;
 late final String _lexiconFileDir;
 final wordLexiconSaved = ValueNotifier(true);
 final kanjiLexiconSaved = ValueNotifier(true);
+late final Agenda agenda;
+
+Future<void> _initTimezone() async {
+  final timezone = await FlutterTimezone.getLocalTimezone();
+  tz.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation(timezone));
+}
 
 Future<void> initConstants() async {
   await dotenv.load();
@@ -47,9 +53,7 @@ Future<void> initConstants() async {
   host = dotenv.env['HOST']!;
   pb = PocketBase('http://$host:8090');
 
-  final timezone = await FlutterTimezone.getLocalTimezone();
-  tz.initializeTimeZones();
-  tz.setLocalLocation(tz.getLocation(timezone));
+  await _initTimezone();
 
   const androidInitSettings = AndroidInitializationSettings('app_icon');
   const darwinInitSettings = DarwinInitializationSettings();
@@ -60,11 +64,7 @@ Future<void> initConstants() async {
 
   await flutterLocalNotificationsPlugin.initialize(initSettings,
       onDidReceiveNotificationResponse: (response) {
-    final payload = List.from(jsonDecode(response.payload!));
-    final filename = payload[0];
-
-    routerNavKey.currentContext
-        ?.push('/quiz_launcher', extra: MemoList.open(filename));
+    routerNavKey.currentContext?.push('/explorer/agenda');
   });
 
   flutterLocalNotificationsPlugin
@@ -99,6 +99,7 @@ Future<void> initConstants() async {
   _lexiconFileDir = '$applicationDocumentDirectory/lexicon';
 
   lexiconMeta = await _tryLoadLexiconMeta('$_lexiconFileDir/meta');
+  agenda = Agenda();
 
   wordLexicon =
       //Lexicon([
@@ -137,10 +138,10 @@ void saveLexicon([bool kanji = false]) {
   file.writeAsBytes(bytes).then((value) {
     final file = File('$_lexiconFileDir/meta');
 
-    debugPrint('Lexicon(${file.path}) size: ${file.lengthSync()}');
+    debugPrint('Lexicon(${value.path}) size: ${value.lengthSync()}');
 
     file.writeAsBytes(lexiconMeta.encode()).then((value) {
-      debugPrint('LexiconMeta size: ${file.lengthSync()}');
+      debugPrint('LexiconMeta size: ${value.lengthSync()}');
 
       kanji ? kanjiLexiconSaved.value = true : wordLexiconSaved.value = true;
     });

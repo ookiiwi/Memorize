@@ -60,7 +60,7 @@ class _Explorer extends State<Explorer> {
             icon: const Icon(Icons.filter_list_rounded),
           ),
           IconButton(
-            onPressed: () {},
+            onPressed: () => context.push('/explorer/agenda'),
             icon: const Icon(Icons.notifications_rounded),
           ),
         ],

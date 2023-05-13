@@ -4,11 +4,12 @@ import 'dart:io';
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/lexicon.dart';
-import 'package:memorize/list.dart';
 import 'package:memorize/views/account.dart';
+import 'package:memorize/views/agenda.dart';
 import 'package:memorize/views/explorer.dart';
 import 'package:memorize/views/lexicon.dart';
 import 'package:memorize/views/memo_hub.dart';
@@ -123,7 +124,12 @@ final router = GoRouter(initialLocation: '/splash', routes: [
                 ),
               );
             },
-          )
+          ),
+          GoRoute(
+            path: 'agenda',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AgendaViewer()),
+          ),
         ],
       ),
       GoRoute(
@@ -169,7 +175,7 @@ final router = GoRouter(initialLocation: '/splash', routes: [
               path: 'list_preview',
               pageBuilder: (context, state) => NoTransitionPage(
                 child: ListPreview(
-                  list: state.extra as MemoList,
+                  list: state.extra as Lexicon,
                 ),
               ),
             )
@@ -207,7 +213,8 @@ final router = GoRouter(initialLocation: '/splash', routes: [
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  runApp(LifecycleWatcher(child: MyApp()));
+  initializeDateFormatting(Platform.localeName, null)
+      .then((value) => runApp(LifecycleWatcher(child: MyApp())));
 }
 
 class MyApp extends StatelessWidget {
