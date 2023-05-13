@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:binarize/binarize.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/lexicon.dart';
@@ -31,6 +32,11 @@ class Agenda {
 
   @override
   String toString() => _agenda.toString();
+
+  void clear() {
+    _agenda.clear();
+    flutterLocalNotificationsPlugin.cancelAll();
+  }
 
   DateTime? getTime(LexiconItem item) {
     for (var e in _agenda.entries) {
@@ -176,13 +182,18 @@ class Agenda {
       final items = <LexiconItem>{};
 
       for (int j = 0; j < itemCount; ++j) {
-        items.add(
-          LexiconItem(
-            reader.get(uint64),
-            isKanji: reader.get(boolean),
-          ),
-        );
+        final id = reader.get(uint64);
+        final isKanji = reader.get(boolean);
+        final item = isKanji ? kanjiLexicon.findId(id) : wordLexicon.findId(id);
+
+        if (item == null) {
+          debugPrint('Cannot add $item to agenda');
+          continue;
+        }
+
+        items.add(item);
       }
+
       _agenda[key] = items;
     }
   }
