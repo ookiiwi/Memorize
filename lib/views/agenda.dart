@@ -124,18 +124,6 @@ class _DatePicker extends State<DatePicker> {
   final _daysPageTransitionCurve = Curves.easeInOut;
 
   @override
-  void initState() {
-    super.initState();
-
-    _showDays.addListener(() {
-      if (_showDays.value && _daysPageController != null) {
-        final index = DateUtils.monthDelta(DateTime.now(), date);
-        _daysPageController!.jumpToPage(index);
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _daysPageController?.dispose();
 
@@ -300,14 +288,12 @@ class _DatePicker extends State<DatePicker> {
                 var startingDate = pageDate.copyWith(day: 2);
 
                 do {
-                  startingDate = startingDate.subtract(const Duration(days: 1));
+                  startingDate = DateUtils.addDaysToDate(startingDate, -1);
                 } while (dateFormat.format(startingDate) != 'Mon');
 
                 Widget buildDay(int i) {
-                  final day = startingDate.add(Duration(days: i));
-                  final isSelected = day.millisecondsSinceEpoch ==
-                          date.millisecondsSinceEpoch &&
-                      day.month == pageDate.month;
+                  final day = DateUtils.addDaysToDate(startingDate, i);
+                  final isSelected = day == date && day.month == pageDate.month;
 
                   return TextButton(
                     style: TextButton.styleFrom(
@@ -337,6 +323,7 @@ class _DatePicker extends State<DatePicker> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        const SizedBox.square(dimension: 5),
                         Text(
                           '${day.day}',
                           style: TextStyle(
@@ -382,7 +369,7 @@ class _DatePicker extends State<DatePicker> {
     return TextButton(
       onPressed: () => _showDays.value = !_showDays.value,
       child: Text(
-        dateFormat.format(navDate).toString(),
+        dateFormat.format(_showDays.value ? navDate : date).toString(),
         style: const TextStyle(fontSize: 20),
       ),
     );
@@ -406,6 +393,9 @@ class _DatePicker extends State<DatePicker> {
             ValueListenableBuilder<bool>(
               valueListenable: _showDays,
               builder: (context, value, child) {
+                _daysPageController?.dispose();
+                _daysPageController = null;
+
                 if (value) {
                   _daysPageController ??= PageController(
                     initialPage: DateUtils.monthDelta(DateTime.now(), date),
