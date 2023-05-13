@@ -14,7 +14,6 @@ class Explorer extends StatefulWidget {
 }
 
 class _Explorer extends State<Explorer> {
-  final borderRadius = BorderRadius.circular(20);
   final _textController = TextEditingController();
   String _searchedTag = '';
 
@@ -30,7 +29,6 @@ class _Explorer extends State<Explorer> {
   }
 
   Widget buildPage(BuildContext context, String label) {
-    final colorScheme = Theme.of(context).colorScheme;
     final tags = lexiconMeta.tags.asMap().entries.toList()
       ..sort((a, b) => a.value.compareTo(b.value));
     final isPOS = label == 'POS';
@@ -67,66 +65,22 @@ class _Explorer extends State<Explorer> {
             return const SizedBox();
           }
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              borderRadius: borderRadius,
-              color: colorScheme.primaryContainer,
-            ),
-            child: ClipRRect(
-              borderRadius: borderRadius,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    context.push(
-                      '/explorer/listview',
-                      extra: {'title': tag, 'items': getItems()},
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TagWidget(
-                                tag: tag,
-                                color: Color(lexiconMeta.tagsColors[tagIndex]),
-                                textStyle: TextStyle(
-                                  color: colorScheme.onPrimaryContainer,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                '${lexiconMeta.tagsMapping[tagIndex]?.length ?? 0} elements',
-                                style: TextStyle(
-                                  color: colorScheme.onPrimaryContainer,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8.0),
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            backgroundColor: colorScheme.background,
-                          ),
-                          onPressed: () {
-                            context.push('/quiz_launcher',
-                                extra: {'title': tag, 'items': getItems()});
-                          },
-                          child: const Text('Play'),
-                        )
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          return ExplorerItem(
+            tag: tag,
+            tagColor: Color(lexiconMeta.tagsColors[tagIndex]),
+            itemCount: lexiconMeta.tagsMapping[tagIndex]?.length ?? 0,
+            onTap: () {
+              context.push(
+                '/explorer/listview',
+                extra: {'title': tag, 'items': getItems()},
+              );
+            },
+            onPlayAction: () {
+              context.push(
+                '/quiz_launcher',
+                extra: {'title': tag, 'items': getItems()},
+              );
+            },
           );
         },
       ),
@@ -230,6 +184,86 @@ class LexiconListView extends StatelessWidget {
                 },
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ExplorerItem extends StatelessWidget {
+  const ExplorerItem({
+    super.key,
+    required this.tag,
+    required this.tagColor,
+    this.itemCount = 0,
+    this.onTap,
+    this.onPlayAction,
+  });
+
+  final String tag;
+  final Color tagColor;
+
+  /// Number of item with this tag
+  final int itemCount;
+  final VoidCallback? onTap;
+  final VoidCallback? onPlayAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(20);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        color: colorScheme.primaryContainer,
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TagWidget(
+                          tag: tag,
+                          color: tagColor,
+                          textStyle: TextStyle(
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '$itemCount elements',
+                          style: TextStyle(
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8.0),
+                  if (onPlayAction != null)
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        backgroundColor: colorScheme.background,
+                      ),
+                      onPressed: onPlayAction,
+                      child: const Text('Play'),
+                    )
+                ],
+              ),
+            ),
           ),
         ),
       ),
