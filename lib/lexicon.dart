@@ -88,6 +88,13 @@ class Lexicon {
 
   void remove(LexiconItem item) {
     _items.remove(item);
+
+    for (var e in item.tags) {
+      lexiconMeta.untagItem(e, item);
+    }
+
+    agenda.unschedule(item);
+    saveAgenda();
   }
 
   void removeWhere(bool Function(LexiconItem item) test) =>
@@ -152,7 +159,7 @@ class LexiconItem extends Equatable {
   String get target => 'jpn-${appSettings.language}${isKanji ? '-kanji' : ''}';
 
   @override
-  List<Object?> get props => [id, tags, isKanji];
+  List<Object?> get props => [id, isKanji];
 
   @override
   String toString() => '$runtimeType($id, $tags, $isKanji, $sm2)';
@@ -225,12 +232,10 @@ class LexiconMeta {
   void tagItem(int tagIdx, LexiconItem item) {
     tagsMapping[tagIdx] ??= {};
     tagsMapping[tagIdx]!.add(LexiconMetaItemInfo.fromItem(item));
-    item.tags.add(tagIdx);
   }
 
   void untagItem(int tagIdx, LexiconItem item) {
     tagsMapping[tagIdx]?.remove(LexiconMetaItemInfo.fromItem(item));
-    item.tags.remove(tagIdx);
   }
 
   bool isTagged(int tagIdx, LexiconItem item) {
