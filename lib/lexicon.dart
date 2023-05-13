@@ -195,7 +195,7 @@ class LexiconMeta {
       tagsColors: reader.get(list(uint32, lengthType: uint16)),
       collections: reader.get(map(string16, list(uint16, lengthType: uint16))),
       posIndexes: reader.get(list(uint16, lengthType: uint16)).toSet(),
-    )..clear();
+    );
   }
 
   final GrowingList<String> _tags;
@@ -212,6 +212,7 @@ class LexiconMeta {
     _tagsColors.clear();
     collections.clear();
     tagsMapping.clear();
+    posIndexes.clear();
   }
 
   bool containsTag(String value) => _tags.contains(value);
