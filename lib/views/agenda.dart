@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/agenda.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/lexicon.dart';
+import 'package:memorize/views/explorer.dart';
 
 class AgendaViewer extends StatefulWidget {
   const AgendaViewer({super.key});
@@ -84,17 +87,55 @@ class _AgendaViewer extends State<AgendaViewer> {
         },
         itemBuilder: (context, page) {
           final today = agenda[_computeDate(page)];
+          final groups = <int, Set<LexiconItem>>{};
 
           if (today == null || today.isEmpty) {
             return const Center(child: Text('>@_@<'));
           }
 
+          final tags = lexiconMeta.tags;
+          final tagColors = lexiconMeta.tagsColors;
+
+          for (var e in today) {
+            groups[-1] ??= {};
+            groups[-1]!.add(e);
+
+            if (e.tags.isEmpty) {
+              continue;
+            }
+
+            for (var i in e.tags) {
+              groups[i] ??= {};
+              groups[i]!.add(e);
+            }
+          }
+
           return ListView.builder(
             shrinkWrap: true,
-            itemCount: today.length,
+            padding: const EdgeInsets.only(
+              top: 10,
+              bottom: kBottomNavigationBarHeight,
+              left: 10,
+              right: 10,
+            ),
+            itemCount: groups.length,
             itemBuilder: (context, i) {
-              return ListTile(
-                title: Text('${today.elementAt(i).id}'),
+              final tagIdx = groups.keys.elementAt(i);
+              final tag = tagIdx != -1 ? tags[tagIdx] : 'Custom';
+              final tagColor =
+                  tagIdx != -1 ? Color(tagColors[tagIdx]) : Colors.amber;
+              final items = groups.values.elementAt(i);
+
+              return ExplorerItem(
+                tag: tag,
+                tagColor: tagColor,
+                itemCount: items.length,
+                onTap: () {
+                  context.push(
+                    '/quiz_launcher',
+                    extra: {'title': tag, 'items': items.toList()},
+                  );
+                },
               );
             },
           );
@@ -118,7 +159,7 @@ class _DatePicker extends State<DatePicker> {
   final dateFormat = DateFormat.yMMMM();
   late DateTime date = widget.date ?? DateTime.now();
   late DateTime navDate = date.copyWith();
-  final _showDays = ValueNotifier(false);
+  final _showDays = ValueNotifier(true);
   PageController? _daysPageController;
   final _daysPageTransitionDuration = const Duration(milliseconds: 200);
   final _daysPageTransitionCurve = Curves.easeInOut;
