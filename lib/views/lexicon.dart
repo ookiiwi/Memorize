@@ -79,11 +79,14 @@ class _Lexicon extends State<LexiconView> {
 
   void _setTagPos(LexiconItem item) {
     if (item.isKanji || item.entry == null) return;
-    final tags = lexiconMeta.tags;
 
-    int addTag(String tag) => !lexiconMeta.containsTag(tag)
-        ? lexiconMeta.addTag(tag, lexiconMeta.getRandomTagColor(), isPOS: true)
-        : tags.indexOf(tag);
+    int addTag(String tag) {
+      if (!lexiconMeta.containsTag(tag)) {
+        return lexiconMeta.addTag(tag, lexiconMeta.getRandomTagColor(),
+            isPOS: true);
+      }
+      return lexiconMeta.tags.indexOf(tag);
+    }
 
     for (var e in (item.entry! as ParsedEntryJpn).senses) {
       for (var pos in e['pos'] ?? <String>[]) {
@@ -372,6 +375,28 @@ class _Lexicon extends State<LexiconView> {
               );
             },
             child: const Text('Scroll to end'),
+          ),
+          PopupMenuItem(
+            onTap: () {
+              saveLexicon();
+              saveLexicon(true);
+              setState(() {});
+            },
+            child: const Text('Save lexicon'),
+          ),
+          PopupMenuItem(
+            onTap: () {
+              wordLexicon.clear();
+              kanjiLexicon.clear();
+              lexiconMeta.clear();
+              agenda.clear();
+
+              saveLexicon();
+              saveLexicon(true);
+              saveAgenda();
+              setState(() {});
+            },
+            child: const Text('Clear lexicon'),
           ),
         ];
       },
