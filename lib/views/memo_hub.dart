@@ -4,9 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/list.dart';
-import 'package:memorize/views/list.dart';
-import 'package:memorize/views/list_explorer.dart';
 import 'package:path/path.dart' as p;
 import 'package:pocketbase/pocketbase.dart';
 
@@ -226,6 +223,7 @@ class _ListSearch extends State<ListSearch> {
   }
 
   void openList(RecordModel record) async {
+    /*
     final filename = '$temporaryDirectory/${record.data['name']}';
     final url = pb.getFileUrl(record, record.data['list']);
     final file = File(filename);
@@ -241,6 +239,7 @@ class _ListSearch extends State<ListSearch> {
     if (mounted) {
       context.push('/memo_hub/list_preview', extra: list);
     }
+    */
   }
 
   @override
@@ -282,7 +281,7 @@ class _ListSearch extends State<ListSearch> {
 class ListPreview extends StatelessWidget {
   const ListPreview({super.key, required this.list});
 
-  final MemoList list;
+  final dynamic list;
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +305,7 @@ class ListPreview extends StatelessWidget {
           )
         ],
       ),
-      body: EntryViewer(list: list),
+      //body: EntryViewer(list: list),
     );
   }
 }
@@ -314,21 +313,22 @@ class ListPreview extends StatelessWidget {
 class ListDownload extends StatelessWidget {
   ListDownload({super.key, required this.list});
 
-  final MemoList list;
+  final dynamic list;
   String dir = '';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('List download')),
-      body: ListExplorer(
-        buildScaffold: false,
-        onListTap: (_) => false,
-        onCollectionTap: (info) {
-          dir = info;
-          return true;
-        },
-      ),
+      //body:
+      //ListExplorer(
+      //  buildScaffold: false,
+      //  onListTap: (_) => false,
+      //  onCollectionTap: (info) {
+      //    dir = info;
+      //    return true;
+      //  },
+      //),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           final filename = p.join(
@@ -337,12 +337,12 @@ class ListDownload extends StatelessWidget {
           );
 
           if (!File(filename).existsSync()) {
-            final newList = MemoList.fromJson(
-              filename,
-              list.toJson(),
-            );
-
-            newList.save();
+            //final newList = MemoList.fromJson(
+            //  filename,
+            //  list.toJson(),
+            //);
+//
+            //newList.save();
           }
 
           Navigator.of(context).pop();
