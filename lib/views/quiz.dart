@@ -156,11 +156,23 @@ class _QuizLauncher extends State<QuizLauncher> {
               print('item $i: ${items[i]}');
             },
             onEnd: (score) {
+              // TODO: ask to schedule or not on abort
+              bool hasWords = false;
+              bool hasKanji = false;
+
               for (var e in items) {
                 print('schedule item: $e');
 
                 agenda.schedule(e);
+
+                if (!hasWords) hasWords = !e.isKanji;
+                if (!hasKanji) hasKanji = e.isKanji;
               }
+
+              if (hasWords) saveLexicon();
+              if (hasKanji) saveLexicon(true);
+
+              saveAgenda();
             },
           );
         },
