@@ -18,6 +18,7 @@ import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:quiver/iterables.dart';
 
 class LexiconView extends StatefulWidget {
   const LexiconView({super.key});
@@ -93,16 +94,19 @@ class _Lexicon extends State<LexiconView> {
         if (prefix != null) {
           final i = addTag(prefix);
           lexiconMeta.tagItem(i, item);
+          item.tags.add(i);
         }
 
         {
           final i = addTag(capitalizedPos);
           lexiconMeta.tagItem(i, item);
+          item.tags.add(i);
         }
 
         if (verbGroup != null) {
           final i = addTag(verbGroup);
           lexiconMeta.tagItem(i, item);
+          item.tags.add(i);
         }
       }
     }
@@ -203,7 +207,17 @@ class _Lexicon extends State<LexiconView> {
           ListTile(
             leading: const Icon(Icons.delete_rounded),
             title: const Text('Delete'),
-            onTap: () {},
+            onTap: () {
+              setState(() {
+                item.isKanji
+                    ? kanjiLexicon.remove(item)
+                    : wordLexicon.remove(item);
+              });
+
+              Navigator.of(context).pop();
+
+              saveLexicon(item.isKanji);
+            },
           )
         ],
       ),
@@ -703,8 +717,8 @@ class _TagColorPicker extends State<TagColorPicker> {
   LexiconItem get item => widget.item;
 
   Widget buildColorPicker(BuildContext context) {
-    final tags = lexiconMeta.tags;
-    final colors = lexiconMeta.tagsColors;
+    final tags = zip([lexiconMeta.tags, lexiconMeta.tagsColors]).toList()
+      ..sort((a, b) => (a[0] as String).compareTo((b[0] as String)));
 
     return Column(
       children: [
@@ -758,9 +772,9 @@ class _TagColorPicker extends State<TagColorPicker> {
                         padding: const EdgeInsets.all(8.0),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
-                          color: Color(colors[index]),
+                          color: Color(tags[index][1] as int),
                         ),
-                        child: Text(tags[index]),
+                        child: Text(tags[index][0] as String),
                       ),
                     ),
                     IconButton(onPressed: () {}, icon: const Icon(Icons.edit))
