@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:binarize/binarize.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/lexicon.dart';
@@ -13,6 +16,9 @@ class Agenda {
   static const maxRemindersPerDay = 4;
 
   Agenda({Map<DateTime, Set<LexiconItem>>? agenda}) : _agenda = agenda ?? {};
+  Agenda.decode(List<int> bytes) : _agenda = {} {
+    _decode(bytes);
+  }
 
   /// Stores items to play at specific day
   final Map<DateTime, Set<LexiconItem>> _agenda;
@@ -157,5 +163,45 @@ class Agenda {
         _agenda[dayOnly]!.addAll(items);
       }
     }
+  }
+
+  void _decode(List<int> bytes) {
+    final reader = Payload.read(gzip.decode(bytes));
+    final agendaLength = reader.get(uint16);
+
+    for (int i = 0; i < agendaLength; ++i) {
+      final key = DateTime.fromMillisecondsSinceEpoch(
+          reader.get(uint32) * Duration.millisecondsPerSecond);
+      final itemCount = reader.get(uint32);
+      final items = <LexiconItem>{};
+
+      for (int j = 0; j < itemCount; ++j) {
+        items.add(
+          LexiconItem(
+            reader.get(uint64),
+            isKanji: reader.get(boolean),
+          ),
+        );
+      }
+      _agenda[key] = items;
+    }
+  }
+
+  List<int> encode() {
+    final writer = Payload.write();
+
+    writer.set(uint16, _agenda.length);
+
+    _agenda.forEach((key, value) {
+      writer.set(uint32, key.secondsSinceEpoch);
+      writer.set(uint32, value.length);
+
+      for (var e in value) {
+        writer.set(uint64, e.id);
+        writer.set(boolean, e.isKanji);
+      }
+    });
+
+    return gzip.encode(binarize(writer));
   }
 }
