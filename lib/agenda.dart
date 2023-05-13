@@ -1,10 +1,17 @@
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:memorize/app_constants.dart';
 import 'package:memorize/lexicon.dart';
+import 'package:timezone/timezone.dart' as tz;
 
 extension DateTimeDayOnly on DateTime {
   DateTime get dayOnly => DateTime(year, month, day);
+  int get secondsSinceEpoch =>
+      millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
 }
 
 class Agenda {
+  static const maxRemindersPerDay = 4;
+
   Agenda({Map<DateTime, Set<LexiconItem>>? agenda}) : _agenda = agenda ?? {};
 
   /// Stores items to play at specific day
@@ -27,6 +34,67 @@ class Agenda {
     return null;
   }
 
+  /// [date] must not be dayOnly
+  Future<MapEntry<int, Iterable<PendingNotificationRequest>>>
+      _getPendingReminders(DateTime date) async {
+    final minId = date.dayOnly.secondsSinceEpoch;
+    final reminders =
+        (await flutterLocalNotificationsPlugin.pendingNotificationRequests())
+            .where((e) => e.id >= minId && e.id < minId + maxRemindersPerDay);
+
+    return MapEntry(minId, reminders);
+  }
+
+  /// [date] must not be dayOnly
+  Future<void> _setReminders(DateTime date) async {
+    final tmp = await _getPendingReminders(date);
+    final minId = tmp.key;
+    final reminders = tmp.value;
+
+    // Reminders already set
+    if (reminders.isNotEmpty) return;
+
+    const reminderInterval = 24 ~/ maxRemindersPerDay;
+
+    for (int i = 0; i < maxRemindersPerDay; ++i) {
+      final now = DateTime.now();
+      final time = now.dayOnly.add(Duration(hours: reminderInterval * (i + 1)));
+
+      if (time.secondsSinceEpoch < now.secondsSinceEpoch) {
+        continue;
+      }
+
+      assert(
+          (await flutterLocalNotificationsPlugin.pendingNotificationRequests())
+                  .any((e) => e.id == minId + i) ==
+              false);
+
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        minId + i,
+        'Quiz time',
+        'There is still items to review',
+        tz.TZDateTime.from(time, tz.local),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'my channel id',
+            'my channel name',
+          ),
+          iOS: DarwinNotificationDetails(),
+        ),
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    }
+  }
+
+  Future<void> _clearReminders(DateTime date) async {
+    final reminders = (await _getPendingReminders(date)).value;
+
+    for (var e in reminders) {
+      await flutterLocalNotificationsPlugin.cancel(e.id);
+    }
+  }
+
   DateTime schedule(LexiconItem item) {
     final date = DateTime.now().add(Duration(days: item.sm2.interval));
     final dayOnly = date.dayOnly;
@@ -37,6 +105,8 @@ class Agenda {
       }
     }
 
+    _setReminders(date);
+
     _agenda[dayOnly] ??= {};
     _agenda[dayOnly]!.add(item);
 
@@ -44,20 +114,29 @@ class Agenda {
   }
 
   DateTime? unschedule(LexiconItem item, [DateTime? date]) {
+    DateTime? scheduledDate;
+
     if (date != null) {
       final dayOnly = date.dayOnly;
       final isRemoved = _agenda[dayOnly]?.remove(item);
 
       if (isRemoved == true) {
-        return dayOnly;
+        scheduledDate = dayOnly;
       }
     }
 
-    for (var e in _agenda.entries) {
-      if (e.value.remove(item)) return e.key;
+    if (scheduledDate == null) {
+      for (var e in _agenda.entries) {
+        if (e.value.remove(item)) return e.key;
+      }
     }
 
-    return null;
+    // Cancel reminders if scheduledDate's agenda is empty
+    if (scheduledDate != null && _agenda[scheduledDate]?.isEmpty == true) {
+      _clearReminders(scheduledDate);
+    }
+
+    return scheduledDate;
   }
 
   /// Moves entries with date older than today
@@ -65,7 +144,7 @@ class Agenda {
     date ??= DateTime.now();
     final dayOnly = date.dayOnly;
     final pastDates = _agenda.keys
-        .where((e) => e.millisecondsSinceEpoch < dayOnly.millisecondsSinceEpoch)
+        .where((e) => e.secondsSinceEpoch < dayOnly.secondsSinceEpoch)
         .toList();
 
     if (pastDates.isEmpty) return;
