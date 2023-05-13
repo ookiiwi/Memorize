@@ -36,6 +36,7 @@ late final String _lexiconFileDir;
 final wordLexiconSaved = ValueNotifier(true);
 final kanjiLexiconSaved = ValueNotifier(true);
 late final Agenda agenda;
+late final String _agendaFilepath;
 
 Future<void> _initTimezone() async {
   final timezone = await FlutterTimezone.getLocalTimezone();
@@ -97,9 +98,10 @@ Future<void> initConstants() async {
   kanjivgReader = KanjiSvgReader(kanjivgFilePath);
 
   _lexiconFileDir = '$applicationDocumentDirectory/lexicon';
+  _agendaFilepath = '$applicationDocumentDirectory/agenda/agenda';
 
   lexiconMeta = await _tryLoadLexiconMeta('$_lexiconFileDir/meta');
-  agenda = Agenda();
+  agenda = _tryLoadAgenda();
 
   wordLexicon =
       //Lexicon([
@@ -123,6 +125,28 @@ Future<void> initConstants() async {
       //  LexiconItem(26412, isKanji: true),
       //]);
       await _tryLoadLexicon('$_lexiconFileDir/kanji', true);
+}
+
+void saveAgenda() {
+  final file = File(_agendaFilepath);
+
+  if (!file.existsSync()) {
+    file.createSync(recursive: true);
+  }
+
+  file.writeAsBytesSync(agenda.encode());
+
+  debugPrint('Agenda(${file.path}) size: ${file.lengthSync()}');
+}
+
+Agenda _tryLoadAgenda() {
+  final file = File(_agendaFilepath);
+
+  if (!file.existsSync()) {
+    return Agenda();
+  }
+
+  return Agenda.decode(file.readAsBytesSync());
 }
 
 void saveLexicon([bool kanji = false]) {
