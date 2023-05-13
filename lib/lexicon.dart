@@ -178,12 +178,14 @@ class LexiconMeta {
   LexiconMeta(
       {List<String>? tags,
       List<int>? tagsColors,
-      Map<String, List<int>>? collections})
+      Map<String, List<int>>? collections,
+      Set<int>? posIndexes})
       : assert(tags?.length == tagsColors?.length),
         _tags = GrowingList('', list: tags ?? []),
         _tagsColors = tagsColors ?? [],
         collections = collections ?? {},
-        tagsMapping = {};
+        tagsMapping = {},
+        posIndexes = posIndexes ?? {};
 
   factory LexiconMeta.decode(Uint8List bytes) {
     final reader = Payload.read(gzip.decode(bytes));
@@ -192,13 +194,15 @@ class LexiconMeta {
       tags: reader.get(list(string32, lengthType: uint16)),
       tagsColors: reader.get(list(uint32, lengthType: uint16)),
       collections: reader.get(map(string16, list(uint16, lengthType: uint16))),
-    );
+      posIndexes: reader.get(list(uint16, lengthType: uint16)).toSet(),
+    )..clear();
   }
 
   final GrowingList<String> _tags;
   final List<int> _tagsColors;
   final Map<String, List<int>> collections;
   final Map<int, Set<LexiconMetaItemInfo>> tagsMapping;
+  final Set<int> posIndexes;
 
   List<String> get tags => _tags.toList();
   List<int> get tagsColors => _tagsColors.toList();
@@ -212,7 +216,8 @@ class LexiconMeta {
 
   bool containsTag(String value) => _tags.contains(value);
 
-  int addTag(String value, Color color, {String collection = ''}) {
+  int addTag(String value, Color color,
+      {String collection = '', bool isPOS = false}) {
     final idx = _tags.add(value);
     collections[collection] ??= [];
 
@@ -224,6 +229,10 @@ class LexiconMeta {
       _tagsColors.add(color.value);
     } else {
       _tagsColors[idx] = color.value;
+    }
+
+    if (isPOS) {
+      posIndexes.add(idx);
     }
 
     return idx;
@@ -258,6 +267,7 @@ class LexiconMeta {
     writer.set(list(string32, lengthType: uint16), _tags.toList());
     writer.set(list(uint32, lengthType: uint16), _tagsColors.toList());
     writer.set(map(string16, list(uint16, lengthType: uint16)), collections);
+    writer.set(list(uint16, lengthType: uint16), posIndexes.toList());
 
     return gzip.encode(binarize(writer));
   }
