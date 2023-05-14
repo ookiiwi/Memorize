@@ -25,6 +25,7 @@ class Lexicon {
   @override
   // ignore: override_on_non_overriding_member
   LexiconItem operator [](int i) => _items[i];
+  List<LexiconItem> toList() => _items.toList(growable: false);
 
   void addListener(VoidCallback listener) => _listeners.add(listener);
   void removeListener(VoidCallback listener) => _listeners.remove(listener);
