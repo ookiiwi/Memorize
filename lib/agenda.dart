@@ -33,6 +33,10 @@ class Agenda {
   @override
   String toString() => _agenda.toString();
 
+  void forEach(void Function(DateTime date, Set<LexiconItem> items) action) {
+    _agenda.forEach(action);
+  }
+
   void clear() {
     _agenda.clear();
     flutterLocalNotificationsPlugin.cancelAll();
