@@ -34,6 +34,9 @@ class Lexicon {
     }
   }
 
+  Iterable<LexiconItem> where(bool Function(LexiconItem item) test) =>
+      _items.where(test);
+
   void add(LexiconItem item) {
     _add(item);
     notifyListeners();
