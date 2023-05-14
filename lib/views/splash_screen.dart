@@ -79,7 +79,7 @@ class _SplashScreen extends State<SplashScreen> {
       if (file.existsSync()) {
         route = file.readAsStringSync();
       } else {
-        route = '/home';
+        route = '/';
       }
     }
 
