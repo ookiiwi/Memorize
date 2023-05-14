@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/agenda.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/lexicon.dart';
+import 'package:memorize/sm.dart';
 import 'package:memorize/views/explorer.dart';
 
 class AgendaViewer extends StatefulWidget {
@@ -78,6 +80,48 @@ class _AgendaViewer extends State<AgendaViewer> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          PopupMenuButton(
+              position: PopupMenuPosition.under,
+              offset: const Offset(0, 15),
+              itemBuilder: (context) {
+                return [
+                  if (kDebugMode)
+                    PopupMenuItem(
+                      onTap: () {
+                        setState(() => agenda.clear());
+                        saveAgenda();
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  if (kDebugMode)
+                    PopupMenuItem(
+                      onTap: () {
+                        bool hasWords = false;
+                        bool hasKanji = false;
+
+                        agenda.forEach(
+                          (date, items) {
+                            for (var e in items) {
+                              e.sm2 = const SM2();
+
+                              if (!hasWords) hasWords = !e.isKanji;
+                              if (!hasKanji) hasKanji = !e.isKanji;
+                            }
+                          },
+                        );
+
+                        setState(() => agenda.clear());
+                        saveAgenda();
+
+                        if (hasWords) saveLexicon();
+                        if (hasKanji) saveLexicon(true);
+                      },
+                      child: const Text('Clear (with SM2 data)'),
+                    ),
+                ];
+              })
+        ],
       ),
       body: PageView.builder(
         controller: _pageController,
