@@ -48,11 +48,13 @@ class _Explorer extends State<Explorer> {
           final tag = tags[index].value;
 
           List<LexiconItem> getItems() {
-            return lexiconMeta.tagsMapping[tagIndex]!
-                .map((e) => e.isKanji
-                    ? kanjiLexicon.findId(e.id)!
-                    : wordLexicon.findId(e.id)!)
-                .toList();
+            return Lexicon(
+              lexiconMeta.tagsMapping[tagIndex]!
+                  .map((e) => e.isKanji
+                      ? kanjiLexicon.findId(e.id)!
+                      : wordLexicon.findId(e.id)!)
+                  .toList(growable: false),
+            ).toList();
           }
 
           final searchNoRes = (_searchedTag.isNotEmpty &&
@@ -160,8 +162,17 @@ class LexiconListView extends StatelessWidget {
         ),
         child: DefaultTextStyle.merge(
           style: TextStyle(color: textColor),
-          child: LexiconPageView(
-            lexiconBuilder: (context, index, label) {
+          child: PageView.builder(
+            itemCount: 2,
+            itemBuilder: (context, index) {
+              final pageLexicon = index == 0
+                  ? lexicon
+                  : Lexicon(
+                      lexicon
+                          .where((item) => item.sm2.repetitions == 0)
+                          .toList(),
+                    );
+
               return ListView.builder(
                 shrinkWrap: true,
                 padding: const EdgeInsets.only(
@@ -170,14 +181,14 @@ class LexiconListView extends StatelessWidget {
                   left: 10,
                   right: 10,
                 ),
-                itemCount: lexicon.length,
+                itemCount: pageLexicon.length,
                 itemBuilder: (context, i) {
                   return LexiconItemWidget(
-                    item: lexicon[i],
+                    item: pageLexicon[i],
                     onTap: (item) {
                       context.push('/lexicon/itemView', extra: {
                         'initialIndex': i,
-                        'lexicon': lexicon,
+                        'lexicon': pageLexicon,
                       });
                     },
                   );
@@ -237,9 +248,9 @@ class ExplorerItem extends StatelessWidget {
                       children: [
                         TagWidget(
                           tag: tag,
-                          color: tagColor,
                           textStyle: TextStyle(
                             color: colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 10),
