@@ -6,9 +6,10 @@ import 'package:flip_card/flip_card_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/lexicon.dart';
 import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/views/lexicon.dart';
+import 'package:memorize/memo_list.dart';
+import 'package:memorize/util.dart';
+import 'package:memorize/views/explorer.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -25,10 +26,10 @@ class QuizOpt {
 }
 
 class QuizLauncher extends StatefulWidget {
-  const QuizLauncher({super.key, required this.items, this.title = 'Untitled'});
+  const QuizLauncher({super.key, required this.items, required this.listpath});
 
-  final String title;
-  final List<LexiconItem> items;
+  final String listpath;
+  final List<MemoListItem> items;
 
   @override
   State<StatefulWidget> createState() => _QuizLauncher();
@@ -51,9 +52,10 @@ class _QuizLauncher extends State<QuizLauncher> {
   int _timer = 0;
   bool _random = false;
 
+  late final List<int> qualities = List.filled(widget.items.length, -1);
   Map<String, String?> entryOptionsError = {};
 
-  List<LexiconItem> get items => widget.items;
+  List<MemoListItem> get items => widget.items;
 
   late final _optIcons = [
     QuizOpt(Icons.shuffle, (isSelected) => _random = isSelected, () => _random),
@@ -110,32 +112,28 @@ class _QuizLauncher extends State<QuizLauncher> {
             random: _random,
             itemCount: items.length,
             questionBuilder: (context, i) {
-              return DicoGetBuilder(
-                  getResult: items[i].entry != null
-                      ? items[i].entry!
-                      : DicoManager.get(items[i].target, items[i].id),
-                  builder: (context, doc) {
-                    items[i].entry = doc;
+              final target = getTarget(items[i]);
 
-                    return getEntryConstructor(items[i].target)!(
-                      parsedEntry: items[i].entry! as dynamic,
-                      target: items[i].target,
+              return DicoGetBuilder(
+                  getResult: DicoManager.get(target, items[i].id),
+                  builder: (context, doc) {
+                    return getEntryConstructor(target)!(
+                      parsedEntry: doc,
+                      target: target,
                       mode: DisplayMode.quiz,
                     );
                   });
             },
             answerBuilder: (context, i) {
+              final target = getTarget(items[i]);
+
               return DicoGetBuilder(
                 key: ValueKey(i),
-                getResult: items[i].entry != null
-                    ? items[i].entry!
-                    : DicoManager.get(items[i].target, items[i].id),
+                getResult: DicoManager.get(target, items[i].id),
                 builder: (context, doc) {
-                  items[i].entry = doc;
-
-                  return getEntryConstructor(items[i].target)!(
-                    parsedEntry: items[i].entry! as dynamic,
-                    target: items[i].target,
+                  return getEntryConstructor(target)!(
+                    parsedEntry: doc,
+                    target: target,
                     mode: DisplayMode.details,
                   );
                 },
@@ -145,32 +143,24 @@ class _QuizLauncher extends State<QuizLauncher> {
               return Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) {
-                    return EntryViewInfo(item: items[value]);
+                    return MemoListItemInfo(item: items[value]);
                   },
                 ),
               );
             },
             onAnswer: (quality, i) {
-              items[i].sm2 = items[i].sm2.compute(quality);
-
-              print('item $i: ${items[i]}');
+              qualities[i] = quality;
             },
             onEnd: (score) {
               // TODO: ask to schedule or not on abort
-              bool hasWords = false;
-              bool hasKanji = false;
 
-              for (var e in items) {
-                print('schedule item: $e');
+              for (int i = 0; i < qualities.length; ++i) {
+                final item = widget.items[i];
 
-                agenda.schedule(e);
+                print('schedule item: $item');
 
-                if (!hasWords) hasWords = !e.isKanji;
-                if (!hasKanji) hasKanji = e.isKanji;
+                agenda.schedule(MapEntry(widget.listpath, item), qualities[i]);
               }
-
-              if (hasWords) saveLexicon();
-              if (hasKanji) saveLexicon(true);
 
               saveAgenda();
             },
@@ -193,7 +183,7 @@ class _QuizLauncher extends State<QuizLauncher> {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0,
-        title: Text(widget.title),
+        title: Text(MemoList.getNameFromPath(widget.listpath).substring(1)),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(

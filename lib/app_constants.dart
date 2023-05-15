@@ -12,7 +12,6 @@ import 'package:memorize/agenda.dart';
 import 'package:memorize/auth/auth.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/tts.dart' as tts;
-import 'package:memorize/lexicon.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pocketbase/pocketbase.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -29,12 +28,6 @@ late final AppSettings appSettings;
 final auth = Auth();
 final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 late final KanjiSvgReader kanjivgReader;
-late final Lexicon wordLexicon;
-late final Lexicon kanjiLexicon;
-late final LexiconMeta lexiconMeta;
-late final String _lexiconFileDir;
-final wordLexiconSaved = ValueNotifier(true);
-final kanjiLexiconSaved = ValueNotifier(true);
 late final Agenda agenda;
 late final String _agendaFilepath;
 
@@ -65,7 +58,7 @@ Future<void> initConstants() async {
 
   await flutterLocalNotificationsPlugin.initialize(initSettings,
       onDidReceiveNotificationResponse: (response) {
-    routerNavKey.currentContext?.push('/explorer/agenda');
+    routerNavKey.currentContext?.push('/agenda');
   });
 
   flutterLocalNotificationsPlugin
@@ -97,33 +90,7 @@ Future<void> initConstants() async {
 
   kanjivgReader = KanjiSvgReader(kanjivgFilePath);
 
-  _lexiconFileDir = '$applicationDocumentDirectory/lexicon';
   _agendaFilepath = '$applicationDocumentDirectory/agenda/agenda';
-
-  lexiconMeta = await _tryLoadLexiconMeta('$_lexiconFileDir/meta');
-
-  wordLexicon =
-      //Lexicon([
-      //  LexiconItem(1400800),
-      //  LexiconItem(1586720),
-      //  LexiconItem(1061520),
-      //  LexiconItem(1185780),
-      //  LexiconItem(1443000),
-      //  LexiconItem(1596390),
-      //  LexiconItem(1538170),
-      //  LexiconItem(1490220),
-      //]);
-      await _tryLoadLexicon('$_lexiconFileDir/word');
-  kanjiLexicon =
-      //Lexicon([
-      //  LexiconItem(24859, isKanji: true),
-      //  LexiconItem(20154, isKanji: true),
-      //  LexiconItem(30007, isKanji: true),
-      //  LexiconItem(22899, isKanji: true),
-      //  LexiconItem(23376, isKanji: true),
-      //  LexiconItem(26412, isKanji: true),
-      //]);
-      await _tryLoadLexicon('$_lexiconFileDir/kanji', true);
 
   agenda = _tryLoadAgenda();
 }
@@ -148,57 +115,6 @@ Agenda _tryLoadAgenda() {
   }
 
   return Agenda.decode(file.readAsBytesSync());
-}
-
-void saveLexicon([bool kanji = false]) {
-  final file = File('$_lexiconFileDir/${kanji ? 'kanji' : 'word'}');
-
-  if (!file.existsSync()) {
-    file.createSync(recursive: true);
-  }
-
-  final bytes = kanji ? kanjiLexicon.encode() : wordLexicon.encode();
-  kanji ? kanjiLexiconSaved.value = false : wordLexiconSaved.value = false;
-
-  file.writeAsBytes(bytes).then((value) {
-    final file = File('$_lexiconFileDir/meta');
-
-    debugPrint('Lexicon(${value.path}) size: ${value.lengthSync()}');
-
-    file.writeAsBytes(lexiconMeta.encode()).then((value) {
-      debugPrint('LexiconMeta size: ${value.lengthSync()}');
-
-      kanji ? kanjiLexiconSaved.value = true : wordLexiconSaved.value = true;
-    });
-  });
-}
-
-Future<LexiconMeta> _tryLoadLexiconMeta(String path) async {
-  final file = File(path);
-
-  if (!file.existsSync()) {
-    return LexiconMeta();
-  }
-
-  final bytes = await file.readAsBytes();
-
-  debugPrint('Load LexiconMeta of ${file.lengthSync()} bytes');
-
-  return LexiconMeta.decode(bytes);
-}
-
-Future<Lexicon> _tryLoadLexicon(String path, [bool kanjiOnly = false]) async {
-  final file = File(path);
-
-  if (!file.existsSync()) {
-    // ignore: prefer_const_constructors
-    return Lexicon();
-  }
-
-  final bytes = await file.readAsBytes();
-
-  debugPrint('Load Lexicon(${file.path}) of ${file.lengthSync()} bytes');
-  return Lexicon.decode(bytes, kanjiOnly);
 }
 
 Future<void> disposeConstants() async {

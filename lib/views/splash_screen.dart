@@ -89,7 +89,7 @@ class _SplashScreen extends State<SplashScreen> {
 
       if (value?.didNotificationLaunchApp == true) {
         // ignore: use_build_context_synchronously
-        context.push('/explorer/agenda');
+        context.push('/agenda');
       }
     } catch (e) {
       setState(() {

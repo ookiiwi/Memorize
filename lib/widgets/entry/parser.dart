@@ -6,18 +6,22 @@ import 'package:kana_kit/kana_kit.dart';
 import 'package:xml/xml.dart';
 
 abstract class ParsedEntry {
-  final List<String> words = [];
+  ParsedEntry(this.id, [List<String>? words]) : words = words ?? [];
+
+  final int id;
+  final List<String> words;
+  final Map<String, Map<String, List<String>>> notes = {};
 }
 
 typedef ParserEntryGetter = FutureOr<ParsedEntry?> Function(int id);
 const _kanaKit = KanaKit();
 
 class ParsedEntryJpn extends ParsedEntry {
-  ParsedEntryJpn._();
+  ParsedEntryJpn._(super.id);
 
   static FutureOr<ParsedEntryJpn> parse(
-      XmlDocument doc, ParserEntryGetter? getKanji) async {
-    final entry = ParsedEntryJpn._();
+      int id, XmlDocument doc, ParserEntryGetter? getKanji) async {
+    final entry = ParsedEntryJpn._(id);
     final root = doc.findElements('entry').first;
 
     for (var node in root.children) {
@@ -134,16 +138,21 @@ class ParsedEntryJpn extends ParsedEntry {
 }
 
 class ParsedEntryJpnKanji extends ParsedEntry {
-  ParsedEntryJpnKanji._();
+  ParsedEntryJpnKanji._(super.id);
 
-  static Future<ParsedEntryJpnKanji> parse(
-      XmlDocument doc, dynamic findEntry, ParserEntryGetter? getEntry) async {
-    final entry = ParsedEntryJpnKanji._();
+  static Future<ParsedEntryJpnKanji> parse(int id, XmlDocument doc,
+      dynamic findEntry, ParserEntryGetter? getEntry) async {
+    final entry = ParsedEntryJpnKanji._(id);
     final root = doc.findElements('entry').first;
 
     for (var node in root.children) {
       final localName = node.descendants.firstOrNull?.parentElement?.localName;
       final att = node.attributes.firstOrNull;
+
+      if (localName == 'note') {
+        entry._parseNote(node);
+        continue;
+      }
 
       for (var childNode in node.children) {
         if (localName == 'form' && att != null) {
@@ -212,5 +221,23 @@ class ParsedEntryJpnKanji extends ParsedEntry {
     final value = node.innerText;
 
     senses.add(value);
+  }
+
+  void _parseNote(XmlNode node) {
+    final parentAtt =
+        node.descendants.firstOrNull?.parentElement?.attributes.firstOrNull;
+
+    assert(parentAtt != null);
+
+    for (var node in node.children) {
+      final att =
+          node.descendants.firstOrNull?.parentElement?.attributes.firstOrNull;
+
+      assert(att != null);
+
+      notes[parentAtt!.value] ??= {};
+      notes[parentAtt.value]![att!.value] ??= [];
+      notes[parentAtt.value]![att.value]!.add(node.value ?? node.innerText);
+    }
   }
 }

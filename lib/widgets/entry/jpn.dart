@@ -7,8 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/helpers/furigana.dart';
-import 'package:memorize/lexicon.dart';
-import 'package:memorize/views/lexicon.dart';
+import 'package:memorize/memo_list.dart';
+import 'package:memorize/views/explorer.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/options.dart';
@@ -228,8 +228,8 @@ class EntryJpn extends StatelessWidget {
                             ),
                             floatingActionButton: FloatingActionButton(
                               onPressed: () {
-                                wordLexicon.add(LexiconItem(id));
-                                saveLexicon();
+                                //wordLexicon.add(LexiconItem(id));
+                                //saveLexicon();
 
                                 Navigator.of(context).maybePop();
                               },
@@ -308,29 +308,24 @@ class EntryJpn extends StatelessWidget {
 
   List<Widget> buildKanjiDecomposition(BuildContext context) {
     final ret = <Widget>[];
+    final ids = parsedEntry!.kanjis.map((e) => e.words.first.runes.first);
 
-    for (var kanji in parsedEntry!.kanjis) {
+    for (int i = 0; i < ids.length; ++i) {
       ret.add(
         MaterialButton(
           onPressed: () {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) {
-                  final id = kanji.words.first.runes.first;
-
-                  return LexiconItemView(
-                    lexicon: Lexicon(
-                      [
-                        kanjiLexicon.findId(id) ??
-                            LexiconItem(id, isKanji: true)
-                      ],
-                    ),
+                  return MemoListItemView.fromItems(
+                    items: {...ids.map((e) => MemoListItem(e, true))},
                   );
                 },
               ),
             );
           },
-          child: EntryJpnKanji(parsedEntry: kanji, target: '$target-kanji'),
+          child: EntryJpnKanji(
+              parsedEntry: parsedEntry!.kanjis[i], target: '$target-kanji'),
         ),
       );
     }
@@ -520,7 +515,8 @@ class EntryJpnKanji extends StatelessWidget {
   final DisplayMode mode;
   final EntryOptions options;
 
-  Widget buildReadings(BuildContext context, [TextTheme? textTheme]) {
+  Widget buildReadings(BuildContext context,
+      {TextTheme? textTheme, double? fontSize}) {
     final on = Map.of(parsedEntry!.reOn);
     final kun = Map.of(parsedEntry!.reKun);
     final nanori =
@@ -537,7 +533,7 @@ class EntryJpnKanji extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: textTheme?.bodySmall,
+          style: textTheme?.bodySmall?.copyWith(fontSize: fontSize),
         ),
       );
     }
@@ -677,32 +673,49 @@ class EntryJpnKanji extends StatelessWidget {
   List<Widget> buildCompounds(
       BuildContext context, Map<String, ParsedEntryJpn?> readings) {
     final ret = <Widget>[];
+    final entries = readings.values.toList()..removeWhere((e) => e == null);
+    final items = entries.map((e) => MemoListItem(e!.id));
 
-    readings.forEach((key, value) {
-      if (value != null) {
+    for (int i = 0; i < entries.length; ++i) {
+      final entry = entries.elementAt(i);
+
+      if (entry != null) {
         ret.add(
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(
+          MaterialButton(
+            onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) {
-                  return LexiconItemView(
-                    lexicon: Lexicon(
-                      [LexiconItem(0, entry: value)],
-                    ),
-                  );
+                  return MemoListItemView.fromItems(items: items.toSet());
                 },
               ),
             ),
             child: EntryJpn(
               target: 'jpn-${appSettings.language}',
-              parsedEntry: value,
+              parsedEntry: entry,
             ),
           ),
         );
       }
-    });
+    }
 
     return ret;
+  }
+
+  Widget buildMisc(BuildContext context) {
+    final misc = parsedEntry!.notes['misc'];
+    print('notes: ${parsedEntry!.notes}');
+
+    return misc == null
+        ? const SizedBox()
+        : Wrap(
+            runSpacing: 4,
+            spacing: 4,
+            children: [
+              ...misc.entries.map((e) {
+                return Container(child: Text('${e.key} ${e.value.first}'));
+              })
+            ],
+          );
   }
 
   Widget compose(
@@ -721,7 +734,7 @@ class EntryJpnKanji extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment:
@@ -729,10 +742,14 @@ class EntryJpnKanji extends StatelessWidget {
         crossAxisAlignment:
             centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
+          buildMisc(context),
+          const SizedBox(height: 10),
           if (kanji) Center(child: buildMainForm(context, fontSize: 60)),
           const SizedBox(height: 10),
-          if (reading) Center(child: buildReadings(context)),
+          if (reading) Center(child: buildReadings(context, fontSize: 16)),
+          const SizedBox(height: 20),
           if (sense) buildSenses(context, fontSize: 20, textTheme: textTheme),
+          const SizedBox(height: 20),
           if (readingCompounds && parsedEntry!.reOn.isNotEmpty)
             buildDetailsField(
               context,

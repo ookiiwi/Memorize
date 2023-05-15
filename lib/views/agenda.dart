@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:memorize/agenda.dart';
 import 'package:memorize/app_constants.dart';
-import 'package:memorize/lexicon.dart';
-import 'package:memorize/sm.dart';
+import 'package:memorize/memo_list.dart';
 import 'package:memorize/views/explorer.dart';
 
 class AgendaViewer extends StatefulWidget {
@@ -97,25 +96,8 @@ class _AgendaViewer extends State<AgendaViewer> {
                   if (kDebugMode)
                     PopupMenuItem(
                       onTap: () {
-                        bool hasWords = false;
-                        bool hasKanji = false;
-
-                        agenda.forEach(
-                          (date, items) {
-                            for (var e in items) {
-                              e.sm2 = const SM2();
-
-                              if (!hasWords) hasWords = !e.isKanji;
-                              if (!hasKanji) hasKanji = !e.isKanji;
-                            }
-                          },
-                        );
-
                         setState(() => agenda.clear());
                         saveAgenda();
-
-                        if (hasWords) saveLexicon();
-                        if (hasKanji) saveLexicon(true);
                       },
                       child: const Text('Clear (with SM2 data)'),
                     ),
@@ -130,28 +112,10 @@ class _AgendaViewer extends State<AgendaViewer> {
               .addPostFrameCallback((_) => date.value = _computeDate(value));
         },
         itemBuilder: (context, page) {
-          final today = agenda[_computeDate(page)];
-          final groups = <int, Set<LexiconItem>>{};
+          final today = agenda[_computeDate(page)].entries;
 
-          if (today == null || today.isEmpty) {
+          if (today.isEmpty) {
             return const Center(child: Text('>@_@<'));
-          }
-
-          final tags = lexiconMeta.tags;
-          final tagColors = lexiconMeta.tagsColors;
-
-          for (var e in today) {
-            groups[-1] ??= {};
-            groups[-1]!.add(e);
-
-            if (e.tags.isEmpty) {
-              continue;
-            }
-
-            for (var i in e.tags) {
-              groups[i] ??= {};
-              groups[i]!.add(e);
-            }
           }
 
           return ListView.builder(
@@ -162,23 +126,18 @@ class _AgendaViewer extends State<AgendaViewer> {
               left: 10,
               right: 10,
             ),
-            itemCount: groups.length,
+            itemCount: today.length,
             itemBuilder: (context, i) {
-              final tagIdx = groups.keys.elementAt(i);
-              final tag = tagIdx != -1 ? tags[tagIdx] : 'Custom';
-              final tagColor =
-                  tagIdx != -1 ? Color(tagColors[tagIdx]) : Colors.amber;
-              final items = groups.values.elementAt(i);
+              final elt = today.elementAt(i);
+              final list = MemoList.open(elt.key);
 
               return ExplorerItem(
-                tag: tag,
-                tagColor: tagColor,
-                itemCount: items.length,
+                list: list,
                 onTap: () {
-                  context.push(
-                    '/quiz_launcher',
-                    extra: {'title': tag, 'items': items.toList()},
-                  );
+                  context.push('/quiz_launcher', extra: {
+                    'listpath': elt.key,
+                    'items': elt.value.toList(),
+                  });
                 },
               );
             },
@@ -422,7 +381,7 @@ class _DatePicker extends State<DatePicker> {
                           width: 5,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: agenda[day.dayOnly]?.isNotEmpty == true
+                            color: agenda[day.dayOnly].isNotEmpty
                                 ? Colors.red
                                 : null,
                           ),

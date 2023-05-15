@@ -7,11 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/lexicon.dart';
 import 'package:memorize/views/account.dart';
 import 'package:memorize/views/agenda.dart';
 import 'package:memorize/views/explorer.dart';
-import 'package:memorize/views/lexicon.dart';
 import 'package:memorize/views/memo_hub.dart';
 import 'package:memorize/views/quiz.dart';
 import 'package:memorize/views/splash_screen.dart';
@@ -21,7 +19,7 @@ import 'package:memorize/views/settings.dart';
 import 'package:memorize/widgets/bar.dart';
 
 final routerNavKey = GlobalKey<NavigatorState>();
-const _routes = ['', 'explorer', 'lexicon', 'memo_hub', 'settings'];
+const _routes = ['', 'explorer', 'memo_hub', 'agenda', 'settings'];
 final lastRootLocationFilename = '$temporaryDirectory/lastRootLocation';
 final ValueNotifier<Widget?> bottomNavBar = ValueNotifier(null);
 
@@ -31,6 +29,7 @@ Future<bool> _onWillPop(bool stopDefaultButtonEvent, RouteInfo info) async {
 }
 
 final router = GoRouter(initialLocation: '/splash', routes: [
+  GoRoute(path: '/home', redirect: (context, state) => '/'),
   GoRoute(
     path: '/splash',
     pageBuilder: (context, state) =>
@@ -72,12 +71,12 @@ final router = GoRouter(initialLocation: '/splash', routes: [
               label: 'Explorer',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.translate_rounded),
-              label: 'Lexicon',
-            ),
-            BottomNavigationBarItem(
               icon: Icon(Icons.search_rounded),
               label: 'MemoHub',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.notifications_rounded),
+              label: 'Agenda',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.settings_rounded),
@@ -118,39 +117,33 @@ final router = GoRouter(initialLocation: '/splash', routes: [
                   state.extra as Map<String, dynamic>?;
 
               return NoTransitionPage(
-                child: LexiconListView(
-                  title: extra?['title'],
-                  items: (extra?['items'] as List<LexiconItem>?) ?? [],
+                child: MemoListView(
+                  list: extra?['list'],
+                  currentDirectory: extra?['currentDirectory'],
                 ),
               );
             },
           ),
-          GoRoute(
-            path: 'agenda',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: AgendaViewer()),
-          ),
         ],
       ),
       GoRoute(
-          path: '/lexicon',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: LexiconView()),
-          routes: [
-            GoRoute(
-              path: 'itemView',
-              pageBuilder: (context, state) {
-                final args = state.extra as Map<String, dynamic>;
-                return NoTransitionPage(
-                  child: LexiconItemView(
-                    key: args['key'],
-                    initialIndex: args['initialIndex'] ?? 0,
-                    lexicon: args['lexicon'],
-                  ),
-                );
-              },
+        path: '/agenda',
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: AgendaViewer()),
+      ),
+      GoRoute(
+        path: '/memoListItemView',
+        pageBuilder: (context, state) {
+          final args = state.extra as Map<String, dynamic>;
+          return NoTransitionPage(
+            child: MemoListItemView(
+              key: args['key'],
+              initialIndex: args['initialIndex'] ?? 0,
+              list: args['list'],
             ),
-          ]),
+          );
+        },
+      ),
       GoRoute(
         path: '/quiz_launcher',
         pageBuilder: (context, state) {
@@ -159,7 +152,7 @@ final router = GoRouter(initialLocation: '/splash', routes: [
 
           return NoTransitionPage(
             child: QuizLauncher(
-              title: extra['title'],
+              listpath: extra['listpath'],
               items: extra['items'],
             ),
           );
@@ -171,14 +164,14 @@ final router = GoRouter(initialLocation: '/splash', routes: [
                 child: MemoHub(),
               ),
           routes: [
-            GoRoute(
-              path: 'list_preview',
-              pageBuilder: (context, state) => NoTransitionPage(
-                child: ListPreview(
-                  list: state.extra as Lexicon,
-                ),
-              ),
-            )
+            //GoRoute(
+            //  path: 'list_preview',
+            //  pageBuilder: (context, state) => NoTransitionPage(
+            //    child: ListPreview(
+            //      list: state.extra as Lexicon,
+            //    ),
+            //  ),
+            //)
           ]),
       GoRoute(
           path: '/settings',

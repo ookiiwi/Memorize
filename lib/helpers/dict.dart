@@ -531,6 +531,7 @@ class _DicoManagerIsolate {
     final doc = XmlDocument.parse(entry);
     return target.endsWith('-kanji')
         ? ParsedEntryJpnKanji.parse(
+            id,
             doc,
             _readers[target.replaceFirst('-kanji', '')]!.find,
             noRecurse
@@ -538,6 +539,7 @@ class _DicoManagerIsolate {
                 : (int id) => get(target.replaceFirst('-kanji', ''), id, true),
           )
         : ParsedEntryJpn.parse(
+            id,
             doc,
             noRecurse ? null : (int id) => get('$target-kanji', id, true),
           );
@@ -556,6 +558,7 @@ class _DicoManagerIsolate {
     } catch (e) {
       print('get (iso) error: $e');
       p.send(e);
+      rethrow;
     }
   }
 
