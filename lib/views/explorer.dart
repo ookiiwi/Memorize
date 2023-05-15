@@ -21,6 +21,7 @@ import 'package:path/path.dart' as path;
 import 'package:memorize/tts.dart' as tts;
 import 'package:provider/provider.dart';
 import 'package:widget_mask/widget_mask.dart';
+import 'package:memorize/list.dart' as memo_list;
 
 class Explorer extends StatefulWidget {
   const Explorer({super.key});
@@ -55,30 +56,25 @@ class _Explorer extends State<Explorer> {
   Widget buildPage(BuildContext context, String label) {
     final isPOS = label == 'POS';
     final isJlpt = label == 'JLPT';
+    String dirpath = path.join(root, 'lists');
 
-    final content = Directory(root)
-        .listSync()
-        .fold<List<MapEntry<String, bool>>>([], (p, e) {
-      final stats = e.statSync();
-      final isDir = stats.type == FileSystemEntityType.directory;
-      final name = path.basename(e.path);
-      final fileIsPos = isPOS && name.startsWith('p');
-      final fileIsJlpt = isJlpt && name.startsWith('j');
-      final isSearched = name.contains(_searchedList);
+    if (isPOS) {
+      dirpath = path.join(root, 'pos');
+    } else if (isJlpt) {
+      dirpath = path.join(root, 'jlpt');
+    }
 
-      if (isSearched &&
-          (isDir ||
-              fileIsPos ||
-              fileIsJlpt ||
-              (!isJlpt && !isPOS && name.startsWith('_')))) {
-        return [...p, MapEntry(e.path, isDir)];
-      }
+    final dir = Directory(dirpath);
+    final content = !dir.existsSync()
+        ? []
+        : dir.listSync().fold<List<MapEntry<String, bool>>>([], (p, e) {
+            final stats = e.statSync();
+            final isDir = stats.type == FileSystemEntityType.directory;
 
-      return p;
-    })
+            return [...p, MapEntry(e.path, isDir)];
+          })
       ..sort((a, b) => MemoList.getNameFromPath(a.key)
-          .substring(1)
-          .compareTo(MemoList.getNameFromPath(b.key).substring(1)));
+          .compareTo(MemoList.getNameFromPath(b.key)));
 
     return Scrollbar(
       radius: const Radius.circular(360),
@@ -176,10 +172,45 @@ class _Explorer extends State<Explorer> {
               ),
               PopupMenuItem(
                 onTap: () => context.push('/explorer/listview', extra: {
-                  'currentDirectory': root
+                  'currentDirectory': path.join(root, 'lists')
                 }).then((value) => setState(() {})),
                 child: const Text('New list'),
               ),
+              if (kDebugMode)
+                PopupMenuItem(
+                  onTap: () {
+                    final feRoot = '$applicationDocumentDirectory/fe';
+
+                    Directory(feRoot).listSync().forEach((e) {
+                      if (!path.basename(e.path).startsWith('.') &&
+                          e.statSync().type == FileSystemEntityType.file) {
+                        final oldlist = memo_list.MemoList.open(e.path);
+
+                        MemoList(
+                          path.join(_Explorer.root, 'lists', oldlist.name),
+                          items: oldlist.entries
+                              .map((e) => MemoListItem(
+                                  e.id, e.target.endsWith('-kanji')))
+                              .toSet(),
+                        ).save();
+                      }
+                    });
+
+                    setState(() {});
+                  },
+                  child: const Text('Import old lists'),
+                ),
+              if (kDebugMode)
+                PopupMenuItem(
+                  onTap: () {
+                    final dir = Directory(_Explorer.root);
+
+                    if (dir.existsSync()) {
+                      setState(() => dir.deleteSync(recursive: true));
+                    }
+                  },
+                  child: const Text('Clear all lists'),
+                ),
             ],
           )
         ],
@@ -302,7 +333,7 @@ class _MemoListView extends State<MemoListView> {
                     final dir = list == null
                         ? widget.currentDirectory!
                         : path.dirname(list!.path);
-                    final newPath = path.join(dir, '_${controller!.text}');
+                    final newPath = path.join(dir, controller!.text.trim());
 
                     if (newPath != list?.path) {
                       if (File(newPath).existsSync()) {
@@ -336,8 +367,8 @@ class _MemoListView extends State<MemoListView> {
 
     assert(entry != null);
 
-    void addItem(String prefix, String listname) {
-      final listpath = path.join(_Explorer.root, '$prefix$listname');
+    void addItem(String category, String listname) {
+      final listpath = path.join(_Explorer.root, category, listname);
       final list = File(listpath).existsSync()
           ? MemoList.open(listpath)
           : MemoList(listpath);
@@ -348,10 +379,10 @@ class _MemoListView extends State<MemoListView> {
 
     // check jlpt
     {
-      final jlpt = entry!.notes['misc']!['jlpt'];
+      final jlpt = entry!.notes['misc']?['jlpt'];
 
       if (jlpt?.isNotEmpty == true) {
-        addItem('j', 'N${jlpt!.first}');
+        addItem('jlpt', 'N${jlpt!.first}');
       }
     }
 
@@ -366,9 +397,9 @@ class _MemoListView extends State<MemoListView> {
               '${cleanPos[0].toUpperCase()}${cleanPos.substring(1)}';
           final verbGroup = _verbRe.firstMatch(capitalizedPos)?[1];
 
-          addItem('p', capitalizedPos);
-          if (prefix != null) addItem('p', prefix);
-          if (verbGroup != null) addItem('p', verbGroup);
+          addItem('pos', capitalizedPos);
+          if (prefix != null) addItem('pos', prefix);
+          if (verbGroup != null) addItem('pos', verbGroup);
         }
       }
     }
@@ -381,7 +412,7 @@ class _MemoListView extends State<MemoListView> {
         scrolledUnderElevation: 0,
         title: TextButton(
           onPressed: () {},
-          child: Text(list?.name.substring(1) ?? 'Untitled'),
+          child: Text(list?.name ?? 'Untitled'),
         ),
         actions: [
           IconButton(
@@ -500,7 +531,7 @@ class ExplorerItem extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         TagWidget(
-                          tag: list.name.substring(1),
+                          tag: list.name,
                           textStyle: TextStyle(
                             color: colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.bold,
