@@ -475,7 +475,7 @@ class _Quiz extends State<Quiz> {
           heroTag: "quality$i",
           onPressed: () {
             if (widget.onAnswer != null) {
-              widget.onAnswer!(i, page);
+              widget.onAnswer!(i, indexes[page]);
             }
 
             if (page == itemCount - 1) {
