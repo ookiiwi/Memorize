@@ -2,17 +2,22 @@
 ///   https://www.supermemo.com
 ///   https://www.supermemo.eu
 
-import 'package:equatable/equatable.dart';
+import 'package:isar/isar.dart';
 
-class SM2 extends Equatable {
-  const SM2({this.repetitions = 0, this.interval = 0, this.easeFactor = 2.5});
+part 'sm.g.dart';
+
+@embedded
+class SM2 {
+  const SM2(
+      {this.repetitions = 0,
+      this.interval = 0,
+      this.easeFactor = 2.5,
+      this.quality = 0});
 
   final int repetitions;
   final int interval;
   final double easeFactor;
-
-  @override
-  List<Object?> get props => [repetitions, interval, easeFactor];
+  final int quality;
 
   int _computeInterval(int repetitions) {
     switch (repetitions) {
@@ -36,9 +41,15 @@ class SM2 extends Equatable {
         repetitions: repetitions + 1,
         interval: _computeInterval(repetitions),
         easeFactor: ef.clamp(1.3, double.infinity),
+        quality: quality,
       );
     } else {
-      sm = SM2(repetitions: 0, interval: 1, easeFactor: easeFactor);
+      sm = SM2(
+        repetitions: 0,
+        interval: 1,
+        easeFactor: easeFactor,
+        quality: quality,
+      );
     }
 
     assert(sm.interval != 0);
