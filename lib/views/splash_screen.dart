@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/main.dart';
 import 'package:memorize/widgets/entry.dart';
 
 Future<void> loadData() async {
+  await initDirectories();
+  await openDB();
   await initConstants();
   await auth.load();
   await DicoManager.open();
