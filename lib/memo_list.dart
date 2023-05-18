@@ -6,12 +6,24 @@ import 'package:path/path.dart';
 
 class MemoList {
   MemoList(this.path, {Set<MemoListItem>? items}) : items = items ?? {};
-  factory MemoList.open(String path) {
+  static Future<MemoList> open(String path) async {
+    final file = File(path);
+
+    assert(await file.exists());
+
+    return _open(path, await file.readAsBytes());
+  }
+
+  static MemoList openSync(String path) {
     final file = File(path);
 
     assert(file.existsSync());
 
-    final reader = Payload.read(file.readAsBytesSync());
+    return _open(path, file.readAsBytesSync());
+  }
+
+  static MemoList _open(String path, Iterable<int> bytes) {
+    final reader = Payload.read(bytes);
     final itemCount = reader.get(uint16);
 
     MemoListItem readItem() {
@@ -68,4 +80,14 @@ class MemoListItem extends Equatable {
 
   @override
   List<Object?> get props => [id, isKanji];
+}
+
+class MemoListInMemory extends MemoList {
+  MemoListInMemory({super.items}) : super('');
+
+  @override
+  void move(String newPath) {}
+
+  @override
+  void save() {}
 }
