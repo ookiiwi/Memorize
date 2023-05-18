@@ -53,6 +53,7 @@ class EntryJpn extends StatelessWidget {
   final EntryOptions options;
 
   Widget buildWord(
+    BuildContext context,
     String? word,
     String reading, {
     bool rubyLayout = true,
@@ -60,7 +61,8 @@ class EntryJpn extends StatelessWidget {
   }) {
     final showFurigana = (rubyLayout && word != null);
     final furigana = showFurigana ? splitFurigana(word, reading) : [];
-    final textStyle = TextStyle(fontSize: fontSize);
+    final textStyle =
+        Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: fontSize);
 
     if (showFurigana) {
       return RubyText(
@@ -189,13 +191,13 @@ class EntryJpn extends StatelessWidget {
             ..onTap = () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) {
-                  int id = 0;
+                  //int id = 0;
                   final xref = getCrossRef(
                     cleanRef,
                     int.tryParse(xrefInfo?.trim() ?? '') == null
                         ? xrefInfo
                         : null,
-                    onIdFound: (value) => id = value,
+                    //onIdFound: (value) => id = value,
                   );
 
                   return FutureBuilder(
@@ -259,7 +261,7 @@ class EntryJpn extends StatelessWidget {
 
     return FittedBox(
       fit: BoxFit.fitWidth,
-      child: buildWord(word, reading!, fontSize: fontSize),
+      child: buildWord(context, word, reading!, fontSize: fontSize),
     );
   }
 
@@ -273,8 +275,13 @@ class EntryJpn extends StatelessWidget {
         final reading = parsedEntry!.readings.elementAtOrNull(i) ??
             parsedEntry!.readings.first;
 
-        ret.add(
-            buildWord(word, reading, rubyLayout: false, fontSize: fontSize));
+        ret.add(buildWord(
+          context,
+          word,
+          reading,
+          rubyLayout: false,
+          fontSize: fontSize,
+        ));
       }
     }
 
@@ -282,6 +289,7 @@ class EntryJpn extends StatelessWidget {
       for (var e in value) {
         ret.add(
           buildWord(
+            context,
             e.isNotEmpty ? e : null,
             key,
             rubyLayout: false,
@@ -318,14 +326,17 @@ class EntryJpn extends StatelessWidget {
               MaterialPageRoute(
                 builder: (context) {
                   return MemoListItemView.fromItems(
-                    items: {...ids.map((e) => MemoListItem(e, true))},
+                    initialIndex: i,
+                    items: [...ids.map((e) => MemoListItem(e, true))],
                   );
                 },
               ),
             );
           },
           child: EntryJpnKanji(
-              parsedEntry: parsedEntry!.kanjis[i], target: '$target-kanji'),
+            parsedEntry: parsedEntry!.kanjis[i],
+            target: '$target-kanji',
+          ),
         ),
       );
     }
@@ -685,7 +696,7 @@ class EntryJpnKanji extends StatelessWidget {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) {
-                  return MemoListItemView.fromItems(items: items.toSet());
+                  return MemoListItemView.fromItems(items: items.toList());
                 },
               ),
             ),
@@ -703,7 +714,6 @@ class EntryJpnKanji extends StatelessWidget {
 
   Widget buildMisc(BuildContext context) {
     final misc = parsedEntry!.notes['misc'];
-    print('notes: ${parsedEntry!.notes}');
 
     return misc == null
         ? const SizedBox()
