@@ -2,8 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:isar/isar.dart';
 import 'package:memorize/agenda.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/memo_list.dart';
 import 'package:memorize/views/explorer.dart';
 
@@ -23,7 +25,7 @@ class _AgendaViewer extends State<AgendaViewer> {
   void initState() {
     super.initState();
 
-    agenda.adjustSchedule();
+    //agenda.adjustSchedule();
   }
 
   @override
@@ -38,8 +40,6 @@ class _AgendaViewer extends State<AgendaViewer> {
 
   @override
   Widget build(BuildContext context) {
-    print('agenda: $agenda');
-
     return Scaffold(
       appBar: AppBar(
         title: TextButton(
@@ -81,28 +81,27 @@ class _AgendaViewer extends State<AgendaViewer> {
         centerTitle: true,
         actions: [
           PopupMenuButton(
-              position: PopupMenuPosition.under,
-              offset: const Offset(0, 15),
-              itemBuilder: (context) {
-                return [
-                  if (kDebugMode)
-                    PopupMenuItem(
-                      onTap: () {
-                        setState(() => agenda.clear());
-                        saveAgenda();
-                      },
-                      child: const Text('Clear'),
-                    ),
-                  if (kDebugMode)
-                    PopupMenuItem(
-                      onTap: () {
-                        setState(() => agenda.clear());
-                        saveAgenda();
-                      },
-                      child: const Text('Clear (with SM2 data)'),
-                    ),
-                ];
-              })
+            position: PopupMenuPosition.under,
+            offset: const Offset(0, 15),
+            itemBuilder: (context) {
+              return [
+                if (kDebugMode)
+                  PopupMenuItem(
+                    onTap: () {
+                      qualityStat
+                        ..clear()
+                        ..save();
+                      jlptStat
+                        ..clear()
+                        ..save();
+                      clearDB().then((value) => setState(() {}));
+                      //saveAgenda();
+                    },
+                    child: const Text('Clear'),
+                  ),
+              ];
+            },
+          )
         ],
       ),
       body: PageView.builder(
@@ -112,32 +111,61 @@ class _AgendaViewer extends State<AgendaViewer> {
               .addPostFrameCallback((_) => date.value = _computeDate(value));
         },
         itemBuilder: (context, page) {
-          final today = agenda[_computeDate(page)].entries;
+          final today = MemoItemMeta.filter()
+              .quizDateEqualTo(_computeDate(page))
+              .findAll();
 
-          if (today.isEmpty) {
-            return const Center(child: Text('>@_@<'));
-          }
+          return FutureBuilder<List<MemoItemMeta>>(
+            future: today,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              } else if (snapshot.hasError) {
+                throw snapshot.error!;
+              }
 
-          return ListView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.only(
-              top: 10,
-              bottom: kBottomNavigationBarHeight,
-              left: 10,
-              right: 10,
-            ),
-            itemCount: today.length,
-            itemBuilder: (context, i) {
-              final elt = today.elementAt(i);
-              final list = MemoList.open(elt.key);
+              final today = snapshot.data as List<MemoItemMeta>;
+              final groups = <String, Set<MemoListItem>>{};
 
-              return ExplorerItem(
-                list: list,
-                onTap: () {
-                  context.push('/quiz_launcher', extra: {
-                    'listpath': elt.key,
-                    'items': elt.value.toList(),
-                  });
+              if (today.isEmpty) {
+                return const Center(child: Text('>@_@<'));
+              }
+
+              for (var e in today) {
+                if (e.quizListPath == null) continue;
+
+                assert(e.entryId != null && e.isKanji != null);
+
+                groups[e.quizListPath!] ??= {};
+                groups[e.quizListPath]!
+                    .add(MemoListItem(e.entryId!, e.isKanji!));
+              }
+
+              final groupsEntries = groups.entries;
+
+              return ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(
+                  top: 10,
+                  bottom: kBottomNavigationBarHeight,
+                  left: 10,
+                  right: 10,
+                ),
+                itemCount: groupsEntries.length,
+                itemBuilder: (context, i) {
+                  final elt = groupsEntries.elementAt(i);
+                  print('elt key: ${elt.key}');
+                  //final list = MemoList.open(elt.key);
+
+                  return ExplorerItem.fromPath(
+                    path: elt.key,
+                    onTap: (list) {
+                      context.push('/quiz_launcher', extra: {
+                        'listpath': elt.key,
+                        'items': elt.value.toList(),
+                      });
+                    },
+                  );
                 },
               );
             },
@@ -166,6 +194,11 @@ class _DatePicker extends State<DatePicker> {
   PageController? _daysPageController;
   final _daysPageTransitionDuration = const Duration(milliseconds: 200);
   final _daysPageTransitionCurve = Curves.easeInOut;
+  final scheduledDates = MemoItemMeta.filter()
+      .quizDateGreaterThan(DateTime.now().dayOnly)
+      .findAllSync()
+      .map((e) => e.quizDate?.dayOnly)
+      .toSet();
 
   @override
   void dispose() {
@@ -381,7 +414,7 @@ class _DatePicker extends State<DatePicker> {
                           width: 5,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: agenda[day.dayOnly].isNotEmpty
+                            color: scheduledDates.contains(day.dayOnly)
                                 ? Colors.red
                                 : null,
                           ),
@@ -421,6 +454,8 @@ class _DatePicker extends State<DatePicker> {
 
   @override
   Widget build(BuildContext context) {
+    print('scheduled: $scheduledDates');
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
