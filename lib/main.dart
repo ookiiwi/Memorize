@@ -6,6 +6,7 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/views/account.dart';
 import 'package:memorize/views/agenda.dart';
@@ -16,7 +17,6 @@ import 'package:memorize/views/splash_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'package:memorize/views/home.dart';
 import 'package:memorize/views/settings.dart';
-import 'package:memorize/widgets/bar.dart';
 
 final routerNavKey = GlobalKey<NavigatorState>();
 const _routes = ['', 'explorer', 'memo_hub', 'agenda', 'settings'];
@@ -47,43 +47,45 @@ final router = GoRouter(initialLocation: '/splash', routes: [
       return Scaffold(
         extendBody: true,
         body: SafeArea(bottom: false, child: child),
-        bottomNavigationBar: BottomNavBar2(
-          selectedItem: _routes.indexOf(route),
-          onTap: (item, i) {
-            final location = '/${_routes[i]}';
+        bottomNavigationBar: BottomNavigationBar(
+            elevation: 0,
+            selectedItemColor: Colors.black,
+            unselectedItemColor: Colors.black,
+            currentIndex: _routes.indexOf(route),
+            onTap: (i) {
+              final location = '/${_routes[i]}';
 
-            if (GoRouter.of(context).location == location) {
-              GoRouter.of(context).refresh();
-            }
+              if (GoRouter.of(context).location == location) {
+                GoRouter.of(context).refresh();
+              }
 
-            final file = File(lastRootLocationFilename);
-            file.writeAsStringSync(location);
+              final file = File(lastRootLocationFilename);
+              file.writeAsStringSync(location);
 
-            context.go(location);
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.more_vert_rounded),
-              label: 'Explorer',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.search_rounded),
-              label: 'MemoHub',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_rounded),
-              label: 'Agenda',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings_rounded),
-              label: 'Settings',
-            ),
-          ],
-        ),
+              context.go(location);
+            },
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.more_vert_rounded),
+                label: 'Explorer',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.search_rounded),
+                label: 'MemoHub',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.notifications_rounded),
+                label: 'Agenda',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings_rounded),
+                label: 'Settings',
+              ),
+            ]),
       );
     },
     routes: [
@@ -92,17 +94,17 @@ final router = GoRouter(initialLocation: '/splash', routes: [
         pageBuilder: (context, state) =>
             const NoTransitionPage(child: HomePage()),
         routes: [
-          GoRoute(
-            path: 'progress',
-            redirect: (context, state) => '/home/progress/details',
-            routes: [
-              GoRoute(
-                path: 'details',
-                pageBuilder: (context, state) =>
-                    const NoTransitionPage(child: ProgressDetails()),
-              )
-            ],
-          )
+          //GoRoute(
+          //  path: 'progress',
+          //  redirect: (context, state) => '/home/progress/details',
+          //  routes: [
+          //    GoRoute(
+          //      path: 'details',
+          //      pageBuilder: (context, state) =>
+          //          const NoTransitionPage(child: ProgressDetails()),
+          //    )
+          //  ],
+          //)
         ],
       ),
       GoRoute(
@@ -341,10 +343,15 @@ class _LifecycleWatcher extends State<LifecycleWatcher>
     if (state == _oldState) return;
 
     if (state == AppLifecycleState.resumed) {
-      _open = DicoManager.open()
-          .then((value) => DicoManager.tryLoadCachedTargets());
-      setState(() {});
+      setState(() {
+        _open = Future.wait([
+          openDB(),
+          DicoManager.open()
+              .then((value) => DicoManager.tryLoadCachedTargets()),
+        ]);
+      });
     } else {
+      closeDB();
       DicoManager.close();
     }
 
