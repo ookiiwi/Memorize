@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
@@ -7,9 +8,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
+import 'package:isar/isar.dart';
 import 'package:memorize/app_constants.dart';
+import 'package:memorize/data.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/memo_list.dart';
+import 'package:memorize/sm.dart';
 import 'package:memorize/util.dart';
 import 'package:memorize/views/tag.dart';
 import 'package:memorize/widgets/bar.dart';
@@ -24,6 +28,8 @@ import 'package:widget_mask/widget_mask.dart';
 import 'package:memorize/list.dart' as memo_list;
 
 class Explorer extends StatefulWidget {
+  static final root = '$applicationDocumentDirectory/explorer';
+
   const Explorer({super.key});
 
   @override
@@ -31,8 +37,6 @@ class Explorer extends StatefulWidget {
 }
 
 class _Explorer extends State<Explorer> {
-  static final root = '$applicationDocumentDirectory/explorer';
-
   final _textController = TextEditingController();
   String _searchedList = '';
 
@@ -46,7 +50,7 @@ class _Explorer extends State<Explorer> {
       }
     });
 
-    final rootDir = Directory(root);
+    final rootDir = Directory(Explorer.root);
 
     if (!rootDir.existsSync()) {
       rootDir.createSync(recursive: true);
@@ -56,25 +60,28 @@ class _Explorer extends State<Explorer> {
   Widget buildPage(BuildContext context, String label) {
     final isPOS = label == 'POS';
     final isJlpt = label == 'JLPT';
-    String dirpath = path.join(root, 'lists');
+    String dirpath = path.join(Explorer.root, 'lists');
 
     if (isPOS) {
-      dirpath = path.join(root, 'pos');
+      dirpath = path.join(Explorer.root, 'pos');
     } else if (isJlpt) {
-      dirpath = path.join(root, 'jlpt');
+      dirpath = path.join(Explorer.root, 'jlpt');
     }
 
     final dir = Directory(dirpath);
     final content = !dir.existsSync()
-        ? []
-        : dir.listSync().fold<List<MapEntry<String, bool>>>([], (p, e) {
-            final stats = e.statSync();
-            final isDir = stats.type == FileSystemEntityType.directory;
+        ? <FileSystemEntity>[]
+        : (_searchedList.isEmpty
+            ? dir.listSync()
+            : dir.listSync().fold([], (p, e) {
+                if (path.basename(e.path).contains(_searchedList)) {
+                  return [...p, e];
+                }
 
-            return [...p, MapEntry(e.path, isDir)];
-          })
-      ..sort((a, b) => MemoList.getNameFromPath(a.key)
-          .compareTo(MemoList.getNameFromPath(b.key)));
+                return p;
+              }))
+      ..sort((a, b) => MemoList.getNameFromPath(a.path)
+          .compareTo(MemoList.getNameFromPath(b.path)));
 
     return Scrollbar(
       radius: const Radius.circular(360),
@@ -85,28 +92,30 @@ class _Explorer extends State<Explorer> {
           left: 10,
           right: 10,
         ),
+        shrinkWrap: true,
         itemCount: content.length,
         itemBuilder: (context, index) {
-          final list = MemoList.open(content[index].key);
-
-          // preload
-          for (var e in list.items) {
-            DicoManager.get(getTarget(e), e.id);
-          }
-
-          return ExplorerItem(
-            list: list,
-            onTap: () =>
-                context.push('/explorer/listview', extra: {'list': list}),
-            onLongPress: () {
+          return ExplorerItem.fromPath(
+            path: content[index].path,
+            onTap: (list) => context.push(
+              '/explorer/listview',
+              extra: {'list': list},
+            ),
+            onLongPress: (list) {
               showDialog(
                   context: context,
                   builder: (context) => buildLongPressDialog(context, list));
             },
-            onPlayAction: () => context.push('/quiz_launcher', extra: {
+            onPlayAction: (list) => context.push('/quiz_launcher', extra: {
               'listpath': list.path,
               'items': list.items.toList(),
-            }),
+            }).then((value) => setState(() {})),
+            onListLoaded: (list) {
+              for (int i = 0; i < 10.clamp(0, list.length); ++i) {
+                final item = list.items.elementAt(i);
+                DicoManager.get(getTarget(item), item.id);
+              }
+            },
           );
         },
       ),
@@ -172,25 +181,25 @@ class _Explorer extends State<Explorer> {
               ),
               PopupMenuItem(
                 onTap: () => context.push('/explorer/listview', extra: {
-                  'currentDirectory': path.join(root, 'lists')
+                  'currentDirectory': path.join(Explorer.root, 'lists')
                 }).then((value) => setState(() {})),
                 child: const Text('New list'),
               ),
               if (kDebugMode)
                 PopupMenuItem(
-                  onTap: () {
+                  onTap: () async {
                     final feRoot = '$applicationDocumentDirectory/fe';
 
-                    Directory(feRoot).listSync().forEach((e) {
+                    Directory(feRoot).listSync().forEach((e) async {
                       if (!path.basename(e.path).startsWith('.') &&
                           e.statSync().type == FileSystemEntityType.file) {
                         final oldlist = memo_list.MemoList.open(e.path);
 
                         MemoList(
-                          path.join(_Explorer.root, 'lists', oldlist.name),
+                          path.join(Explorer.root, 'lists', oldlist.name),
                           items: oldlist.entries
-                              .map((e) => MemoListItem(
-                                  e.id, e.target.endsWith('-kanji')))
+                              .map((e) =>
+                                  MemoListItem(e.id, e.subTarget != null))
                               .toSet(),
                         ).save();
                       }
@@ -203,7 +212,7 @@ class _Explorer extends State<Explorer> {
               if (kDebugMode)
                 PopupMenuItem(
                   onTap: () {
-                    final dir = Directory(_Explorer.root);
+                    final dir = Directory(Explorer.root);
 
                     if (dir.existsSync()) {
                       setState(() => dir.deleteSync(recursive: true));
@@ -215,11 +224,14 @@ class _Explorer extends State<Explorer> {
           )
         ],
       ),
-      body: LabeledPageView(
-        labels: const ['TAGS', 'POS', 'JLPT'],
-        itemBuilder: (context, index, label) {
-          return buildPage(context, label);
-        },
+      body: SafeArea(
+        bottom: false,
+        child: LabeledPageView(
+          labels: const ['TAGS', 'POS', 'JLPT'],
+          itemBuilder: (context, index, label) {
+            return buildPage(context, label);
+          },
+        ),
       ),
     );
   }
@@ -253,6 +265,7 @@ class _MemoListView extends State<MemoListView> {
     displayColor: textColor,
   );
   late final iconTheme = theme.iconTheme.copyWith(color: textColor);
+  late final _renameController = TextEditingController();
 
   late MemoList? list = widget.list;
 
@@ -272,9 +285,17 @@ class _MemoListView extends State<MemoListView> {
     }
   }
 
+  @override
+  void dispose() {
+    _renameController.dispose();
+
+    super.dispose();
+  }
+
   Widget buildRenameDialog(BuildContext context) {
-    TextEditingController? controller = TextEditingController(text: list?.name);
     final error = ValueNotifier<String?>(null);
+
+    _renameController.text = list?.name ?? _renameController.text;
 
     return Dialog(
       child: Container(
@@ -291,7 +312,7 @@ class _MemoListView extends State<MemoListView> {
                 valueListenable: error,
                 builder: (context, value, child) {
                   return TextField(
-                    controller: controller,
+                    controller: _renameController,
                     decoration: InputDecoration(
                       hintText: 'List name',
                       errorText: value,
@@ -310,9 +331,6 @@ class _MemoListView extends State<MemoListView> {
               children: [
                 TextButton(
                   onPressed: () {
-                    controller?.dispose();
-                    controller = null;
-
                     if (list == null) {
                       context
                         ..pop()
@@ -325,7 +343,7 @@ class _MemoListView extends State<MemoListView> {
                 ),
                 TextButton(
                   onPressed: () {
-                    if (controller!.text.trim().isEmpty) {
+                    if (_renameController.text.trim().isEmpty) {
                       error.value = 'List name cannot be blank';
                       return;
                     }
@@ -333,7 +351,8 @@ class _MemoListView extends State<MemoListView> {
                     final dir = list == null
                         ? widget.currentDirectory!
                         : path.dirname(list!.path);
-                    final newPath = path.join(dir, controller!.text.trim());
+                    final newPath =
+                        path.join(dir, _renameController.text.trim());
 
                     if (newPath != list?.path) {
                       if (File(newPath).existsSync()) {
@@ -341,15 +360,15 @@ class _MemoListView extends State<MemoListView> {
                         return;
                       }
 
-                      if (list == null) {
-                        list = MemoList(newPath)..save();
-                      } else {
-                        list!.move(newPath);
-                      }
+                      setState(() {
+                        if (list == null) {
+                          list = MemoList(newPath)..save();
+                        } else {
+                          //list!.move(newPath);
+                        }
+                      });
                     }
 
-                    controller?.dispose();
-                    controller = null;
                     Navigator.of(context).pop();
                   },
                   child: const Text('Confirm'),
@@ -368,9 +387,9 @@ class _MemoListView extends State<MemoListView> {
     assert(entry != null);
 
     void addItem(String category, String listname) {
-      final listpath = path.join(_Explorer.root, category, listname);
+      final listpath = path.join(Explorer.root, category, listname);
       final list = File(listpath).existsSync()
-          ? MemoList.open(listpath)
+          ? MemoList.openSync(listpath)
           : MemoList(listpath);
 
       list.items.add(item);
@@ -446,13 +465,18 @@ class _MemoListView extends State<MemoListView> {
           child: PageView.builder(
             itemCount: 2,
             itemBuilder: (context, index) {
-              //final pageLexicon = index == 0
-              //    ? lexicon
-              //    : Lexicon(
-              //        lexicon
-              //            .where((item) => item.sm2.repetitions == 0)
-              //            .toList(),
-              //      );
+              final meta = MemoItemMeta.filter()
+                  .anyOf(
+                      list!.items,
+                      (q, e) => q
+                          .entryIdEqualTo(e.id)
+                          .isKanjiEqualTo(e.isKanji)
+                          .sm2((q) => q.repetitionsEqualTo(0)))
+                  .findAllSync()
+                  .map((e) => MemoListItem(e.entryId!, e.isKanji!));
+
+              final pageList =
+                  index == 0 ? list : MemoListInMemory(items: meta.toSet());
 
               return ListView.builder(
                 shrinkWrap: true,
@@ -462,14 +486,14 @@ class _MemoListView extends State<MemoListView> {
                   left: 10,
                   right: 10,
                 ),
-                itemCount: list?.length ?? 0,
+                itemCount: pageList?.length ?? 0,
                 itemBuilder: (context, i) {
                   return MemoListItemWidget(
-                    item: list!.items.elementAt(i),
-                    onTap: () {
+                    item: pageList!.items.elementAt(i),
+                    onTap: (item) {
                       context.push('/memoListItemView', extra: {
                         'initialIndex': i,
-                        'list': list,
+                        'list': pageList,
                       });
                     },
                   );
@@ -483,83 +507,176 @@ class _MemoListView extends State<MemoListView> {
   }
 }
 
-class ExplorerItem extends StatelessWidget {
+class ExplorerItem extends StatefulWidget {
   const ExplorerItem({
     super.key,
     required this.list,
     this.onTap,
     this.onLongPress,
     this.onPlayAction,
-  });
+  })  : assert(list != null),
+        path = null,
+        onListLoaded = null;
 
-  final MemoList list;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final VoidCallback? onPlayAction;
+  const ExplorerItem.fromPath({
+    super.key,
+    required this.path,
+    this.onTap,
+    this.onLongPress,
+    this.onPlayAction,
+    this.onListLoaded,
+  })  : assert(path != null),
+        list = null;
+
+  final String? path;
+  final MemoList? list;
+  final void Function(MemoList list)? onTap;
+  final void Function(MemoList list)? onLongPress;
+  final void Function(MemoList list)? onPlayAction;
+  final void Function(MemoList list)? onListLoaded;
+
+  @override
+  State<StatefulWidget> createState() => _ExplorerItem();
+}
+
+class _ExplorerItem extends State<ExplorerItem> {
+  late MemoList? list = widget.list;
+  late final String? path = widget.path;
+  late final void Function(MemoList list)? onTap = widget.onTap;
+  late final void Function(MemoList list)? onLongPress = widget.onLongPress;
+  late final void Function(MemoList list)? onPlayAction = widget.onPlayAction;
+  late final void Function(MemoList list)? onListLoaded = widget.onListLoaded;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(20);
     final colorScheme = Theme.of(context).colorScheme;
+    Color? borderColor;
+
     int wordCount = 0;
     int kanjiCount = 0;
+    int toReviewCount = 0;
 
-    for (var e in list.items) {
-      e.isKanji ? ++kanjiCount : ++wordCount;
+    if (list == null) {
+      list = MemoList.openSync(path!);
+      if (onListLoaded != null) {
+        onListLoaded!(list!);
+      }
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        color: colorScheme.primaryContainer,
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+    if (list != null) {
+      for (var e in list!.items) {
+        e.isKanji ? ++kanjiCount : ++wordCount;
+
+        final meta = MemoItemMeta.filterFromListItemSync(e);
+
+        if (meta == null) {
+          borderColor = Colors.amber;
+          continue;
+        }
+
+        if (meta.sm2.repetitions == 0) {
+          ++toReviewCount;
+        }
+      }
+    } else {
+      //MemoList.open(path!).then((value) {
+      //  if (onListLoaded != null) {
+      //    onListLoaded!(value);
+      //  }
+//
+      //  setState(() => list = value);
+      //});
+    }
+
+    return Tooltip(
+      message: 'Open list: ${list?.name ?? MemoList.getNameFromPath(path!)}',
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          color: colorScheme.primaryContainer,
+        ),
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: Material(
+            color: Colors.transparent,
+            child: AbsorbPointer(
+              absorbing: list == null,
+              child: InkWell(
+                onTap: onTap != null ? () => onTap!(list!) : null,
+                onLongPress:
+                    onLongPress != null ? () => onLongPress!(list!) : null,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    decoration: borderColor != null
+                        ? BoxDecoration(
+                            border: Border(
+                              left: BorderSide(color: borderColor),
+                            ),
+                          )
+                        : null,
+                    padding: borderColor != null
+                        ? const EdgeInsets.only(left: 12)
+                        : null,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        TagWidget(
-                          tag: list.name,
-                          textStyle: TextStyle(
-                            color: colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TagWidget(
+                                tag: list?.name ??
+                                    MemoList.getNameFromPath(path!),
+                                textStyle: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              if (list == null) const LinearProgressIndicator(),
+                              if (list != null)
+                                Text(
+                                  (wordCount == 0 && kanjiCount == 0)
+                                      ? 'empty list'
+                                      : '${wordCount != 0 ? '$wordCount words' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
+                                          .trim(),
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              if (toReviewCount != 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8.0),
+                                  child: Text(
+                                    '$toReviewCount items to review',
+                                    style: TextStyle(
+                                      color: colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          (wordCount == 0 && kanjiCount == 0)
-                              ? 'empty list'
-                              : '${wordCount != 0 ? '$wordCount word' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
-                                  .trim(),
-                          style: TextStyle(
-                            color: colorScheme.onPrimaryContainer,
-                          ),
-                        ),
+                        const SizedBox(width: 8.0),
+                        if (onPlayAction != null)
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              backgroundColor: colorScheme.background,
+                              padding: const EdgeInsets.all(16.0),
+                              shape: const CircleBorder(),
+                            ),
+                            onPressed: onPlayAction != null
+                                ? () => onPlayAction!(list!)
+                                : null,
+                            child: const Text('Play'),
+                          )
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8.0),
-                  if (onPlayAction != null)
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        backgroundColor: colorScheme.background,
-                      ),
-                      onPressed: onPlayAction,
-                      child: const Text('Play'),
-                    )
-                ],
+                ),
               ),
             ),
           ),
@@ -578,73 +695,89 @@ class MemoListItemWidget extends StatelessWidget {
     this.onWidgetLoaded,
   });
 
-  final MemoListItem item;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final VoidCallback? onWidgetLoaded;
+  final FutureOr<MemoListItem> item;
+  final void Function(MemoListItem item)? onTap;
+  final void Function(MemoListItem item)? onLongPress;
+  final void Function(MemoListItem item)? onWidgetLoaded;
 
   @override
   Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(20);
-    final target = getTarget(item);
-    final textColor = Theme.of(context).colorScheme.onPrimaryContainer;
-    final textTheme = Theme.of(context)
-        .textTheme
-        .apply(bodyColor: textColor, displayColor: textColor);
+    return FutureBuilder<MemoListItem>(
+        initialData: item is! Future ? item as MemoListItem : null,
+        future: item is Future ? item as Future<MemoListItem> : null,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(
+              child: Text('Error while loading item: ${snapshot.error}'),
+            );
+          }
 
-    return Theme(
-      data: Theme.of(context).copyWith(textTheme: textTheme),
-      child: DefaultTextStyle.merge(
-        style: TextStyle(color: textColor),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            color: Theme.of(context).colorScheme.primaryContainer,
-          ),
-          child: ClipRRect(
-            borderRadius: borderRadius,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                onLongPress: onLongPress,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: DicoGetBuilder(
-                    getResult: DicoManager.get(target, item.id),
-                    builder: (context, entry) {
-                      if (onWidgetLoaded != null) {
-                        onWidgetLoaded!();
-                      }
+          final item = snapshot.data as MemoListItem;
+          final borderRadius = BorderRadius.circular(20);
+          final target = getTarget(item);
+          final textColor = Theme.of(context).colorScheme.onPrimaryContainer;
+          final textTheme = Theme.of(context)
+              .textTheme
+              .apply(bodyColor: textColor, displayColor: textColor);
 
-                      return getEntryConstructor(target)!(
-                        target: target,
-                        parsedEntry: entry,
-                      );
-                    },
+          return Theme(
+            data: Theme.of(context).copyWith(textTheme: textTheme),
+            child: DefaultTextStyle.merge(
+              style: TextStyle(color: textColor),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  borderRadius: borderRadius,
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                ),
+                child: ClipRRect(
+                  borderRadius: borderRadius,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onTap != null ? () => onTap!(item) : null,
+                      onLongPress:
+                          onLongPress != null ? () => onLongPress!(item) : null,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: DicoGetBuilder(
+                          getResult: DicoManager.get(target, item.id),
+                          builder: (context, entry) {
+                            if (onWidgetLoaded != null) {
+                              onWidgetLoaded!(item);
+                            }
+
+                            return getEntryConstructor(target)!(
+                              target: target,
+                              parsedEntry: entry,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
+          );
+        });
   }
 }
 
+/// Display detailed view of an item
 class MemoListItemView extends StatefulWidget {
   const MemoListItemView({super.key, this.initialIndex = 0, required this.list})
       : assert(list != null),
-        items = const {};
+        items = const [];
   const MemoListItemView.fromItems(
-      {super.key, this.initialIndex = 0, this.items = const {}})
+      {super.key, this.initialIndex = 0, this.items = const []})
       : list = null;
 
   final int initialIndex;
   final MemoList? list;
-  final Set<MemoListItem> items;
+  final List<MemoListItem> items;
 
   @override
   State<StatefulWidget> createState() => _MemoListItemView();
@@ -654,7 +787,7 @@ class _MemoListItemView extends State<MemoListItemView> {
   late final PageController _controller;
   int _initPage = 0;
 
-  Set<MemoListItem> get items => widget.list?.items ?? widget.items;
+  List<MemoListItem> get items => widget.list?.items.toList() ?? widget.items;
 
   @override
   void initState() {
@@ -708,20 +841,20 @@ class _MemoListItemView extends State<MemoListItemView> {
             },
           ),
           IconButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) {
-                  final item =
-                      items.elementAt(_controller.page?.toInt() ?? _initPage);
+            onPressed: () {
+              final item =
+                  items.elementAt(_controller.page?.toInt() ?? _initPage);
 
-                  return MemoListItemInfo(
-                    item: item,
-                  );
-                },
-              ),
-            ).then((value) {
-              if (mounted) setState(() {});
-            }),
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) {
+                    return MemoListItemInfo(item: item);
+                  },
+                ),
+              ).then((value) {
+                if (mounted) setState(() {});
+              });
+            },
             icon: const Icon(Icons.info_outline),
           )
         ],
@@ -785,7 +918,7 @@ class MemoListItemInfo extends StatefulWidget {
 class _EntryViewInfo extends State<MemoListItemInfo> {
   late final colorScheme = Theme.of(context).colorScheme;
   MemoListItem get item => widget.item;
-  late final sm2 = agenda.getSMData(item);
+  late final sm2 = MemoItemMeta.filterFromListItemSync(item)?.sm2;
 
   @override
   Widget build(BuildContext context) {
@@ -881,7 +1014,8 @@ class _LabeledPageView extends State<LabeledPageView> {
     _headerWidth += 32.0;
   }
 
-  Widget buildHeaderBody(BuildContext context, [Color? textColor]) {
+  Widget buildHeaderBody(BuildContext context,
+      {Color? textColor, bool interactive = true}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -890,14 +1024,16 @@ class _LabeledPageView extends State<LabeledPageView> {
             (e) => SizedBox(
               width: _headerWidth,
               child: TextButton(
-                onPressed: () {
-                  setState(() => _selectedLabel.value = e);
-                  _pageController.animateToPage(
-                    widget.labels.indexOf(e),
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.decelerate,
-                  );
-                },
+                onPressed: interactive
+                    ? () {
+                        setState(() => _selectedLabel.value = e);
+                        _pageController.animateToPage(
+                          widget.labels.indexOf(e),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.linear,
+                        );
+                      }
+                    : null,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5.0),
                   child: Text(
@@ -957,21 +1093,23 @@ class _LabeledPageView extends State<LabeledPageView> {
 
     return Stack(
       children: [
-        PageView.builder(
-          controller: _pageController,
-          itemCount: widget.labels.length,
-          itemBuilder: (context, index) => widget.itemBuilder(
-            context,
-            index,
-            widget.labels[index],
-          ),
-          onPageChanged: (value) {
-            _selectedLabel.value = widget.labels[value];
+        Positioned(
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.labels.length,
+            itemBuilder: (context, index) => widget.itemBuilder(
+              context,
+              index,
+              widget.labels[index],
+            ),
+            onPageChanged: (value) {
+              _selectedLabel.value = widget.labels[value];
 
-            if (widget.onLabelChanged != null) {
-              widget.onLabelChanged!(_selectedLabel.value!);
-            }
-          },
+              if (widget.onLabelChanged != null) {
+                widget.onLabelChanged!(_selectedLabel.value!);
+              }
+            },
+          ),
         ),
         Positioned(
           top: 10,
@@ -991,7 +1129,11 @@ class _LabeledPageView extends State<LabeledPageView> {
                             borderRadius: borderRadius,
                             color: Colors.transparent,
                           ),
-                          child: buildHeaderBody(context, Colors.white),
+                          child: buildHeaderBody(
+                            context,
+                            textColor: Colors.white,
+                            interactive: false,
+                          ),
                         ),
                       ),
                       Positioned(child: buildHeader(context)),
@@ -1010,7 +1152,7 @@ class _LabeledPageView extends State<LabeledPageView> {
 class MemoListItemSearch extends StatefulWidget {
   const MemoListItemSearch({super.key, this.onAdd});
 
-  final void Function(MemoListItem item)? onAdd;
+  final FutureOr<void> Function(MemoListItem item)? onAdd;
 
   @override
   State<StatefulWidget> createState() => _MemoListItemSearch();
@@ -1087,16 +1229,18 @@ class _MemoListItemSearch extends State<MemoListItemSearch> {
 
                 return MemoListItemWidget(
                   item: item,
-                  onTap: () => Navigator.of(context).push(
+                  onTap: (item) => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => MemoListItemSearchView(
                         item: item,
                         onAdd: () {
                           if (widget.onAdd != null) {
-                            widget.onAdd!(item);
+                            widget.onAdd!(item).onResolve((_) {
+                              Navigator.of(context).pop();
+                            });
+                          } else {
+                            Navigator.of(context).pop();
                           }
-
-                          Navigator.of(context).pop();
                         },
                       ),
                     ),
@@ -1111,19 +1255,41 @@ class _MemoListItemSearch extends State<MemoListItemSearch> {
   }
 }
 
+// ignore: must_be_immutable
 class MemoListItemSearchView extends StatelessWidget {
-  const MemoListItemSearchView({super.key, required this.item, this.onAdd});
+  MemoListItemSearchView({super.key, required this.item, this.onAdd});
 
   final MemoListItem item;
-  final VoidCallback? onAdd;
+  final FutureOr<void> Function()? onAdd;
+  FutureOr<void> _onAddRes = Future.value();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: MemoListItemView.fromItems(items: {item}),
-      floatingActionButton: FloatingActionButton(
-        onPressed: onAdd,
-        child: const Icon(Icons.add),
+      body: MemoListItemView.fromItems(items: [item]),
+      floatingActionButton: StatefulBuilder(
+        builder: (context, setState) {
+          return FloatingActionButton(
+            onPressed: onAdd != null
+                ? () {
+                    setState(() {
+                      _onAddRes = onAdd!();
+                    });
+                  }
+                : null,
+            child: FutureBuilder(
+              initialData: _onAddRes is Future ? null : _onAddRes,
+              future: _onAddRes is Future ? _onAddRes as Future : null,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                return const Icon(Icons.add);
+              },
+            ),
+          );
+        },
       ),
     );
   }
