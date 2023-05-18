@@ -195,3 +195,94 @@ class ListProgressInfo {
 
   List toJson() => [score];
 }
+
+class ItemQualityStatistics {
+  ItemQualityStatistics(this.label,
+      {Map<String, int>? stat, this.itemCount = 0})
+      : stat = stat ?? {};
+
+  final String label;
+  final Map<String, int> stat;
+  int itemCount;
+
+  void clear() {
+    stat.clear();
+    itemCount = 0;
+  }
+
+  int? operator [](int quality) {
+    return stat['$quality'];
+  }
+
+  void update(int? prevQuality, int quality) {
+    if (prevQuality == quality) return;
+
+    final prevQ = '$prevQuality';
+
+    if (prevQuality == null) ++itemCount;
+
+    if (prevQuality != null && stat.containsKey(prevQ) && stat[prevQ] != 0) {
+      stat[prevQ] = stat[prevQ]! - 1;
+    }
+
+    stat['$quality'] = (stat[quality] ?? 0) + 1;
+  }
+
+  static ItemQualityStatistics? load(String label) {
+    final str = prefs.getString(label);
+
+    if (str != null) {
+      final data = List.from(jsonDecode(str));
+      print('load: ${data[0]} ${data[1]}');
+
+      return ItemQualityStatistics(label,
+          stat: Map.from(data[0]), itemCount: data[1]);
+    }
+
+    return null;
+  }
+
+  Future<void> save() async {
+    print('save: $stat $itemCount');
+    await prefs.setString(label, jsonEncode([stat, itemCount]));
+  }
+
+  /// 0.0 - 1.0
+  double? normalized(int key) => stat.containsKey('$key') && itemCount != 0
+      ? stat['$key']! / itemCount
+      : null;
+}
+
+class JlptStatistics extends ItemQualityStatistics {
+  JlptStatistics(super.label, {super.stat, super.itemCount});
+
+  static JlptStatistics? load(String label) {
+    final stat = ItemQualityStatistics.load(label);
+
+    return stat != null
+        ? JlptStatistics(label, stat: stat.stat, itemCount: stat.itemCount)
+        : null;
+  }
+
+  @override
+  void update(int? prevQuality, int quality, [int level = 1]) {
+    if (prevQuality == quality) return;
+
+    int value = 0;
+    if (prevQuality == null) ++itemCount;
+
+    // (p? || p < 4) && q >= 4 == +1
+    // p >= 4 && q < 4 == -1
+
+    if ((prevQuality == null || prevQuality < 4) && quality >= 4) {
+      value = 1;
+    } else if (prevQuality != null && prevQuality >= 4 && quality < 4) {
+      value = -1;
+    }
+
+    print('update jlpt: $prevQuality $quality : $value : $itemCount');
+
+    stat['$level'] =
+        ((stat['$level'] ?? 0) + value).clamp(0, double.infinity).toInt();
+  }
+}
