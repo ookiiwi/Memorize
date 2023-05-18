@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -5,6 +6,7 @@ import 'package:flip_card/flip_card.dart';
 import 'package:flip_card/flip_card_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:memorize/agenda.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/memo_list.dart';
@@ -53,6 +55,7 @@ class _QuizLauncher extends State<QuizLauncher> {
   bool _random = false;
 
   late final List<int> qualities = List.filled(widget.items.length, -1);
+  late final List<int?> isJlpt = List.filled(widget.items.length, null);
   Map<String, String?> entryOptionsError = {};
 
   List<MemoListItem> get items => widget.items;
@@ -115,14 +118,15 @@ class _QuizLauncher extends State<QuizLauncher> {
               final target = getTarget(items[i]);
 
               return DicoGetBuilder(
-                  getResult: DicoManager.get(target, items[i].id),
-                  builder: (context, doc) {
-                    return getEntryConstructor(target)!(
-                      parsedEntry: doc,
-                      target: target,
-                      mode: DisplayMode.quiz,
-                    );
-                  });
+                getResult: DicoManager.get(target, items[i].id),
+                builder: (context, doc) {
+                  return getEntryConstructor(target)!(
+                    parsedEntry: doc,
+                    target: target,
+                    mode: DisplayMode.quiz,
+                  );
+                },
+              );
             },
             answerBuilder: (context, i) {
               final target = getTarget(items[i]);
@@ -131,6 +135,9 @@ class _QuizLauncher extends State<QuizLauncher> {
                 key: ValueKey(i),
                 getResult: DicoManager.get(target, items[i].id),
                 builder: (context, doc) {
+                  final level = doc.notes['misc']?['jlpt']?.firstOrNull;
+                  isJlpt[i] = level == null ? null : int.parse(level);
+
                   return getEntryConstructor(target)!(
                     parsedEntry: doc,
                     target: target,
@@ -151,18 +158,33 @@ class _QuizLauncher extends State<QuizLauncher> {
             onAnswer: (quality, i) {
               qualities[i] = quality;
             },
-            onEnd: (score) {
+            onEnd: (score) async {
               // TODO: ask to schedule or not on abort
 
               for (int i = 0; i < qualities.length; ++i) {
                 final item = widget.items[i];
+                List<Future> futures = [];
 
                 print('schedule item: $item');
 
-                agenda.schedule(MapEntry(widget.listpath, item), qualities[i]);
+                await Agenda.schedule(
+                    MapEntry(widget.listpath, item), qualities[i],
+                    onGetItem: (prev) {
+                  qualityStat.update(prev, qualities[i]);
+                  futures.add(qualityStat.save());
+
+                  if (isJlpt[i] != null) {
+                    jlptStat.update(prev, qualities[i], isJlpt[i]!);
+                    futures.add(jlptStat.save());
+                  }
+                });
+
+                if (futures.isNotEmpty) {
+                  await Future.wait(futures);
+                }
               }
 
-              saveAgenda();
+              //saveAgenda();
             },
           );
         },
@@ -183,7 +205,7 @@ class _QuizLauncher extends State<QuizLauncher> {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0,
-        title: Text(MemoList.getNameFromPath(widget.listpath).substring(1)),
+        title: Text(MemoList.getNameFromPath(widget.listpath)),
       ),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
@@ -361,7 +383,7 @@ class Quiz extends StatefulWidget {
   final void Function(int quality, int itemIndex)? onAnswer;
 
   /// Score in range 0 - 100 (e.g 60.2)
-  final void Function(double score)? onEnd;
+  final FutureOr<void> Function(double score)? onEnd;
 
   @override
   State<StatefulWidget> createState() => _Quiz();
@@ -480,12 +502,17 @@ class _Quiz extends State<Quiz> {
 
             if (page == itemCount - 1) {
               if (widget.onEnd != null) {
-                widget.onEnd!(0);
+                // TODO: wait
+                widget.onEnd!(0).onResolve((_) {
+                  context
+                    ..pop()
+                    ..pop();
+                });
+              } else {
+                context
+                  ..pop()
+                  ..pop();
               }
-
-              context
-                ..pop()
-                ..pop();
 
               return;
             }
