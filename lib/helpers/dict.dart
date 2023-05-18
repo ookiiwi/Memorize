@@ -520,7 +520,8 @@ class _DicoManagerIsolate {
 
   static FutureOr<ParsedEntry?> get(String target, int id,
       [bool noRecurse = false]) {
-    _checkOpen(target);
+    _checkOpen('jpn-eng');
+    _checkOpen('jpn-eng-kanji');
 
     final entry = _readers[target]!.get(id);
 
