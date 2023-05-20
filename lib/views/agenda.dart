@@ -111,9 +111,13 @@ class _AgendaViewer extends State<AgendaViewer> {
               .addPostFrameCallback((_) => date.value = _computeDate(value));
         },
         itemBuilder: (context, page) {
-          final today = MemoItemMeta.filter()
-              .quizDateEqualTo(_computeDate(page))
-              .findAll();
+          final todayDate = _computeDate(page);
+          final today =
+              (todayDate.difference(DateTime.now().dayOnly).inDays == 0
+                      ? MemoItemMeta.filter()
+                          .quizDateLessThan(todayDate, include: true)
+                      : MemoItemMeta.filter().quizDateEqualTo(todayDate))
+                  .findAll();
 
           return FutureBuilder<List<MemoItemMeta>>(
             future: today,
@@ -154,7 +158,6 @@ class _AgendaViewer extends State<AgendaViewer> {
                 itemCount: groupsEntries.length,
                 itemBuilder: (context, i) {
                   final elt = groupsEntries.elementAt(i);
-                  print('elt key: ${elt.key}');
                   //final list = MemoList.open(elt.key);
 
                   return ExplorerItem.fromPath(
@@ -194,11 +197,13 @@ class _DatePicker extends State<DatePicker> {
   PageController? _daysPageController;
   final _daysPageTransitionDuration = const Duration(milliseconds: 200);
   final _daysPageTransitionCurve = Curves.easeInOut;
-  final scheduledDates = MemoItemMeta.filter()
-      .quizDateGreaterThan(DateTime.now().dayOnly)
-      .findAllSync()
-      .map((e) => e.quizDate?.dayOnly)
-      .toSet();
+  final scheduledDates =
+      MemoItemMeta.filter().quizDateIsNotNull().findAllSync().map((e) {
+    final date = e.quizDate?.dayOnly;
+    final today = DateTime.now().dayOnly;
+
+    return date == null || date.difference(today).inDays >= 0 ? date : today;
+  }).toSet();
 
   @override
   void dispose() {
@@ -454,8 +459,6 @@ class _DatePicker extends State<DatePicker> {
 
   @override
   Widget build(BuildContext context) {
-    print('scheduled: $scheduledDates');
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
