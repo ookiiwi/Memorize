@@ -127,28 +127,4 @@ class Agenda {
 
     return date.dayOnly;
   }
-
-  /// Moves entries with date older than today
-  static void adjustSchedule([DateTime? date]) {
-    throw UnimplementedError();
-
-    date ??= DateTime.now();
-    //final dayOnly = date.dayOnly;
-    /*
-    final pastDates = _agenda.keys
-        .where((e) => e.secondsSinceEpoch < dayOnly.secondsSinceEpoch)
-        .toList();
-
-    if (pastDates.isEmpty) return;
-
-    for (var e in pastDates) {
-      final items = _agenda.remove(e);
-
-      if (items != null) {
-        _agenda[dayOnly] ??= {};
-        _agenda[dayOnly]!.addAll(items);
-      }
-    }
-    */
-  }
 }
