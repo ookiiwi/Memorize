@@ -15,7 +15,6 @@ Future<void> loadData() async {
   await auth.load();
   await DicoManager.open();
   await initEntry();
-  await Dict.fetchTargetList();
 
   if (auth.isLogged) {
     await auth.refresh();
@@ -42,9 +41,9 @@ class _SplashScreen extends State<SplashScreen> {
   late Future<void> _dataLoaded;
   String? errorMessage;
 
-  void errorHandler() {
+  void errorHandler(dynamic error) {
     if (Dict.listAllTargets().isEmpty) {
-      errorMessage = 'Cannot initialize the app  @_@';
+      errorMessage = 'Cannot initialize the app  @_@ : $error';
       setState(() {});
     } else {
       launchRoute();
@@ -56,18 +55,8 @@ class _SplashScreen extends State<SplashScreen> {
       return launchRoute();
     }).catchError(
       (err) {
-        errorHandler();
+        errorHandler(err);
       },
-      test: (error) => error is FetchTargetListError,
-    );
-  }
-
-  void retryLoadData() async {
-    _dataLoaded = Dict.fetchTargetList().then((value) {
-      launchRoute();
-    }).catchError(
-      (err) {},
-      test: (error) => error is FetchTargetListError,
     );
   }
 
@@ -116,11 +105,8 @@ class _SplashScreen extends State<SplashScreen> {
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           if (errorMessage != null) {
             return LoadingFailureWidget(
-                message: errorMessage!,
-                onRetry: () {
-                  retryLoadData();
-                  setState(() {});
-                });
+              message: errorMessage!,
+            );
           }
 
           return const Center(child: CircularProgressIndicator());
