@@ -37,7 +37,7 @@ class MemoItemMeta {
     required this.entryId,
     this.isKanji = false,
     this.sm2 = const SM2(),
-    DateTime? quizDate,
+    this.quizDate,
     this.quizListPath = '',
   });
 
