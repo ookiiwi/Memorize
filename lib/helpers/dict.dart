@@ -13,9 +13,6 @@ import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
 
-/// Not critical if a previously fetch list exists locally
-class FetchTargetListError implements Exception {}
-
 /// Critical error
 class DictDownloadError implements Exception {}
 
@@ -238,23 +235,6 @@ class Dict {
     }
 
     return [];
-  }
-
-  static Future<void> fetchTargetList() async {
-    try {
-      // TODO: register response to avoid double fetch
-      final response = await _dio.get('/');
-      final List<String> targets = List.from(response.data);
-
-      final file = File(_targetListFilepath);
-
-      if (!file.existsSync()) file.createSync();
-      print('fetched targets: $targets as ${_dio.options.baseUrl}');
-
-      file.writeAsStringSync(jsonEncode(targets));
-    } on DioError {
-      throw FetchTargetListError();
-    }
   }
 }
 
