@@ -58,14 +58,21 @@ class _Explorer extends State<Explorer> {
   }
 
   Widget buildPage(BuildContext context, String label) {
-    final isPOS = label == 'POS';
-    final isJlpt = label == 'JLPT';
+    //final isPOS = label == 'POS';
+    //final isJlpt = label == 'JLPT';
+    var displayMode = ExplorerDisplayMode.all;
     String dirpath = path.join(Explorer.root, 'lists');
 
-    if (isPOS) {
-      dirpath = path.join(Explorer.root, 'pos');
-    } else if (isJlpt) {
-      dirpath = path.join(Explorer.root, 'jlpt');
+    //if (isPOS) {
+    //  dirpath = path.join(Explorer.root, 'pos');
+    //} else if (isJlpt) {
+    //  dirpath = path.join(Explorer.root, 'jlpt');
+    //}
+
+    if (label == 'REVIEW') {
+      displayMode = ExplorerDisplayMode.review;
+    } else if (label == 'NEW') {
+      displayMode = ExplorerDisplayMode.newItems;
     }
 
     final dir = Directory(dirpath);
@@ -95,8 +102,16 @@ class _Explorer extends State<Explorer> {
         shrinkWrap: true,
         itemCount: content.length,
         itemBuilder: (context, index) {
-          return ExplorerItem.fromPath(
-            path: content[index].path,
+          final list = MemoList.openSync(content[index].path);
+
+          for (int i = 0; i < 10.clamp(0, list.length); ++i) {
+            final item = list.items.elementAt(i);
+            DicoManager.get(getTarget(item), item.id);
+          }
+
+          return ExplorerItem(
+            list: list,
+            displayMode: displayMode,
             onTap: (list) => context.push(
               '/explorer/listview',
               extra: {'list': list},
@@ -110,12 +125,6 @@ class _Explorer extends State<Explorer> {
               'listpath': list.path,
               'items': list.items.toList(),
             }).then((value) => setState(() {})),
-            onListLoaded: (list) {
-              for (int i = 0; i < 10.clamp(0, list.length); ++i) {
-                final item = list.items.elementAt(i);
-                DicoManager.get(getTarget(item), item.id);
-              }
-            },
           );
         },
       ),
@@ -227,7 +236,7 @@ class _Explorer extends State<Explorer> {
       body: SafeArea(
         bottom: false,
         child: LabeledPageView(
-          labels: const ['TAGS', 'POS', 'JLPT'],
+          labels: const ['ALL', 'REVIEW', 'NEW'],
           itemBuilder: (context, index, label) {
             return buildPage(context, label);
           },
@@ -465,6 +474,8 @@ class _MemoListView extends State<MemoListView> {
           child: PageView.builder(
             itemCount: 2,
             itemBuilder: (context, index) {
+              if (list == null) return const SizedBox();
+
               final meta = MemoItemMeta.filter()
                   .anyOf(
                       list!.items,
@@ -507,6 +518,8 @@ class _MemoListView extends State<MemoListView> {
   }
 }
 
+enum ExplorerDisplayMode { all, review, newItems }
+
 class ExplorerItem extends StatefulWidget {
   const ExplorerItem({
     super.key,
@@ -514,38 +527,27 @@ class ExplorerItem extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onPlayAction,
-  })  : assert(list != null),
-        path = null,
-        onListLoaded = null;
+    this.displayMode = ExplorerDisplayMode.all,
+    this.info,
+  });
 
-  const ExplorerItem.fromPath({
-    super.key,
-    required this.path,
-    this.onTap,
-    this.onLongPress,
-    this.onPlayAction,
-    this.onListLoaded,
-  })  : assert(path != null),
-        list = null;
-
-  final String? path;
-  final MemoList? list;
+  final MemoList list;
+  final ExplorerDisplayMode displayMode;
   final void Function(MemoList list)? onTap;
   final void Function(MemoList list)? onLongPress;
   final void Function(MemoList list)? onPlayAction;
-  final void Function(MemoList list)? onListLoaded;
+  final String? info;
 
   @override
   State<StatefulWidget> createState() => _ExplorerItem();
 }
 
 class _ExplorerItem extends State<ExplorerItem> {
-  late MemoList? list = widget.list;
-  late final String? path = widget.path;
+  late MemoList list = widget.list;
   late final void Function(MemoList list)? onTap = widget.onTap;
   late final void Function(MemoList list)? onLongPress = widget.onLongPress;
   late final void Function(MemoList list)? onPlayAction = widget.onPlayAction;
-  late final void Function(MemoList list)? onListLoaded = widget.onListLoaded;
+  late final ExplorerDisplayMode displayMode = widget.displayMode;
 
   @override
   Widget build(BuildContext context) {
@@ -556,41 +558,46 @@ class _ExplorerItem extends State<ExplorerItem> {
     int wordCount = 0;
     int kanjiCount = 0;
     int toReviewCount = 0;
+    bool hasNew = false;
 
-    if (list == null) {
-      list = MemoList.openSync(path!);
-      if (onListLoaded != null) {
-        onListLoaded!(list!);
+    if (list.items.isEmpty && displayMode == ExplorerDisplayMode.review) {
+      return const SizedBox();
+    }
+
+    for (var e in list.items) {
+      e.isKanji ? ++kanjiCount : ++wordCount;
+
+      // No need to read meta
+      if (displayMode == ExplorerDisplayMode.all) {
+        continue;
+      }
+
+      final meta = MemoItemMeta.filterFromListItemSync(e);
+
+      if (meta == null) {
+        //borderColor = Colors.amber;
+        if (displayMode == ExplorerDisplayMode.review) {
+          return const SizedBox();
+        }
+
+        hasNew = true;
+
+        continue;
+      }
+
+      if (meta.sm2.repetitions == 0) {
+        ++toReviewCount;
       }
     }
 
-    if (list != null) {
-      for (var e in list!.items) {
-        e.isKanji ? ++kanjiCount : ++wordCount;
-
-        final meta = MemoItemMeta.filterFromListItemSync(e);
-
-        if (meta == null) {
-          borderColor = Colors.amber;
-          continue;
-        }
-
-        if (meta.sm2.repetitions == 0) {
-          ++toReviewCount;
-        }
-      }
-    } else {
-      //MemoList.open(path!).then((value) {
-      //  if (onListLoaded != null) {
-      //    onListLoaded!(value);
-      //  }
-//
-      //  setState(() => list = value);
-      //});
+    if (toReviewCount == 0 && displayMode == ExplorerDisplayMode.review) {
+      return const SizedBox();
+    } else if (!hasNew && displayMode == ExplorerDisplayMode.newItems) {
+      return const SizedBox();
     }
 
     return Tooltip(
-      message: 'Open list: ${list?.name ?? MemoList.getNameFromPath(path!)}',
+      message: 'Open list: ${list.name}',
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
@@ -601,80 +608,84 @@ class _ExplorerItem extends State<ExplorerItem> {
           borderRadius: borderRadius,
           child: Material(
             color: Colors.transparent,
-            child: AbsorbPointer(
-              absorbing: list == null,
-              child: InkWell(
-                onTap: onTap != null ? () => onTap!(list!) : null,
-                onLongPress:
-                    onLongPress != null ? () => onLongPress!(list!) : null,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    decoration: borderColor != null
-                        ? BoxDecoration(
-                            border: Border(
-                              left: BorderSide(color: borderColor),
-                            ),
-                          )
-                        : null,
-                    padding: borderColor != null
-                        ? const EdgeInsets.only(left: 12)
-                        : null,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TagWidget(
-                                tag: list?.name ??
-                                    MemoList.getNameFromPath(path!),
-                                textStyle: TextStyle(
-                                  color: colorScheme.onPrimaryContainer,
-                                  fontWeight: FontWeight.bold,
-                                ),
+            child: InkWell(
+              onTap: onTap != null ? () => onTap!(list) : null,
+              onLongPress:
+                  onLongPress != null ? () => onLongPress!(list) : null,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Container(
+                  decoration: borderColor != null
+                      ? BoxDecoration(
+                          border: Border(
+                            left: BorderSide(color: borderColor),
+                          ),
+                        )
+                      : null,
+                  padding: borderColor != null
+                      ? const EdgeInsets.only(left: 12)
+                      : null,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TagWidget(
+                              tag: list.name,
+                              textStyle: TextStyle(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
                               ),
-                              const SizedBox(height: 10),
-                              if (list == null) const LinearProgressIndicator(),
-                              if (list != null)
-                                Text(
-                                  (wordCount == 0 && kanjiCount == 0)
-                                      ? 'empty list'
-                                      : '${wordCount != 0 ? '$wordCount words' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
-                                          .trim(),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              (wordCount == 0 && kanjiCount == 0)
+                                  ? 'empty list'
+                                  : '${wordCount != 0 ? '$wordCount words' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
+                                      .trim(),
+                              style: TextStyle(
+                                color: colorScheme.onPrimaryContainer,
+                              ),
+                            ),
+                            if (toReviewCount != 0)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  '$toReviewCount items to review',
                                   style: TextStyle(
                                     color: colorScheme.onPrimaryContainer,
                                   ),
                                 ),
-                              if (toReviewCount != 0)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8.0),
-                                  child: Text(
-                                    '$toReviewCount items to review',
-                                    style: TextStyle(
-                                      color: colorScheme.onPrimaryContainer,
-                                    ),
+                              ),
+                            if (widget.info != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(
+                                  widget.info!,
+                                  style: TextStyle(
+                                    color: colorScheme.onPrimaryContainer,
                                   ),
                                 ),
-                            ],
-                          ),
+                              ),
+                          ],
                         ),
-                        const SizedBox(width: 8.0),
-                        if (onPlayAction != null)
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              backgroundColor: colorScheme.background,
-                              padding: const EdgeInsets.all(16.0),
-                              shape: const CircleBorder(),
-                            ),
-                            onPressed: onPlayAction != null
-                                ? () => onPlayAction!(list!)
-                                : null,
-                            child: const Text('Play'),
-                          )
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 8.0),
+                      if (onPlayAction != null)
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: colorScheme.background,
+                            padding: const EdgeInsets.all(16.0),
+                            shape: const CircleBorder(),
+                          ),
+                          onPressed: onPlayAction != null
+                              ? () => onPlayAction!(list)
+                              : null,
+                          child: const Text('Play'),
+                        )
+                    ],
                   ),
                 ),
               ),
@@ -969,11 +980,13 @@ class LabeledPageView extends StatefulWidget {
   const LabeledPageView({
     super.key,
     this.labels = const [],
+    this.initialLabelIndex = 0,
     this.onLabelChanged,
     required this.itemBuilder,
   });
 
   final List<String> labels;
+  final int initialLabelIndex;
   final void Function(String label)? onLabelChanged;
   final Widget Function(BuildContext context, int index, String label)
       itemBuilder;
@@ -986,9 +999,9 @@ class _LabeledPageView extends State<LabeledPageView> {
   late final colorScheme = Theme.of(context).colorScheme;
   final borderRadius = BorderRadius.circular(26);
   late final screenSize = MediaQuery.of(context).size;
-  late final _selectedLabel = ValueNotifier(widget.labels.firstOrNull);
-  final _pageController = PageController();
-  final _offset = ValueNotifier(0.0);
+  late final _pageController =
+      PageController(initialPage: widget.initialLabelIndex);
+  late final _offset = ValueNotifier(widget.initialLabelIndex.toDouble());
   double _headerWidth = 0.0;
 
   Size _textSize(String text, [TextStyle? style]) {
@@ -1011,7 +1024,7 @@ class _LabeledPageView extends State<LabeledPageView> {
       _headerWidth = max(_headerWidth, _textSize(e).width);
     }
 
-    _headerWidth += 32.0;
+    _headerWidth += 40.0;
   }
 
   Widget buildHeaderBody(BuildContext context,
@@ -1026,7 +1039,6 @@ class _LabeledPageView extends State<LabeledPageView> {
               child: TextButton(
                 onPressed: interactive
                     ? () {
-                        setState(() => _selectedLabel.value = e);
                         _pageController.animateToPage(
                           widget.labels.indexOf(e),
                           duration: const Duration(milliseconds: 300),
@@ -1054,7 +1066,7 @@ class _LabeledPageView extends State<LabeledPageView> {
 
   Widget buildHeader(BuildContext context) {
     return AnimatedBuilder(
-        animation: Listenable.merge([_offset, _selectedLabel]),
+        animation: _offset,
         builder: (context, child) {
           assert(widget.labels.isNotEmpty);
 
@@ -1103,10 +1115,8 @@ class _LabeledPageView extends State<LabeledPageView> {
               widget.labels[index],
             ),
             onPageChanged: (value) {
-              _selectedLabel.value = widget.labels[value];
-
               if (widget.onLabelChanged != null) {
-                widget.onLabelChanged!(_selectedLabel.value!);
+                widget.onLabelChanged!(widget.labels[value]);
               }
             },
           ),
