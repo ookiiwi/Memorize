@@ -158,15 +158,16 @@ class _AgendaViewer extends State<AgendaViewer> {
                 itemCount: groupsEntries.length,
                 itemBuilder: (context, i) {
                   final elt = groupsEntries.elementAt(i);
-                  //final list = MemoList.open(elt.key);
+                  final list = MemoList.openSync(elt.key);
 
-                  return ExplorerItem.fromPath(
-                    path: elt.key,
+                  return ExplorerItem(
+                    list: list,
+                    info: '${elt.value.length} items to play',
                     onTap: (list) {
                       context.push('/quiz_launcher', extra: {
                         'listpath': elt.key,
                         'items': elt.value.toList(),
-                      });
+                      }).then((value) => setState(() {}));
                     },
                   );
                 },
