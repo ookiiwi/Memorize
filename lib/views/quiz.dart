@@ -429,7 +429,6 @@ class _Quiz extends State<Quiz> {
       }
 
       assert(indexes.toSet().length == indexes.length);
-      assert(indexes.isSorted((a, b) => a.compareTo(b)) == false);
     }
   }
 
