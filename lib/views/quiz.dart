@@ -53,6 +53,7 @@ class _QuizLauncher extends State<QuizLauncher> {
   QuizMode _mode = QuizMode.flashCard;
   int _timer = 0;
   bool _random = false;
+  bool _unscheduledOnly = true;
 
   late final List<int> qualities = List.filled(widget.items.length, -1);
   late final List<int?> isJlpt = List.filled(widget.items.length, null);
@@ -61,11 +62,26 @@ class _QuizLauncher extends State<QuizLauncher> {
   List<MemoListItem> get items => widget.items;
 
   late final _optIcons = [
-    QuizOpt(Icons.shuffle, (isSelected) => _random = isSelected, () => _random),
-    QuizOpt(Icons.flash_on, (isSelected) => _mode = QuizMode.flashCard,
-        () => _mode == QuizMode.flashCard),
-    QuizOpt(Icons.question_mark, (isSelected) => _mode = QuizMode.choice,
-        () => _mode == QuizMode.choice),
+    QuizOpt(
+      Icons.shuffle,
+      (isSelected) => _random = isSelected,
+      () => _random,
+    ),
+    QuizOpt(
+      Icons.new_label_rounded,
+      (isSelected) => _unscheduledOnly = isSelected,
+      () => _unscheduledOnly,
+    ),
+    QuizOpt(
+      Icons.flash_on,
+      (isSelected) => _mode = QuizMode.flashCard,
+      () => _mode == QuizMode.flashCard,
+    ),
+    QuizOpt(
+      Icons.question_mark,
+      (isSelected) => _mode = QuizMode.choice,
+      () => _mode == QuizMode.choice,
+    ),
   ];
 
   List<Widget> buildOpts(BuildContext context, BoxConstraints constraints) {
@@ -76,6 +92,10 @@ class _QuizLauncher extends State<QuizLauncher> {
 
     final radius = -(_playButtonRadius + 40);
     return List.generate(_optIcons.length, (i) {
+      if (_optIcons[i].isSelected()) {
+        _optSelection.add(i);
+      }
+
       return Transform(
         transform: Matrix4.identity()
           ..translate(radius * cos(i * v), radius * sin(i * v)),
@@ -106,6 +126,15 @@ class _QuizLauncher extends State<QuizLauncher> {
   }
 
   void launchQuiz(BuildContext context) {
+    final quizItems = _unscheduledOnly
+        ? items
+            .where((e) => e.meta == null || e.meta?.sm2.repetitions == 0)
+            .toList()
+        : items;
+
+    // TODO: show snackbar
+    if (quizItems.isEmpty) return;
+
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         builder: (context) {
@@ -113,12 +142,12 @@ class _QuizLauncher extends State<QuizLauncher> {
             mode: _mode,
             timer: _timer,
             random: _random,
-            itemCount: items.length,
+            itemCount: quizItems.length,
             questionBuilder: (context, i) {
-              final target = getTarget(items[i]);
+              final target = getTarget(quizItems[i]);
 
               return DicoGetBuilder(
-                getResult: DicoManager.get(target, items[i].id),
+                getResult: DicoManager.get(target, quizItems[i].id),
                 builder: (context, doc) {
                   return getEntryConstructor(target)!(
                     parsedEntry: doc,
@@ -129,11 +158,11 @@ class _QuizLauncher extends State<QuizLauncher> {
               );
             },
             answerBuilder: (context, i) {
-              final target = getTarget(items[i]);
+              final target = getTarget(quizItems[i]);
 
               return DicoGetBuilder(
                 key: ValueKey(i),
-                getResult: DicoManager.get(target, items[i].id),
+                getResult: DicoManager.get(target, quizItems[i].id),
                 builder: (context, doc) {
                   final level = doc.notes['misc']?['jlpt']?.firstOrNull;
                   isJlpt[i] = level == null ? null : int.parse(level);
@@ -150,7 +179,7 @@ class _QuizLauncher extends State<QuizLauncher> {
               return Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) {
-                    return MemoListItemInfo(item: items[value]);
+                    return MemoListItemInfo(item: quizItems[value]);
                   },
                 ),
               );
@@ -161,23 +190,25 @@ class _QuizLauncher extends State<QuizLauncher> {
             onEnd: (score) async {
               // TODO: ask to schedule or not on abort
 
-              for (int i = 0; i < qualities.length; ++i) {
-                final item = widget.items[i];
+              for (int i = 0; i < quizItems.length; ++i) {
+                final item = quizItems[i];
                 List<Future> futures = [];
 
                 print('schedule item: $item');
 
                 await Agenda.schedule(
-                    MapEntry(widget.listpath, item), qualities[i],
-                    onGetItem: (prev) {
-                  qualityStat.update(prev, qualities[i]);
-                  futures.add(qualityStat.save());
+                  MapEntry(widget.listpath, item),
+                  qualities[i],
+                  onGetItem: (prev) {
+                    qualityStat.update(prev, qualities[i]);
+                    futures.add(qualityStat.save());
 
-                  if (isJlpt[i] != null) {
-                    jlptStat.update(prev, qualities[i], isJlpt[i]!);
-                    futures.add(jlptStat.save());
-                  }
-                });
+                    if (isJlpt[i] != null) {
+                      jlptStat.update(prev, qualities[i], isJlpt[i]!);
+                      futures.add(jlptStat.save());
+                    }
+                  },
+                );
 
                 if (futures.isNotEmpty) {
                   await Future.wait(futures);
