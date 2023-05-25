@@ -55,7 +55,9 @@ class MemoList {
     file.renameSync(newPath);
   }
 
-  void save() {
+  void save([String? path]) {
+    path ??= this.path;
+
     final file = File(path);
     final writer = Payload.write();
 
@@ -92,5 +94,5 @@ class MemoListInMemory extends MemoList {
   void move(String newPath) {}
 
   @override
-  void save() {}
+  void save([String? path]) {}
 }
