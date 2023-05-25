@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:collection/collection.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -39,6 +40,7 @@ class Explorer extends StatefulWidget {
 class _Explorer extends State<Explorer> {
   final _textController = TextEditingController();
   String _searchedList = '';
+  Key _labeledViewKey = UniqueKey();
 
   @override
   void initState() {
@@ -133,17 +135,43 @@ class _Explorer extends State<Explorer> {
   }
 
   Widget buildLongPressDialog(BuildContext context, MemoList list) {
+    final borderRadius = BorderRadius.circular(360);
+
     return Dialog(
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             InkWell(
-              borderRadius: BorderRadius.circular(360),
+              borderRadius: borderRadius,
+              onTap: () async {
+                final dir = await FilePicker.platform.getDirectoryPath();
+
+                if (dir != null) {
+                  list.save(path.join(dir, path.basename(list.path)));
+                }
+
+                // ignore: use_build_context_synchronously
+                Navigator.of(context).maybePop();
+              },
+              child: const ListTile(
+                leading: Icon(Icons.save_rounded),
+                title: Text('Export'),
+              ),
+            ),
+            InkWell(
+              borderRadius: borderRadius,
               onTap: () {
                 final file = File(list.path);
 
-                setState(() => file.deleteSync());
+                setState(() {
+                  file.deleteSync();
+
+                  _labeledViewKey = UniqueKey();
+                });
+
+                // ignore: use_build_context_synchronously
+                Navigator.of(context).maybePop();
               },
               child: const ListTile(
                 leading: Icon(Icons.delete_rounded),
@@ -195,6 +223,89 @@ class _Explorer extends State<Explorer> {
                 }).then((value) => setState(() {})),
                 child: const Text('New list'),
               ),
+              PopupMenuItem(
+                onTap: () async {
+                  final result =
+                      await FilePicker.platform.pickFiles(allowMultiple: true);
+
+                  void copyFile(String src, String dst) {
+                    setState(() {
+                      File(src).copySync(dst);
+
+                      _labeledViewKey = UniqueKey();
+                    });
+                  }
+
+                  if (result != null) {
+                    for (var e in result.paths) {
+                      if (e == null) continue;
+
+                      final file = File(
+                        path.join(
+                          Explorer.root,
+                          'lists',
+                          path.basename(e),
+                        ),
+                      );
+
+                      if (file.existsSync()) {
+                        // ignore: use_build_context_synchronously
+                        final res = await showDialog<bool>(
+                          context: context,
+                          builder: (context) {
+                            return Dialog(
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Center(
+                                      child: Text(
+                                        '${path.basename(e)} already exists',
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceAround,
+                                        children: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(context)
+                                                    .maybePop(true),
+                                            child: const Text('Replace'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(context)
+                                                    .maybePop(false),
+                                            child: const Text('Ignore'),
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+
+                        if (res == true) {
+                          copyFile(e, file.path);
+                        }
+                      } else {
+                        copyFile(e, file.path);
+                      }
+                    }
+                  }
+
+                  // ignore: use_build_context_synchronously
+                  Navigator.of(context).maybePop();
+                },
+                child: const Text('Import'),
+              ),
               if (kDebugMode)
                 PopupMenuItem(
                   onTap: () async {
@@ -237,6 +348,7 @@ class _Explorer extends State<Explorer> {
       body: SafeArea(
         bottom: false,
         child: LabeledPageView(
+          key: _labeledViewKey,
           labels: const ['ALL', 'REVIEW', 'NEW'],
           itemBuilder: (context, index, label) {
             return buildPage(context, label);
