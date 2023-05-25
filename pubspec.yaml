@@ -18,7 +18,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ">=2.17.0 <3.0.0"
+  sdk: ">=3.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -80,6 +80,12 @@ dependencies:
   flip_card: ^0.7.0
   widget_mask: ^1.0.0+0
   infinite_scroll_pagination: ^3.2.0
+  fl_chart: ^0.62.0
+  percent_indicator: ^4.2.3
+  sqflite: ^2.2.8+3
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  file_picker: ^5.3.1
 
 dev_dependencies:
   integration_test:
@@ -96,7 +102,8 @@ dev_dependencies:
   flutter_lints: ^2.0.1
   test: ^1.19.5
   json_serializable: ^6.3.1
-  build_runner: ^2.3.3
+  build_runner: ^2.4.4
+  isar_generator: ^3.1.0+1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
