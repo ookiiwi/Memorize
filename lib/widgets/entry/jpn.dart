@@ -327,7 +327,7 @@ class EntryJpn extends StatelessWidget {
                 builder: (context) {
                   return MemoListItemView.fromItems(
                     initialIndex: i,
-                    items: [...ids.map((e) => MemoListItem(e, true))],
+                    items: [...ids.map((e) => MemoListItem(e, isKanji: true))],
                   );
                 },
               ),
