@@ -23,6 +23,8 @@ Future<void> openDB() async {
 }
 
 Future<void> closeDB() async {
+  if (_db?.isOpen != true) return;
+
   await _db?.close();
 }
 
