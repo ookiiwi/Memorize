@@ -125,6 +125,7 @@ class _Explorer extends State<Explorer> {
               'listpath': list.path,
               'items': list.items.toList(),
             }).then((value) => setState(() {})),
+            onGetMeta: (item, meta) => item.meta = meta,
           );
         },
       ),
@@ -207,8 +208,8 @@ class _Explorer extends State<Explorer> {
                         MemoList(
                           path.join(Explorer.root, 'lists', oldlist.name),
                           items: oldlist.entries
-                              .map((e) =>
-                                  MemoListItem(e.id, e.subTarget != null))
+                              .map((e) => MemoListItem(e.id,
+                                  isKanji: e.subTarget != null))
                               .toSet(),
                         ).save();
                       }
@@ -484,7 +485,7 @@ class _MemoListView extends State<MemoListView> {
                           .isKanjiEqualTo(e.isKanji)
                           .sm2((q) => q.repetitionsEqualTo(0)))
                   .findAllSync()
-                  .map((e) => MemoListItem(e.entryId!, e.isKanji!));
+                  .map((e) => MemoListItem(e.entryId!, isKanji: e.isKanji!));
 
               final pageList =
                   index == 0 ? list : MemoListInMemory(items: meta.toSet());
@@ -527,6 +528,7 @@ class ExplorerItem extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onPlayAction,
+    this.onGetMeta,
     this.displayMode = ExplorerDisplayMode.all,
     this.info,
   });
@@ -536,6 +538,7 @@ class ExplorerItem extends StatefulWidget {
   final void Function(MemoList list)? onTap;
   final void Function(MemoList list)? onLongPress;
   final void Function(MemoList list)? onPlayAction;
+  final void Function(MemoListItem item, MemoItemMeta meta)? onGetMeta;
   final String? info;
 
   @override
@@ -547,13 +550,14 @@ class _ExplorerItem extends State<ExplorerItem> {
   late final void Function(MemoList list)? onTap = widget.onTap;
   late final void Function(MemoList list)? onLongPress = widget.onLongPress;
   late final void Function(MemoList list)? onPlayAction = widget.onPlayAction;
+  late final void Function(MemoListItem item, MemoItemMeta meta)? onGetMeta =
+      widget.onGetMeta;
   late final ExplorerDisplayMode displayMode = widget.displayMode;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(20);
     final colorScheme = Theme.of(context).colorScheme;
-    Color? borderColor;
 
     int wordCount = 0;
     int kanjiCount = 0;
@@ -567,15 +571,9 @@ class _ExplorerItem extends State<ExplorerItem> {
     for (var e in list.items) {
       e.isKanji ? ++kanjiCount : ++wordCount;
 
-      // No need to read meta
-      if (displayMode == ExplorerDisplayMode.all) {
-        continue;
-      }
-
       final meta = MemoItemMeta.filterFromListItemSync(e);
 
       if (meta == null) {
-        //borderColor = Colors.amber;
         if (displayMode == ExplorerDisplayMode.review) {
           return const SizedBox();
         }
@@ -587,6 +585,10 @@ class _ExplorerItem extends State<ExplorerItem> {
 
       if (meta.sm2.repetitions == 0) {
         ++toReviewCount;
+      }
+
+      if (onGetMeta != null) {
+        onGetMeta!(e, meta);
       }
     }
 
@@ -614,79 +616,67 @@ class _ExplorerItem extends State<ExplorerItem> {
                   onLongPress != null ? () => onLongPress!(list) : null,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Container(
-                  decoration: borderColor != null
-                      ? BoxDecoration(
-                          border: Border(
-                            left: BorderSide(color: borderColor),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TagWidget(
+                            tag: list.name,
+                            textStyle: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        )
-                      : null,
-                  padding: borderColor != null
-                      ? const EdgeInsets.only(left: 12)
-                      : null,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TagWidget(
-                              tag: list.name,
-                              textStyle: TextStyle(
-                                color: colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          const SizedBox(height: 10),
+                          Text(
+                            (wordCount == 0 && kanjiCount == 0)
+                                ? 'empty list'
+                                : '${wordCount != 0 ? '$wordCount words' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
+                                    .trim(),
+                            style: TextStyle(
+                              color: colorScheme.onPrimaryContainer,
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              (wordCount == 0 && kanjiCount == 0)
-                                  ? 'empty list'
-                                  : '${wordCount != 0 ? '$wordCount words' : ''}   ${kanjiCount != 0 ? '$kanjiCount kanji' : ''}'
-                                      .trim(),
-                              style: TextStyle(
-                                color: colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            if (toReviewCount != 0)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text(
-                                  '$toReviewCount items to review',
-                                  style: TextStyle(
-                                    color: colorScheme.onPrimaryContainer,
-                                  ),
+                          ),
+                          if (toReviewCount != 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                '$toReviewCount items to review',
+                                style: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
                                 ),
                               ),
-                            if (widget.info != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Text(
-                                  widget.info!,
-                                  style: TextStyle(
-                                    color: colorScheme.onPrimaryContainer,
-                                  ),
+                            ),
+                          if (widget.info != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                widget.info!,
+                                style: TextStyle(
+                                  color: colorScheme.onPrimaryContainer,
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 8.0),
-                      if (onPlayAction != null)
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            backgroundColor: colorScheme.background,
-                            padding: const EdgeInsets.all(16.0),
-                            shape: const CircleBorder(),
-                          ),
-                          onPressed: onPlayAction != null
-                              ? () => onPlayAction!(list)
-                              : null,
-                          child: const Text('Play'),
-                        )
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8.0),
+                    if (onPlayAction != null)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          backgroundColor: colorScheme.background,
+                          padding: const EdgeInsets.all(16.0),
+                          shape: const CircleBorder(),
+                        ),
+                        onPressed: onPlayAction != null
+                            ? () => onPlayAction!(list)
+                            : null,
+                        child: const Text('Play'),
+                      )
+                  ],
                 ),
               ),
             ),
@@ -1235,7 +1225,7 @@ class _MemoListItemSearch extends State<MemoListItemSearch> {
             ),
             builderDelegate: PagedChildBuilderDelegate<int>(
               itemBuilder: (context, id, index) {
-                final item = MemoListItem(id, label == 'KANJI');
+                final item = MemoListItem(id, isKanji: label == 'KANJI');
 
                 return MemoListItemWidget(
                   item: item,
