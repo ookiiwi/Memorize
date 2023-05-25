@@ -142,7 +142,7 @@ class _AgendaViewer extends State<AgendaViewer> {
 
                 groups[e.quizListPath!] ??= {};
                 groups[e.quizListPath]!
-                    .add(MemoListItem(e.entryId!, e.isKanji!));
+                    .add(MemoListItem(e.entryId!, isKanji: e.isKanji!));
               }
 
               final groupsEntries = groups.entries;
