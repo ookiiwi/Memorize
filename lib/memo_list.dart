@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:binarize/binarize.dart';
 import 'package:equatable/equatable.dart';
+import 'package:memorize/data.dart';
 import 'package:path/path.dart';
 
 class MemoList {
@@ -29,7 +30,7 @@ class MemoList {
     MemoListItem readItem() {
       final data = reader.get(uint64);
 
-      return MemoListItem(data >> 1, (1 & data) == 1);
+      return MemoListItem(data >> 1, isKanji: (1 & data) == 1);
     }
 
     return MemoList(
@@ -72,11 +73,13 @@ class MemoList {
   }
 }
 
+// ignore: must_be_immutable
 class MemoListItem extends Equatable {
-  const MemoListItem(this.id, [this.isKanji = false]);
+  MemoListItem(this.id, {this.isKanji = false, this.meta});
 
   final int id;
   final bool isKanji;
+  MemoItemMeta? meta;
 
   @override
   List<Object?> get props => [id, isKanji];
