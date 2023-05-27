@@ -688,7 +688,7 @@ class _Quiz extends State<Quiz> {
             )
           ],
         ),
-        body: buildPageView(context),
+        body: SafeArea(child: buildPageView(context)),
       ),
     );
   }
