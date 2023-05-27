@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memorize/main.dart' as app;
 
-import 'common.dart';
+//import 'common.dart';
 
 Future<void> _enterTextField(
     WidgetTester tester, String field, String text) async {
@@ -70,7 +70,8 @@ Future<void> delete(WidgetTester tester,
   if (identity != null && password != null) {
     await login(tester, usernameOrEmail: identity, password: password);
     expect(find.text('Login'), findsOneWidget);
-    await triggerBackButton(tester);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
   }
 }
 
@@ -163,12 +164,14 @@ void main() {
     // wrong old password
     await changePassword(tester, 'password', password);
     expect(find.text('Logout'), findsNothing);
-    await triggerBackButton(tester);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     // wrong new password
     await changePassword(tester, password, 'newpassword', 'oldpassword');
     expect(find.text('Logout'), findsNothing);
-    await triggerBackButton(tester);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     await changePassword(tester, password, password.split('').reversed.join());
     expect(find.text('Logout'), findsOneWidget);
