@@ -16,7 +16,6 @@ import 'package:memorize/helpers/dict.dart';
 import 'package:memorize/memo_list.dart';
 import 'package:memorize/sm.dart';
 import 'package:memorize/util.dart';
-import 'package:memorize/views/tag.dart';
 import 'package:memorize/widgets/bar.dart';
 import 'package:memorize/widgets/dico.dart';
 import 'package:memorize/widgets/entry/base.dart';
@@ -620,6 +619,38 @@ class _MemoListView extends State<MemoListView> {
                         'list': pageList,
                       });
                     },
+                    onLongPress: (item) {
+                      final borderRadius = BorderRadius.circular(360);
+
+                      showDialog(
+                          context: context,
+                          builder: (context) {
+                            return Dialog(
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    InkWell(
+                                      borderRadius: borderRadius,
+                                      onTap: () {
+                                        setState(() {
+                                          list!.items.remove(item);
+                                          list!.save();
+                                        });
+
+                                        Navigator.of(context).maybePop();
+                                      },
+                                      child: const ListTile(
+                                        leading: Icon(Icons.delete_rounded),
+                                        title: Text('Delete'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          });
+                    },
                   );
                 },
               );
@@ -735,11 +766,15 @@ class _ExplorerItem extends State<ExplorerItem> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TagWidget(
-                            tag: list.name,
-                            textStyle: TextStyle(
-                              color: colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.bold,
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2.0),
+                            child: Text(
+                              list.name,
+                              style: TextStyle(
+                                color: colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -1292,11 +1327,9 @@ class _MemoListItemSearch extends State<MemoListItemSearch> {
     final target =
         'jpn-${appSettings.language}${label == 'KANJI' ? '-kanji' : ''}';
     final text = _textController.text.trim();
-    final page = text.isEmpty
-        ? <int>[]
-        : (await DicoManager.find(target, '$text%', page: pageKey))
-            .expand((e) => e.value)
-            .toList();
+    final findRet = await DicoManager.find(target, '$text%', page: pageKey);
+    final page =
+        text.isEmpty ? <int>[] : findRet.expand((e) => e.value).toList();
 
     if (page.length < 20) {
       results[label]!.appendLastPage(page);
