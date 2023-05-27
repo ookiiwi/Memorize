@@ -53,3 +53,7 @@ app.*.map.json
 .vscode
 assets/dict/
 lib/generated/*
+*.g.dart
+
+backend*/
+*.png
