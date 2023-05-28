@@ -208,6 +208,7 @@ class _Explorer extends State<Explorer> {
         builderDelegate: PagedChildBuilderDelegate(
           itemBuilder: (context, list, index) {
             return ExplorerItem(
+              key: ValueKey(list.path),
               list: list,
               onTap: (list) => context.push(
                 '/explorer/listview',
@@ -259,10 +260,14 @@ class _Explorer extends State<Explorer> {
               onTap: () {
                 final file = File(list.path);
 
-                setState(() {
-                  file.deleteSync();
+                file.deleteSync();
 
-                  _labeledViewKey = UniqueKey();
+                _labeledViewKey = UniqueKey();
+
+                setState(() {
+                  for (var e in _labels) {
+                    e.controller.itemList?.remove(list);
+                  }
                 });
 
                 // ignore: use_build_context_synchronously
@@ -313,9 +318,20 @@ class _Explorer extends State<Explorer> {
                 child: const Text('New collection'),
               ),
               PopupMenuItem(
-                onTap: () => context.push('/explorer/listview', extra: {
-                  'currentDirectory': path.join(Explorer.root, 'lists')
-                }).then((value) => setState(() {})),
+                onTap: () => context.push<MemoList?>('/explorer/listview',
+                    extra: {
+                      'currentDirectory': path.join(Explorer.root, 'lists')
+                    }).then((value) {
+                  if (value == null) return;
+
+                  setState(() {
+                    for (var e in _labels) {
+                      e.controller.itemList
+                        ?..add(value)
+                        ..sort((a, b) => a.path.compareTo(b.path));
+                    }
+                  });
+                }),
                 child: const Text('New list'),
               ),
               PopupMenuItem(
@@ -393,6 +409,8 @@ class _Explorer extends State<Explorer> {
                       } else {
                         copyFile(e, file.path);
                       }
+
+                      _refreshPagingControllers();
                     }
                   }
 
@@ -647,6 +665,9 @@ class _MemoListView extends State<MemoListView> {
     return Scaffold(
       appBar: AppBar(
         scrolledUnderElevation: 0,
+        leading: BackButton(onPressed: () {
+          Navigator.of(context).pop(list);
+        }),
         title: TextButton(
           onPressed: () {},
           child: Text(list?.name ?? 'Untitled'),
