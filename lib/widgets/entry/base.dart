@@ -1,15 +1,6 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:memorize/app_constants.dart';
-import 'package:memorize/helpers/dict.dart';
-import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/widgets/entry/jpn.dart';
 import 'package:memorize/widgets/entry/parser.dart';
-import 'package:path/path.dart';
 
 enum DisplayMode { preview, details, quiz, detailsOptions, quizOptions }
 
@@ -28,38 +19,6 @@ typedef EntryConstructor = Widget Function(
 
 EntryConstructor? getEntryConstructor(String target) {
   return (target.endsWith('-kanji') ? EntryJpnKanji.new : EntryJpn.new);
-}
-
-FutureOr<void> initEntry() {
-  final localTargets = Dict.listTargets().join(",");
-
-  if (RegExp(r"jpn-\w{3}(-\w+)?").hasMatch(localTargets)) {
-    final filepath =
-        join(applicationDocumentDirectory, 'maptable', 'kanji.json');
-    File file = File(filepath);
-
-    void initMaptable() {
-      final tmp = jsonDecode(file.readAsStringSync(), reviver: (key, value) {
-        if (key is String) {
-          return List<String>.from(value as List);
-        }
-
-        return value;
-      });
-
-      maptable = Map<String, List<String>>.from(tmp);
-    }
-
-    if (!file.existsSync()) {
-      Dio()
-          .download('http://192.168.1.13:8080/maptable/kanji.json', filepath)
-          .then((value) {
-        initMaptable();
-      });
-    } else {
-      initMaptable();
-    }
-  }
 }
 
 Widget buildDetailsField(
