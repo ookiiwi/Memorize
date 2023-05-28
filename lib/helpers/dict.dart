@@ -8,7 +8,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:flutter_ctq/flutter_ctq.dart';
-import 'package:memorize/widgets/entry/base.dart';
 import 'package:memorize/widgets/entry/parser.dart';
 import 'package:path/path.dart';
 import 'package:xml/xml.dart';
@@ -187,8 +186,6 @@ class Dict {
         for (var e in _updatableListeners) {
           e();
         }
-
-        return initEntry();
       });
 
       _dlManager[target] =
@@ -344,7 +341,7 @@ class DicoManager {
     ));
 
     return _events!.next.then((value) {
-      if (value is Exception) {
+      if (value is! CTQFindResult) {
         throw value;
       }
 
