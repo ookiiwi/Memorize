@@ -27,6 +27,20 @@ import 'package:provider/provider.dart';
 import 'package:widget_mask/widget_mask.dart';
 import 'package:memorize/list.dart' as memo_list;
 
+class ExplorerLabel {
+  ExplorerLabel({required this.label, required this.fetchPage})
+      : controller = PagingController(firstPageKey: 0) {
+    controller.addPageRequestListener((pageKey) {
+      fetchPage(pageKey, controller);
+    });
+  }
+
+  final String label;
+  final PagingController<int, MemoList> controller;
+  final void Function(int pageKey, PagingController<int, MemoList> controller)
+      fetchPage;
+}
+
 class Explorer extends StatefulWidget {
   static final root = '$applicationDocumentDirectory/explorer';
 
@@ -38,14 +52,28 @@ class Explorer extends StatefulWidget {
 
 class _Explorer extends State<Explorer> {
   final _textController = TextEditingController();
+  final pageSize = 20;
+  late final _labels = [
+    ExplorerLabel(label: 'ALL', fetchPage: _fetchPageAll),
+    ExplorerLabel(label: 'REVIEW', fetchPage: _fetchPageReview),
+    ExplorerLabel(label: 'NEW', fetchPage: _fetchPageNew)
+  ];
   String _searchedList = '';
   Key _labeledViewKey = UniqueKey();
+
+  void _refreshPagingControllers() {
+    for (var e in _labels) {
+      e.controller.refresh();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
 
     _textController.addListener(() {
+      _refreshPagingControllers();
+
       if (_textController.text.isEmpty) {
         setState(() => _searchedList = '');
       }
@@ -58,30 +86,14 @@ class _Explorer extends State<Explorer> {
     }
   }
 
-  Widget buildPage(BuildContext context, String label) {
-    //final isPOS = label == 'POS';
-    //final isJlpt = label == 'JLPT';
-    var displayMode = ExplorerDisplayMode.all;
+  Future<List> _fetchPageContent() async {
     String dirpath = path.join(Explorer.root, 'lists');
-
-    //if (isPOS) {
-    //  dirpath = path.join(Explorer.root, 'pos');
-    //} else if (isJlpt) {
-    //  dirpath = path.join(Explorer.root, 'jlpt');
-    //}
-
-    if (label == 'REVIEW') {
-      displayMode = ExplorerDisplayMode.review;
-    } else if (label == 'NEW') {
-      displayMode = ExplorerDisplayMode.newItems;
-    }
-
     final dir = Directory(dirpath);
-    final content = !dir.existsSync()
-        ? <FileSystemEntity>[]
+    final content = !(await dir.exists())
+        ? Future.value(<FileSystemEntity>[])
         : (_searchedList.isEmpty
-            ? dir.listSync()
-            : dir.listSync().fold([], (p, e) {
+            ? await dir.list().toList()
+            : await dir.list().fold<dynamic>([], (p, e) {
                 if (path.basename(e.path).contains(_searchedList)) {
                   return [...p, e];
                 }
@@ -91,9 +103,101 @@ class _Explorer extends State<Explorer> {
       ..sort((a, b) => MemoList.getNameFromPath(a.path)
           .compareTo(MemoList.getNameFromPath(b.path)));
 
+    return content;
+  }
+
+  Future<List<MemoList>> _initMemoLists(List filesInfos,
+      {bool Function(MemoListItem?)? keepList}) async {
+    final ret = <MemoList>[];
+
+    for (var e in filesInfos) {
+      final list = await MemoList.open(e.path);
+      int i = 0;
+
+      for (var item in list.items) {
+        item.meta = await MemoItemMeta.filterFromListItem(item);
+
+        if (i < 10.clamp(0, list.length)) {
+          final item = list.items.elementAt(i);
+          DicoManager.get(getTarget(item), item.id);
+          ++i;
+        }
+
+        if (keepList != null) {
+          keepList(item);
+        }
+      }
+
+      // last call to keepList
+      if (keepList == null || keepList(null)) {
+        ret.add(list);
+      }
+    }
+
+    return ret;
+  }
+
+  void _fetchPage(
+    int pageKey,
+    PagingController controller, {
+    bool Function(MemoListItem?)? keepList,
+  }) async {
+    final content = await _fetchPageContent();
+    final nextPageKey = (pageKey + pageSize).clamp(0, content.length);
+    final items = await _initMemoLists(
+      content.sublist(pageKey, nextPageKey),
+      keepList: keepList,
+    );
+
+    if (content.length <= nextPageKey) {
+      controller.appendLastPage(items);
+    } else {
+      controller.appendPage(items, nextPageKey);
+    }
+  }
+
+  void _fetchPageAll(int pageKey, PagingController controller) async {
+    _fetchPage(pageKey, controller);
+  }
+
+  void _fetchPageReview(int pageKey, PagingController controller) async {
+    bool hasReview = false;
+
+    _fetchPage(pageKey, controller, keepList: (item) {
+      if (item?.meta != null && item!.meta!.sm2.quality < 3) {
+        hasReview = true;
+      }
+
+      return item != null ? true : hasReview;
+    });
+  }
+
+  void _fetchPageNew(int pageKey, PagingController controller) async {
+    bool hasNew = false;
+
+    _fetchPage(pageKey, controller, keepList: (item) {
+      if (item != null && item.meta == null) {
+        hasNew = true;
+      }
+
+      return item != null ? true : hasNew;
+    });
+  }
+
+  Widget buildPage(BuildContext context, ExplorerLabel label) {
+    //final isPOS = label == 'POS';
+    //final isJlpt = label == 'JLPT';
+
+    //if (isPOS) {
+    //  dirpath = path.join(Explorer.root, 'pos');
+    //} else if (isJlpt) {
+    //  dirpath = path.join(Explorer.root, 'jlpt');
+    //}
+
     return Scrollbar(
       radius: const Radius.circular(360),
-      child: ListView.builder(
+      child: PagedListView<int, MemoList>(
+        pagingController: label.controller,
         padding: const EdgeInsets.only(
           top: kToolbarHeight + 10,
           bottom: kBottomNavigationBarHeight,
@@ -101,34 +205,26 @@ class _Explorer extends State<Explorer> {
           right: 10,
         ),
         shrinkWrap: true,
-        itemCount: content.length,
-        itemBuilder: (context, index) {
-          final list = MemoList.openSync(content[index].path);
-
-          for (int i = 0; i < 10.clamp(0, list.length); ++i) {
-            final item = list.items.elementAt(i);
-            DicoManager.get(getTarget(item), item.id);
-          }
-
-          return ExplorerItem(
-            list: list,
-            displayMode: displayMode,
-            onTap: (list) => context.push(
-              '/explorer/listview',
-              extra: {'list': list},
-            ),
-            onLongPress: (list) {
-              showDialog(
-                  context: context,
-                  builder: (context) => buildLongPressDialog(context, list));
-            },
-            onPlayAction: (list) => context.push('/quiz_launcher', extra: {
-              'listpath': list.path,
-              'items': list.items.toList(),
-            }).then((value) => setState(() {})),
-            onGetMeta: (item, meta) => item.meta = meta,
-          );
-        },
+        builderDelegate: PagedChildBuilderDelegate(
+          itemBuilder: (context, list, index) {
+            return ExplorerItem(
+              list: list,
+              onTap: (list) => context.push(
+                '/explorer/listview',
+                extra: {'list': list},
+              ),
+              onLongPress: (list) {
+                showDialog(
+                    context: context,
+                    builder: (context) => buildLongPressDialog(context, list));
+              },
+              onPlayAction: (list) => context.push('/quiz_launcher', extra: {
+                'listpath': list.path,
+                'items': list.items.toList(),
+              }).then((_) => _refreshPagingControllers()),
+            );
+          },
+        ),
       ),
     );
   }
@@ -348,9 +444,10 @@ class _Explorer extends State<Explorer> {
         bottom: false,
         child: LabeledPageView(
           key: _labeledViewKey,
-          labels: const ['ALL', 'REVIEW', 'NEW'],
+          labels: _labels.map((e) => e.label).toList(),
           itemBuilder: (context, index, label) {
-            return buildPage(context, label);
+            return buildPage(
+                context, _labels.firstWhere((e) => e.label == label));
           },
         ),
       ),
@@ -671,17 +768,13 @@ class ExplorerItem extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onPlayAction,
-    this.onGetMeta,
-    this.displayMode = ExplorerDisplayMode.all,
     this.info,
   });
 
   final MemoList list;
-  final ExplorerDisplayMode displayMode;
   final void Function(MemoList list)? onTap;
   final void Function(MemoList list)? onLongPress;
   final void Function(MemoList list)? onPlayAction;
-  final void Function(MemoListItem item, MemoItemMeta meta)? onGetMeta;
   final String? info;
 
   @override
@@ -693,9 +786,6 @@ class _ExplorerItem extends State<ExplorerItem> {
   late final void Function(MemoList list)? onTap = widget.onTap;
   late final void Function(MemoList list)? onLongPress = widget.onLongPress;
   late final void Function(MemoList list)? onPlayAction = widget.onPlayAction;
-  late final void Function(MemoListItem item, MemoItemMeta meta)? onGetMeta =
-      widget.onGetMeta;
-  late final ExplorerDisplayMode displayMode = widget.displayMode;
 
   @override
   Widget build(BuildContext context) {
@@ -705,40 +795,9 @@ class _ExplorerItem extends State<ExplorerItem> {
     int wordCount = 0;
     int kanjiCount = 0;
     int toReviewCount = 0;
-    bool hasNew = false;
-
-    if (list.items.isEmpty && displayMode == ExplorerDisplayMode.review) {
-      return const SizedBox();
-    }
 
     for (var e in list.items) {
       e.isKanji ? ++kanjiCount : ++wordCount;
-
-      final meta = MemoItemMeta.filterFromListItemSync(e);
-
-      if (meta == null) {
-        if (displayMode == ExplorerDisplayMode.review) {
-          return const SizedBox();
-        }
-
-        hasNew = true;
-
-        continue;
-      }
-
-      if (meta.sm2.repetitions == 0) {
-        ++toReviewCount;
-      }
-
-      if (onGetMeta != null) {
-        onGetMeta!(e, meta);
-      }
-    }
-
-    if (toReviewCount == 0 && displayMode == ExplorerDisplayMode.review) {
-      return const SizedBox();
-    } else if (!hasNew && displayMode == ExplorerDisplayMode.newItems) {
-      return const SizedBox();
     }
 
     return Tooltip(
