@@ -1,9 +1,28 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
 import 'package:kana_kit/kana_kit.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'package:characters/characters.dart';
 
 const kanaKit = KanaKit();
 Map<String, List<String>> maptable = {};
+
+Future<void> initKanjiTable() async {
+  final data = await rootBundle.loadString('assets/kanji.json');
+  maptable = Map.from(
+    jsonDecode(
+      data,
+      reviver: (key, value) {
+        if (key is String) {
+          return List<String>.from(value as List);
+        }
+
+        return value;
+      },
+    ),
+  );
+}
 
 class FuriganaText {
   FuriganaText(this.text, [this.furigana]);
