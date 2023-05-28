@@ -5,16 +5,14 @@ import 'package:go_router/go_router.dart';
 import 'package:memorize/app_constants.dart';
 import 'package:memorize/data.dart';
 import 'package:memorize/helpers/dict.dart';
+import 'package:memorize/helpers/furigana.dart';
 import 'package:memorize/main.dart';
-import 'package:memorize/widgets/entry.dart';
 
 Future<void> loadData() async {
   await initDirectories();
   await openDB();
   await initConstants();
   await auth.load();
-  await DicoManager.open();
-  await initEntry();
 
   if (auth.isLogged) {
     await auth.refresh();
@@ -24,6 +22,9 @@ Future<void> loadData() async {
     await Dict.download('jpn-${appSettings.language}');
     await Dict.download('jpn-${appSettings.language}-kanji');
   }
+
+  await DicoManager.open();
+  await initKanjiTable();
 
   await DicoManager.tryLoadCachedTargets();
 }
