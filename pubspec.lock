@@ -196,7 +196,7 @@ packages:
   ctq:
     dependency: transitive
     description:
-      path: "../ctq4d/packages/ctq"
+      path: "dependencies/ctq4d/packages/ctq"
       relative: true
     source: path
     version: "1.0.0"
@@ -336,7 +336,7 @@ packages:
   flutter_ctq:
     dependency: "direct main"
     description:
-      path: "../ctq4d/packages/flutter_ctq"
+      path: "dependencies/ctq4d/packages/flutter_ctq"
       relative: true
     source: path
     version: "0.0.1"

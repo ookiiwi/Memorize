@@ -52,7 +52,7 @@ dependencies:
   intl: ^0.18.0
   flex_color_scheme: ^7.0.4
   flutter_ctq:
-    path: ../ctq4d/packages/flutter_ctq
+    path: dependencies/ctq4d/packages/flutter_ctq
   scroll_to_index: ^3.0.1
   kana_kit: ^2.0.0
   ruby_text: ^3.0.1
