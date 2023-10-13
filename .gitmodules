@@ -1,3 +1,6 @@
 [submodule "third-party/dico"]
 	path = third-party/dico
 	url = git@github.com:ookiiwi/dico.git
+[submodule "dependencies/ctq4d"]
+	path = dependencies/ctq4d
+	url = https://github.com/ookiiwi/ctq4d.git
