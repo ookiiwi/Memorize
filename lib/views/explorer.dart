@@ -86,11 +86,11 @@ class _Explorer extends State<Explorer> {
     }
   }
 
-  Future<List> _fetchPageContent() async {
+  Future<List<FileSystemEntity>> _fetchPageContent() async {
     String dirpath = path.join(Explorer.root, 'lists');
     final dir = Directory(dirpath);
     final content = !(await dir.exists())
-        ? Future.value(<FileSystemEntity>[])
+        ? await Future.value(<FileSystemEntity>[])
         : (_searchedList.isEmpty
             ? await dir.list().toList()
             : await dir.list().fold<dynamic>([], (p, e) {
@@ -106,13 +106,16 @@ class _Explorer extends State<Explorer> {
     return content;
   }
 
-  Future<List<MemoList>> _initMemoLists(List filesInfos,
-      {bool Function(MemoListItem?)? keepList}) async {
+  Future<List<MemoList>> _initMemoLists(
+    List<FileSystemEntity> filesInfos, {
+    int start = 0,
+    int? end,
+    bool Function(MemoListItem?)? keepList,
+  }) async {
     final ret = <MemoList>[];
 
-    for (var e in filesInfos) {
-      final list = await MemoList.open(e.path);
-      int i = 0;
+    for (int i = 0; i < (end ?? filesInfos.length); ++i) {
+      final list = await MemoList.open(filesInfos[i].path);
 
       for (var item in list.items) {
         item.meta = await MemoItemMeta.filterFromListItem(item);
@@ -120,7 +123,6 @@ class _Explorer extends State<Explorer> {
         if (i < 10.clamp(0, list.length)) {
           final item = list.items.elementAt(i);
           DicoManager.get(getTarget(item), item.id);
-          ++i;
         }
 
         if (keepList != null) {
@@ -131,6 +133,10 @@ class _Explorer extends State<Explorer> {
       // last call to keepList
       if (keepList == null || keepList(null)) {
         ret.add(list);
+
+        if (end != null && ret.length >= end - start) {
+          break;
+        }
       }
     }
 
@@ -145,11 +151,13 @@ class _Explorer extends State<Explorer> {
     final content = await _fetchPageContent();
     final nextPageKey = (pageKey + pageSize).clamp(0, content.length);
     final items = await _initMemoLists(
-      content.sublist(pageKey, nextPageKey),
+      content,
+      start: pageKey,
+      end: nextPageKey,
       keepList: keepList,
     );
 
-    if (content.length <= nextPageKey) {
+    if (items.length < pageSize) {
       controller.appendLastPage(items);
     } else {
       controller.appendPage(items, nextPageKey);
@@ -314,7 +322,71 @@ class _Explorer extends State<Explorer> {
             position: PopupMenuPosition.under,
             itemBuilder: (context) => [
               PopupMenuItem(
-                onTap: () {},
+                onTap: () {
+                  String dirname = '';
+                  final error = ValueNotifier<String?>(null);
+
+                  showDialog(
+                    context: context,
+                    builder: (context) {
+                      return Dialog(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ValueListenableBuilder(
+                                valueListenable: error,
+                                builder: (context, value, _) => TextField(
+                                  decoration: InputDecoration(errorText: value),
+                                  onChanged: (value) => dirname = value.trim(),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        if (dirname.isEmpty) {
+                                          error.value =
+                                              'Collection name cannot be blank';
+                                          return;
+                                        }
+
+                                        final dir = Directory(path.join(
+                                            Explorer.root, 'lists', dirname));
+
+                                        if (dir.existsSync()) {
+                                          error.value =
+                                              '$dirname already exists';
+                                          return;
+                                        }
+
+                                        dir.createSync();
+
+                                        Navigator.of(context).pop();
+                                      },
+                                      child: const Text('Confirm'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
                 child: const Text('New collection'),
               ),
               PopupMenuItem(
@@ -340,11 +412,9 @@ class _Explorer extends State<Explorer> {
                       await FilePicker.platform.pickFiles(allowMultiple: true);
 
                   void copyFile(String src, String dst) {
-                    setState(() {
-                      File(src).copySync(dst);
+                    File(src).copySync(dst);
 
-                      _labeledViewKey = UniqueKey();
-                    });
+                    _labeledViewKey = UniqueKey();
                   }
 
                   if (result != null) {
@@ -501,7 +571,7 @@ class _MemoListView extends State<MemoListView> {
     displayColor: textColor,
   );
   late final iconTheme = theme.iconTheme.copyWith(color: textColor);
-  late final _renameController = TextEditingController();
+  String _renameText = '';
 
   late MemoList? list = widget.list;
 
@@ -521,17 +591,10 @@ class _MemoListView extends State<MemoListView> {
     }
   }
 
-  @override
-  void dispose() {
-    _renameController.dispose();
-
-    super.dispose();
-  }
-
   Widget buildRenameDialog(BuildContext context) {
     final error = ValueNotifier<String?>(null);
 
-    _renameController.text = list?.name ?? _renameController.text;
+    _renameText = list?.name ?? _renameText;
 
     return Dialog(
       child: Container(
@@ -548,7 +611,7 @@ class _MemoListView extends State<MemoListView> {
                 valueListenable: error,
                 builder: (context, value, child) {
                   return TextField(
-                    controller: _renameController,
+                    onChanged: (value) => _renameText = value,
                     decoration: InputDecoration(
                       hintText: 'List name',
                       errorText: value,
@@ -579,7 +642,7 @@ class _MemoListView extends State<MemoListView> {
                 ),
                 TextButton(
                   onPressed: () {
-                    if (_renameController.text.trim().isEmpty) {
+                    if (_renameText.trim().isEmpty) {
                       error.value = 'List name cannot be blank';
                       return;
                     }
@@ -588,7 +651,7 @@ class _MemoListView extends State<MemoListView> {
                         ? widget.currentDirectory!
                         : path.dirname(list!.path);
                     final newPath =
-                        path.join(dir, _renameController.text.trim());
+                        path.join(dir, _renameText.trim());
 
                     if (newPath != list?.path) {
                       if (File(newPath).existsSync()) {
@@ -600,7 +663,7 @@ class _MemoListView extends State<MemoListView> {
                         if (list == null) {
                           list = MemoList(newPath)..save();
                         } else {
-                          //list!.move(newPath);
+                          list!.move(newPath);
                         }
                       });
                     }
@@ -669,7 +732,8 @@ class _MemoListView extends State<MemoListView> {
           Navigator.of(context).pop(list);
         }),
         title: TextButton(
-          onPressed: () {},
+          onPressed: () =>
+              showDialog(context: context, builder: buildRenameDialog),
           child: Text(list?.name ?? 'Untitled'),
         ),
         actions: [
