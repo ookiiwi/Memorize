@@ -9,7 +9,7 @@ import 'package:ruby_text/ruby_text.dart';
 
 void main() {
   Future<void> createList(WidgetTester tester, String listname) async {
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('New list'));
