@@ -53,6 +53,7 @@ class MemoList {
     if (!file.existsSync()) return;
 
     file.renameSync(newPath);
+    path = newPath;
   }
 
   void save([String? path]) {
