@@ -104,6 +104,7 @@ dev_dependencies:
   json_serializable: ^6.3.1
   build_runner: ^2.4.4
   isar_generator: ^3.1.0+1
+  flutter_oss_licenses: ^2.0.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
