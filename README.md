@@ -18,7 +18,11 @@ $ flutter run
 
 ## Gallery
 
-<img width="20%" src="img/recording.gif"/>
+<p align="center">
+    <img width="20%" src="img/recording.gif"/>
+    <img width="20%" src="img/word_entry.jpg"/>
+    <img width="20%" src="img/kanji_entry.jpg"/>
+</p>
 
 
 ## External resources
